@@ -1,0 +1,109 @@
+/* Общие стили в духе auto.ru: светлый фон, красный акцент */
+:root {
+  --accent: #d81e28;
+  --accent-hover: #b5141d;
+  --bg: #f5f6f8;
+  --card: #ffffff;
+  --text: #1d222b;
+  --muted: #7b8494;
+  --border: #e3e6eb;
+  --radius: 12px;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+h1, h2, h3 { margin: 0 0 16px; }
+
+input, select, button, textarea { font: inherit; }
+
+input, select, textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--text);
+}
+
+input:focus, select:focus, textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.btn {
+  display: inline-block;
+  padding: 10px 20px;
+  border: none;
+  border-radius: 8px;
+  background: var(--accent);
+  color: #fff;
+  cursor: pointer;
+  font-weight: 600;
+  transition: background .15s;
+}
+.btn:hover { background: var(--accent-hover); }
+.btn:disabled { background: #ccc; cursor: not-allowed; }
+.btn-secondary { background: #eef0f3; color: var(--text); }
+.btn-secondary:hover { background: #e0e3e8; }
+
+.card {
+  background: var(--card);
+  border-radius: var(--radius);
+  padding: 20px;
+  box-shadow: 0 1px 4px rgba(0,0,0,.06);
+}
+
+.container { max-width: 1200px; margin: 0 auto; padding: 0 16px; }
+
+.error { color: var(--accent); font-size: 14px; margin: 8px 0; }
+.success { color: #1a8f3c; font-size: 14px; margin: 8px 0; }
+.muted { color: var(--muted); }
+
+.form-field { margin-bottom: 14px; }
+.form-field label { display: block; margin-bottom: 4px; font-size: 14px; color: var(--muted); }
+
+table.data {
+  width: 100%;
+  border-collapse: collapse;
+  background: #fff;
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+table.data th, table.data td {
+  padding: 10px 12px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+  font-size: 14px;
+}
+table.data th { background: #fafbfc; color: var(--muted); font-weight: 600; }
+
+.pagination {
+  display: flex;
+  gap: 6px;
+  justify-content: center;
+  margin: 20px 0;
+}
+.pagination button {
+  min-width: 36px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+}
+.pagination button.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+.pagination button:disabled { opacity: .5; cursor: not-allowed; }
