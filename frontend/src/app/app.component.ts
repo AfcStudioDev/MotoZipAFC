@@ -3,10 +3,9 @@ import { Router, RouterLink, RouterOutlet } from '@angular/router';
 import { AuthService } from './core/auth.service';
 
 @Component({
-  selector: 'app-root',
-  standalone: true,
-  imports: [RouterOutlet, RouterLink],
-  template: `
+    selector: 'app-root',
+    imports: [RouterOutlet, RouterLink],
+    template: `
     <header class="header">
       <div class="container header-inner">
         <a routerLink="/" class="logo">Moto<span>Parts</span></a>
@@ -30,7 +29,7 @@ import { AuthService } from './core/auth.service';
       <router-outlet />
     </main>
   `,
-  styles: [`
+    styles: [`
     .header {
       background: #fff;
       border-bottom: 1px solid var(--border);
@@ -55,7 +54,7 @@ import { AuthService } from './core/auth.service';
     .nav a { color: var(--text); font-weight: 500; }
     .user-name { color: var(--muted); font-size: 14px; }
     .main { padding: 24px 16px 48px; }
-  `],
+  `]
 })
 export class AppComponent {
   auth = inject(AuthService);

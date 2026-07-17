@@ -8,10 +8,9 @@ import { AuthService } from '../core/auth.service';
 import { AddressDto, GroupDto, MarkDto, ModelDto, PagedResult, ZipDto } from '../core/models';
 
 @Component({
-  selector: 'app-home',
-  standalone: true,
-  imports: [FormsModule, CurrencyPipe],
-  template: `
+    selector: 'app-home',
+    imports: [FormsModule, CurrencyPipe],
+    template: `
     <!-- Панель поиска в стиле auto.ru -->
     <section class="search-panel card">
       <h1>Запчасти для мотоциклов</h1>
@@ -125,7 +124,7 @@ import { AddressDto, GroupDto, MarkDto, ModelDto, PagedResult, ZipDto } from '..
       </div>
     }
   `,
-  styles: [`
+    styles: [`
     .search-panel { margin-bottom: 24px; }
     .search-row { display: flex; gap: 10px; margin-bottom: 14px; }
     .search-row input { flex: 1; }
@@ -156,7 +155,7 @@ import { AddressDto, GroupDto, MarkDto, ModelDto, PagedResult, ZipDto } from '..
     }
     .modal { width: 420px; max-width: 92vw; }
     .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; }
-  `],
+  `]
 })
 export class HomeComponent implements OnInit {
   private catalog = inject(CatalogService);

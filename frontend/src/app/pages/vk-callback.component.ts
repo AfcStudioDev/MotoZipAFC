@@ -3,10 +3,9 @@ import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { AuthService } from '../core/auth.service';
 
 @Component({
-  selector: 'app-vk-callback',
-  standalone: true,
-  imports: [RouterLink],
-  template: `
+    selector: 'app-vk-callback',
+    imports: [RouterLink],
+    template: `
     <div class="card" style="max-width:400px;margin:40px auto;text-align:center">
       @if (error()) {
         <p class="error">{{ error() }}</p>
@@ -15,7 +14,7 @@ import { AuthService } from '../core/auth.service';
         <p>Входим через VK…</p>
       }
     </div>
-  `,
+  `
 })
 export class VkCallbackComponent implements OnInit {
   private auth = inject(AuthService);

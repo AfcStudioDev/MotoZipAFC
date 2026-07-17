@@ -7,10 +7,9 @@ import { environment } from '../../environments/environment';
 declare const google: any;
 
 @Component({
-  selector: 'app-login',
-  standalone: true,
-  imports: [FormsModule, RouterLink],
-  template: `
+    selector: 'app-login',
+    imports: [FormsModule, RouterLink],
+    template: `
     <div class="auth-card card">
       <h2>Вход</h2>
       <form (ngSubmit)="submit()">
@@ -36,7 +35,7 @@ declare const google: any;
       </p>
     </div>
   `,
-  styles: [`
+    styles: [`
     .auth-card { max-width: 400px; margin: 40px auto; }
     .full { width: 100%; }
     .divider {
@@ -46,7 +45,7 @@ declare const google: any;
     .vk-btn { width: 100%; background: #0077ff; margin-top: 10px; }
     .vk-btn:hover { background: #0066dd; }
     .links { text-align: center; margin-top: 18px; font-size: 14px; }
-  `],
+  `]
 })
 export class LoginComponent implements AfterViewInit {
   private auth = inject(AuthService);

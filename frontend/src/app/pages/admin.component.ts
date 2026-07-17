@@ -18,10 +18,9 @@ interface TableDef {
 
 /** Админ-панель: ручное добавление записей в каждую таблицу базы данных. */
 @Component({
-  selector: 'app-admin',
-  standalone: true,
-  imports: [FormsModule],
-  template: `
+    selector: 'app-admin',
+    imports: [FormsModule],
+    template: `
     <h1>Админ-панель</h1>
 
     <div class="tabs">
@@ -75,7 +74,7 @@ interface TableDef {
       </section>
     }
   `,
-  styles: [`
+    styles: [`
     .tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; }
     .tabs button {
       padding: 8px 16px;
@@ -93,7 +92,7 @@ interface TableDef {
     }
     .add-form .error, .add-form .success, .add-form .btn { grid-column: 1 / -1; }
     .add-form .btn { justify-self: start; }
-  `],
+  `]
 })
 export class AdminComponent implements OnInit {
   private admin = inject(AdminService);

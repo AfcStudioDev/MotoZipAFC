@@ -3,10 +3,9 @@ import { ActivatedRoute, RouterLink } from '@angular/router';
 import { OrdersService } from '../core/orders.service';
 
 @Component({
-  selector: 'app-payment-result',
-  standalone: true,
-  imports: [RouterLink],
-  template: `
+    selector: 'app-payment-result',
+    imports: [RouterLink],
+    template: `
     <div class="card" style="max-width:480px;margin:40px auto;text-align:center">
       @switch (status()) {
         @case ('loading') { <p>Проверяем статус оплаты…</p> }
@@ -25,7 +24,7 @@ import { OrdersService } from '../core/orders.service';
       }
       <a class="btn" routerLink="/cabinet" style="margin-top:16px">В личный кабинет</a>
     </div>
-  `,
+  `
 })
 export class PaymentResultComponent implements OnInit {
   private route = inject(ActivatedRoute);

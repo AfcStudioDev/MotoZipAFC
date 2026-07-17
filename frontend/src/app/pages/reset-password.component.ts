@@ -4,10 +4,9 @@ import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { AuthService } from '../core/auth.service';
 
 @Component({
-  selector: 'app-reset-password',
-  standalone: true,
-  imports: [FormsModule, RouterLink],
-  template: `
+    selector: 'app-reset-password',
+    imports: [FormsModule, RouterLink],
+    template: `
     <div class="auth-card card">
       <h2>Новый пароль</h2>
       <form (ngSubmit)="submit()">
@@ -25,11 +24,11 @@ import { AuthService } from '../core/auth.service';
       <p class="links"><a routerLink="/login">Вернуться ко входу</a></p>
     </div>
   `,
-  styles: [`
+    styles: [`
     .auth-card { max-width: 400px; margin: 40px auto; }
     .full { width: 100%; }
     .links { text-align: center; margin-top: 18px; font-size: 14px; }
-  `],
+  `]
 })
 export class ResetPasswordComponent implements OnInit {
   private auth = inject(AuthService);

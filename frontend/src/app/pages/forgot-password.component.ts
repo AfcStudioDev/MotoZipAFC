@@ -4,10 +4,9 @@ import { RouterLink } from '@angular/router';
 import { AuthService } from '../core/auth.service';
 
 @Component({
-  selector: 'app-forgot-password',
-  standalone: true,
-  imports: [FormsModule, RouterLink],
-  template: `
+    selector: 'app-forgot-password',
+    imports: [FormsModule, RouterLink],
+    template: `
     <div class="auth-card card">
       <h2>Сброс пароля</h2>
       <p class="muted">Укажите email — мы отправим ссылку для сброса пароля.</p>
@@ -23,11 +22,11 @@ import { AuthService } from '../core/auth.service';
       <p class="links"><a routerLink="/login">Вернуться ко входу</a></p>
     </div>
   `,
-  styles: [`
+    styles: [`
     .auth-card { max-width: 400px; margin: 40px auto; }
     .full { width: 100%; }
     .links { text-align: center; margin-top: 18px; font-size: 14px; }
-  `],
+  `]
 })
 export class ForgotPasswordComponent {
   private auth = inject(AuthService);

@@ -4,10 +4,9 @@ import { Router, RouterLink } from '@angular/router';
 import { AuthService } from '../core/auth.service';
 
 @Component({
-  selector: 'app-register',
-  standalone: true,
-  imports: [FormsModule, RouterLink],
-  template: `
+    selector: 'app-register',
+    imports: [FormsModule, RouterLink],
+    template: `
     <div class="auth-card card">
       <h2>Регистрация</h2>
       <form (ngSubmit)="submit()">
@@ -33,11 +32,11 @@ import { AuthService } from '../core/auth.service';
       <p class="links">Уже есть аккаунт? <a routerLink="/login">Войти</a></p>
     </div>
   `,
-  styles: [`
+    styles: [`
     .auth-card { max-width: 400px; margin: 40px auto; }
     .full { width: 100%; }
     .links { text-align: center; margin-top: 18px; font-size: 14px; }
-  `],
+  `]
 })
 export class RegisterComponent {
   private auth = inject(AuthService);

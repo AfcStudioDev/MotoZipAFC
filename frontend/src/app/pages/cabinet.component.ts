@@ -6,10 +6,9 @@ import { OrdersService } from '../core/orders.service';
 import { AddressDto, OrderDto, PagedResult } from '../core/models';
 
 @Component({
-  selector: 'app-cabinet',
-  standalone: true,
-  imports: [CurrencyPipe, DatePipe, FormsModule],
-  template: `
+    selector: 'app-cabinet',
+    imports: [CurrencyPipe, DatePipe, FormsModule],
+    template: `
     <h1>Личный кабинет</h1>
 
     @if (auth.user(); as user) {
@@ -100,13 +99,13 @@ import { AddressDto, OrderDto, PagedResult } from '../core/models';
       </div>
     </section>
   `,
-  styles: [`
+    styles: [`
     .profile { margin-bottom: 20px; }
     .profile p { margin: 4px 0; }
     .pay-btn { padding: 6px 12px; font-size: 13px; }
     .add-address { display: flex; gap: 10px; margin-top: 12px; }
     .add-address input:first-child { flex: 1; }
-  `],
+  `]
 })
 export class CabinetComponent implements OnInit {
   auth = inject(AuthService);
