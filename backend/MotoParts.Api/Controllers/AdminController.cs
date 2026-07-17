@@ -5,6 +5,7 @@ using MotoParts.Api.Data;
 using MotoParts.Api.DTOs;
 using MotoParts.Api.Models;
 using MotoParts.Api.Services;
+using System.Text.Json;
 
 namespace MotoParts.Api.Controllers;
 
@@ -215,5 +216,120 @@ public class AdminController(AppDbContext db) : ControllerBase
         db.Orders.Add(order);
         await db.SaveChangesAsync();
         return Ok(new { order.Id, order.OrderNumber });
+    }
+
+    [HttpPut("{table}/{id}")]
+    public async Task<IActionResult> Update(string table, string id, [FromBody] System.Text.Json.JsonElement payload)
+    {
+        // 1. Ищем сущность (DbSet) в метаданных контекста
+        var entityType = db.Model.GetEntityTypes()
+            .FirstOrDefault(t => t.GetTableName().Equals(table, StringComparison.OrdinalIgnoreCase)
+                              || t.ClrType.Name.Equals(table, StringComparison.OrdinalIgnoreCase));
+
+        if (entityType == null)
+            return NotFound(new { message = $"Таблица '{table}' не найдена" });
+
+        var clrType = entityType.ClrType;
+
+        // 2. Получаем первичный ключ
+        var primaryKeyProperty = entityType.FindPrimaryKey()?.Properties.FirstOrDefault();
+        if (primaryKeyProperty == null)
+            return BadRequest(new { message = $"У таблицы '{table}' отсутствует первичный ключ" });
+
+        object parsedId;
+        try
+        {
+            var keyType = primaryKeyProperty.ClrType;
+            if (keyType == typeof(Guid))
+                parsedId = Guid.Parse(id);
+            else if (keyType == typeof(int))
+                parsedId = int.Parse(id);
+            else if (keyType == typeof(long))
+                parsedId = long.Parse(id);
+            else
+                parsedId = id;
+        }
+        catch
+        {
+            return BadRequest(new { message = $"Некорректный формат ID '{id}'" });
+        }
+
+        // 3. Достаем запись из БД
+        var entity = await db.FindAsync(clrType, parsedId);
+        if (entity == null)
+            return NotFound(new { message = "Запись не найдена" });
+
+        // 4. Обновляем измененные поля на основе присланного JSON (Используем EnumerateObject)
+        foreach (var prop in payload.EnumerateObject())
+        {
+            var name = prop.Name;
+            if (name.Equals("id", StringComparison.OrdinalIgnoreCase))
+                continue; // Пропускаем изменение первичного ключа
+
+            var clrProp = clrType.GetProperty(name, System.Reflection.BindingFlags.IgnoreCase | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+            if (clrProp != null && clrProp.CanWrite)
+            {
+                try
+                {
+                    var propType = Nullable.GetUnderlyingType(clrProp.PropertyType) ?? clrProp.PropertyType;
+                    var value = prop.Value;
+
+                    if (value.ValueKind == System.Text.Json.JsonValueKind.Null)
+                    {
+                        clrProp.SetValue(entity, null);
+                        continue;
+                    }
+
+                    object? convertedValue = null;
+
+                    // Ручной маппинг типов System.Text.Json во внутренние типы C#
+                    if (propType == typeof(string)) convertedValue = value.GetString();
+                    else if (propType == typeof(int)) convertedValue = value.GetInt32();
+                    else if (propType == typeof(long)) convertedValue = value.GetInt64();
+                    else if (propType == typeof(double)) convertedValue = value.GetDouble();
+                    else if (propType == typeof(decimal)) convertedValue = value.GetDecimal();
+                    else if (propType == typeof(bool)) convertedValue = value.GetBoolean();
+                    else if (propType == typeof(Guid)) convertedValue = value.GetGuid();
+                    else if (propType == typeof(DateTimeOffset)) convertedValue = value.GetDateTimeOffset();
+                    else if (propType == typeof(DateTime)) convertedValue = value.GetDateTime();
+                    else if (propType == typeof(DateOnly))
+                    {
+                        // Особый случай для работы с DateOnly (как в вашей модели Zip.Year)
+                        if (value.ValueKind == System.Text.Json.JsonValueKind.Number)
+                        {
+                            convertedValue = new DateOnly(value.GetInt32(), 1, 1);
+                        }
+                        else if (value.ValueKind == System.Text.Json.JsonValueKind.String && DateOnly.TryParse(value.GetString(), out var d))
+                        {
+                            convertedValue = d;
+                        }
+                    }
+                    else
+                    {
+                        convertedValue = System.Text.Json.JsonSerializer.Deserialize(value.GetRawText(), clrProp.PropertyType);
+                    }
+
+                    clrProp.SetValue(entity, convertedValue);
+                }
+                catch (Exception ex)
+                {
+                    return BadRequest(new { message = $"Ошибка валидации поля '{name}': {ex.Message}" });
+                }
+            }
+        }
+
+        // 5. Сохраняем изменения
+        db.Entry(entity).State = EntityState.Modified;
+
+        try
+        {
+            await db.SaveChangesAsync();
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { message = $"Ошибка БД при сохранении: {ex.InnerException?.Message ?? ex.Message}" });
+        }
+
+        return Ok(entity);
     }
 }

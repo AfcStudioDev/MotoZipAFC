@@ -19,4 +19,8 @@ export class AdminService {
   add(table: string, payload: Record<string, unknown>): Observable<unknown> {
     return this.http.post(`${this.api}/${table}`, payload);
   }
+
+  update(table: string, id: string | number, payload: Record<string, unknown>): Observable<unknown> {
+    return this.http.put(`${this.api}/${table}/${id}`, payload);
+  }
 }

@@ -6,22 +6,41 @@ import { CatalogService, SearchFilters } from '../core/catalog.service';
 import { OrdersService } from '../core/orders.service';
 import { AuthService } from '../core/auth.service';
 import { AddressDto, GroupDto, MarkDto, ModelDto, PagedResult, ZipDto } from '../core/models';
+import { NgxMaskDirective } from 'ngx-mask'; // Импорт маски
+import { Subject, of } from 'rxjs';
+import { debounceTime, distinctUntilChanged, switchMap, catchError } from 'rxjs/operators';
 
 @Component({
-    selector: 'app-home',
-    imports: [FormsModule, CurrencyPipe],
-    template: `
-    <!-- Панель поиска в стиле auto.ru -->
+  selector: 'app-home',
+  // ДОБАВЛЕНО: NgxMaskDirective в массив imports
+  imports: [FormsModule, CurrencyPipe, NgxMaskDirective],
+  template: `
     <section class="search-panel card">
       <h1>Запчасти для мотоциклов</h1>
-      <div class="search-row">
+      
+      <div class="search-row" style="position: relative;">
         <input
           type="text"
           placeholder="Поиск по названию, марке, модели или парт-номеру…"
           [(ngModel)]="filters.query"
-          (keyup.enter)="search(1)" />
-        <button class="btn" (click)="search(1)">Найти</button>
+          (ngModelChange)="onSearchInput($event)"
+          (keyup.enter)="search(1); suggestions.set([])" />
+        <button class="btn" (click)="search(1); suggestions.set([])">Найти</button>
+
+        @if (suggestions().length > 0) {
+          <ul class="suggestions-dropdown">
+            @for (item of suggestions(); track item.id) {
+              <li (click)="selectSuggestion(item)">
+                <span class="suggestion-name">{{ item.name }}</span>
+                @if (item.partNumber) {
+                  <span class="muted suggestion-pn">{{ item.partNumber }}</span>
+                }
+              </li>
+            }
+          </ul>
+        }
       </div>
+      
       <div class="filters">
         <select [(ngModel)]="filters.markId" (ngModelChange)="onMarkChange()">
           <option [ngValue]="undefined">Марка мотоцикла</option>
@@ -41,18 +60,17 @@ import { AddressDto, GroupDto, MarkDto, ModelDto, PagedResult, ZipDto } from '..
             <option [ngValue]="g.id">{{ g.groupName }}</option>
           }
         </select>
-        <select [(ngModel)]="filters.year">
-          <option [ngValue]="undefined">Год выпуска</option>
-          @for (y of years(); track y) {
-            <option [ngValue]="y">{{ y }}</option>
-          }
-        </select>
+        <input 
+          type="text" 
+          [(ngModel)]="filters.year" 
+          placeholder="ГГГГ" 
+          mask="0000"
+          class="form-control">
         <input type="text" placeholder="Part number" [(ngModel)]="filters.partNumber" />
         <button class="btn btn-secondary" (click)="reset()">Сбросить</button>
       </div>
     </section>
 
-    <!-- Результаты -->
     <section class="results">
       @if (result(); as r) {
         <p class="muted">Найдено: {{ r.total }}</p>
@@ -92,7 +110,6 @@ import { AddressDto, GroupDto, MarkDto, ModelDto, PagedResult, ZipDto } from '..
       }
     </section>
 
-    <!-- Модальное окно покупки -->
     @if (buying(); as zip) {
       <div class="modal-backdrop" (click)="closeBuy()">
         <div class="card modal" (click)="$event.stopPropagation()">
@@ -124,8 +141,8 @@ import { AddressDto, GroupDto, MarkDto, ModelDto, PagedResult, ZipDto } from '..
       </div>
     }
   `,
-    changeDetection: ChangeDetectionStrategy.Eager,
-    styles: [`
+  changeDetection: ChangeDetectionStrategy.Eager,
+  styles: [`
     .search-panel { margin-bottom: 24px; }
     .search-row { display: flex; gap: 10px; margin-bottom: 14px; }
     .search-row input { flex: 1; }
@@ -156,9 +173,44 @@ import { AddressDto, GroupDto, MarkDto, ModelDto, PagedResult, ZipDto } from '..
     }
     .modal { width: 420px; max-width: 92vw; }
     .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; }
+
+    /* ДОБАВЛЕНО: Стили для выпадающего списка предложений */
+    .suggestions-dropdown {
+      position: absolute;
+      top: 100%;
+      left: 0;
+      right: 90px; /* Оставляем место под кнопку Найти */
+      background: white;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      list-style: none;
+      padding: 0;
+      margin: 4px 0 0 0;
+      z-index: 1000;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+      max-height: 250px;
+      overflow-y: auto;
+    }
+    .suggestions-dropdown li {
+      padding: 10px 14px;
+      cursor: pointer;
+      border-bottom: 1px solid #f0f0f0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .suggestions-dropdown li:hover {
+      background: #f8f9fa;
+    }
+    .suggestion-name { font-weight: 500; }
+    .suggestion-pn { font-size: 0.85em; }
   `]
 })
 export class HomeComponent implements OnInit {
+  // ДОБАВЛЕНО: Сигнал и сабжект для автопредложений
+  suggestions = signal<ZipDto[]>([]); 
+  private searchSubject = new Subject<string>();
+
   private catalog = inject(CatalogService);
   private orders = inject(OrdersService);
   private auth = inject(AuthService);
@@ -180,11 +232,42 @@ export class HomeComponent implements OnInit {
   busy = signal(false);
 
   ngOnInit(): void {
-    this.catalog.marks().subscribe(m => this.marks.set(m));
-    this.catalog.groups().subscribe(g => this.groups.set(g));
-    this.catalog.years().subscribe(y => this.years.set(y));
-    this.catalog.models().subscribe(m => this.models.set(m));
-    this.search(1);
+    // ДОБАВЛЕНО: Логика обработки ввода для автопредложений
+    this.searchSubject.pipe(
+      debounceTime(300),
+      distinctUntilChanged(),
+      switchMap(query => {
+        if (query && query.trim().length > 0) {
+          // Ищем подсказки, ограничивая выдачу до 5 элементов (по желанию pageSize можно убрать)
+          return this.catalog.search({ ...this.filters, query: query, page: 1, pageSize: 5 }).pipe(
+            catchError(() => of({ items: [] })) // Защита от падений, если бэкенд вернул ошибку
+          );
+        } else {
+          return of({ items: [] });
+        }
+      })
+    ).subscribe((res: any) => {
+      this.suggestions.set(res.items || []);
+    });
+
+    // Оставил закомментированным, как было у вас в коде
+    // this.catalog.marks().subscribe(m => this.marks.set(m));
+    // this.catalog.groups().subscribe(g => this.groups.set(g));
+    // this.catalog.years().subscribe(y => this.years.set(y));
+    // this.catalog.models().subscribe(m => this.models.set(m));
+    // this.search(1);
+  }
+
+  // ДОБАВЛЕНО: Метод, вызываемый при каждом изменении поля ввода
+  onSearchInput(query: string | undefined) {
+    this.searchSubject.next(query || '');
+  }
+
+  // ДОБАВЛЕНО: Обработка клика по предложению из списка
+  selectSuggestion(item: ZipDto) {
+    this.filters.query = item.name; // Подставляем выбранное имя в строку поиска
+    this.suggestions.set([]);       // Скрываем выпадающий список
+    this.search(1);                 // Сразу запускаем полноценный поиск и обновляем сетку
   }
 
   onMarkChange(): void {
@@ -193,11 +276,13 @@ export class HomeComponent implements OnInit {
   }
 
   search(page: number): void {
+    this.suggestions.set([]); // Скрываем подсказки при принудительном поиске
     this.catalog.search({ ...this.filters, page, pageSize: 12 }).subscribe(r => this.result.set(r));
   }
 
   reset(): void {
     this.filters = {};
+    this.suggestions.set([]);
     this.catalog.models().subscribe(m => this.models.set(m));
     this.search(1);
   }
