@@ -1,4 +1,4 @@
-import { AfterViewInit, Component, NgZone, inject, signal } from '@angular/core';
+import { AfterViewInit, Component, NgZone, inject, signal, ChangeDetectionStrategy } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { AuthService } from '../core/auth.service';
@@ -35,6 +35,7 @@ declare const google: any;
       </p>
     </div>
   `,
+    changeDetection: ChangeDetectionStrategy.Eager,
     styles: [`
     .auth-card { max-width: 400px; margin: 40px auto; }
     .full { width: 100%; }

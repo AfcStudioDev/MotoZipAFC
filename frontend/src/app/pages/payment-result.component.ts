@@ -1,10 +1,11 @@
-import { Component, OnInit, inject, signal } from '@angular/core';
+import { Component, OnInit, inject, signal, ChangeDetectionStrategy } from '@angular/core';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { OrdersService } from '../core/orders.service';
 
 @Component({
     selector: 'app-payment-result',
     imports: [RouterLink],
+    changeDetection: ChangeDetectionStrategy.Eager,
     template: `
     <div class="card" style="max-width:480px;margin:40px auto;text-align:center">
       @switch (status()) {

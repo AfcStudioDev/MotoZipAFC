@@ -1,4 +1,4 @@
-import { Component, inject } from '@angular/core';
+import { Component, inject, ChangeDetectionStrategy } from '@angular/core';
 import { Router, RouterLink, RouterOutlet } from '@angular/router';
 import { AuthService } from './core/auth.service';
 
@@ -29,6 +29,7 @@ import { AuthService } from './core/auth.service';
       <router-outlet />
     </main>
   `,
+    changeDetection: ChangeDetectionStrategy.Eager,
     styles: [`
     .header {
       background: #fff;

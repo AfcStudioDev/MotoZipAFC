@@ -1,4 +1,4 @@
-import { Component, OnInit, inject, signal } from '@angular/core';
+import { Component, OnInit, inject, signal, ChangeDetectionStrategy } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { CurrencyPipe } from '@angular/common';
 import { Router } from '@angular/router';
@@ -124,6 +124,7 @@ import { AddressDto, GroupDto, MarkDto, ModelDto, PagedResult, ZipDto } from '..
       </div>
     }
   `,
+    changeDetection: ChangeDetectionStrategy.Eager,
     styles: [`
     .search-panel { margin-bottom: 24px; }
     .search-row { display: flex; gap: 10px; margin-bottom: 14px; }

@@ -1,4 +1,4 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, inject, signal, ChangeDetectionStrategy } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { AuthService } from '../core/auth.service';
@@ -22,6 +22,7 @@ import { AuthService } from '../core/auth.service';
       <p class="links"><a routerLink="/login">Вернуться ко входу</a></p>
     </div>
   `,
+    changeDetection: ChangeDetectionStrategy.Eager,
     styles: [`
     .auth-card { max-width: 400px; margin: 40px auto; }
     .full { width: 100%; }

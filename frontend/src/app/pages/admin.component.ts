@@ -1,4 +1,4 @@
-import { Component, OnInit, inject, signal } from '@angular/core';
+import { Component, OnInit, inject, signal, ChangeDetectionStrategy } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { JsonPipe } from '@angular/common';
 import { AdminService } from '../core/admin.service';
@@ -74,6 +74,7 @@ interface TableDef {
       </section>
     }
   `,
+    changeDetection: ChangeDetectionStrategy.Eager,
     styles: [`
     .tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; }
     .tabs button {
