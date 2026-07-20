@@ -5,11 +5,33 @@ services:
     environment:
       POSTGRES_DB: motoparts
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_PASSWORD: gc2gKosdYI2i8OCsyYUn
     ports:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
 
+  api:
+    build:
+      context: ./backend/MotoParts.Api
+      dockerfile: Dockerfile
+    container_name: motoparts-api
+    # ports:
+    #   - "8080:8080"
+    expose:
+      - "8080"
+    environment:
+      # Перезаписываем ConnectionString из appsettings.json.
+      # Хост теперь "postgres" (имя сервиса БД), а пароль берем из настроек выше.
+      - ConnectionStrings__Default=Host=postgres;Port=5432;Database=motoparts;Username=postgres;Password=postgres
+    depends_on:
+      - postgres
+
+# Сохраняем том для базы данных
 volumes:
   pgdata:
+
+# Объявляем внешнюю сеть
+networks:
+  shared-proxy-network:
+    external: true
