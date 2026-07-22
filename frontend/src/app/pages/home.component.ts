@@ -250,12 +250,9 @@ export class HomeComponent implements OnInit {
       this.suggestions.set(res.items || []);
     });
 
-    // Оставил закомментированным, как было у вас в коде
-    // this.catalog.marks().subscribe(m => this.marks.set(m));
-    // this.catalog.groups().subscribe(g => this.groups.set(g));
-    // this.catalog.years().subscribe(y => this.years.set(y));
-    // this.catalog.models().subscribe(m => this.models.set(m));
-    // this.search(1);
+    this.search(1);
+
+    this.catalog.models().subscribe(m => this.models.set(m));
   }
 
   // ДОБАВЛЕНО: Метод, вызываемый при каждом изменении поля ввода
