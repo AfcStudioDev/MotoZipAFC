@@ -151,7 +151,7 @@ public class AuthController(
 
     private AuthResponse ToAuthResponse(User user) => new(
         tokenService.CreateToken(user),
-        new UserDto(user.Id, user.Email, user.FIO, user.PhoneNumber, user.IsAdmin));
+        new UserDto(user.Id, user.Email, user.FIO, user.PhoneNumber, user.IsAdmin, user.IsRegistrar, user.IsSender));
 
     private static string Sha256(string value) =>
         Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(value)));
