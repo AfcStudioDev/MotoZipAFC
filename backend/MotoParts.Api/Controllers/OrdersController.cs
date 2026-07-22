@@ -34,7 +34,7 @@ public class OrdersController(AppDbContext db) : ControllerBase
             .Select(o => new OrderDto(
                 o.Id, o.OrderNumber, o.CountOrdered, o.OrderDateTime,
                 o.Nomenclature != null ? o.Nomenclature.Name : null,
-                o.Nomenclature != null ? o.Nomenclature.Cost : null,
+                o.Nomenclature != null ? o.Nomenclature.IncomeCost : null,
                 o.Address.Address,
                 o.Payment != null ? o.Payment.Status : null))
             .ToListAsync();
@@ -49,16 +49,17 @@ public class OrdersController(AppDbContext db) : ControllerBase
             return BadRequest(new { message = "Количество должно быть больше нуля" });
 
         var userId = CurrentUserId;
-        var address = await db.DeliveryAddresses
+        var address = await db.DeliveryAdressess
             .FirstOrDefaultAsync(a => a.Id == request.AddressId && a.UserId == userId);
         if (address is null)
             return BadRequest(new { message = "Адрес доставки не найден" });
 
-        var zip = await db.Zip.FindAsync(request.ZipId);
+        var zip = await db.Zips.FindAsync(request.ZipId);
         if (zip is null)
             return NotFound(new { message = "Запчасть не найдена" });
-        if (zip.CountStored < request.Count)
-            return BadRequest(new { message = $"На складе только {zip.CountStored} шт." });
+            //todo: сделать поиск остатков по таблице склада и переделать проверку
+        //if (zip.CountStored < request.Count)
+        //    return BadRequest(new { message = $"На складе только {zip.CountStored} шт." });
 
         var order = new Order
         {
@@ -69,13 +70,13 @@ public class OrdersController(AppDbContext db) : ControllerBase
             AddressId = address.Id,
             OrderDateTime = DateTimeOffset.UtcNow,
         };
-        zip.CountStored -= request.Count;
+        //zip.CountStored -= request.Count;
 
         db.Orders.Add(order);
         await db.SaveChangesAsync();
 
         return Ok(new OrderDto(
             order.Id, order.OrderNumber, order.CountOrdered, order.OrderDateTime,
-            zip.Name, zip.Cost, address.Address, null));
+            zip.Name, request.SellCost, address.Address, null));
     }
 }
