@@ -3,21 +3,21 @@ import { FormsModule } from '@angular/forms';
 import { JsonPipe } from '@angular/common';
 import { AdminService } from '../core/admin.service';
 
-interface FieldDef { 
-  key: string; 
-  label: string; 
+interface FieldDef {
+  key: string;
+  label: string;
   // Добавлен тип 'select' для выпадающих списков
-  type: 'text' | 'number' | 'checkbox' | 'select'; 
-  required?: boolean; 
+  type: 'text' | 'number' | 'checkbox' | 'select';
+  required?: boolean;
   // Настройки для связи внешних ключей
   refTable?: string;     // Эндпоинт таблицы-справочника (например, 'marks')
   refLabelKey?: string;  // Поле, которое нужно показывать (например, 'mark' или 'name')
-} 
+}
 
-interface TableDef { 
-  endpoint: string; 
-  title: string; 
-  fields: FieldDef[]; 
+interface TableDef {
+  endpoint: string;
+  title: string;
+  fields: FieldDef[];
 }
 
 @Component({
@@ -82,6 +82,11 @@ interface TableDef {
             <button class="btn btn-primary" (click)="save(table)" [disabled]="busy()">
               {{ selectedId() ? 'Обновить' : 'Добавить' }}
             </button>
+            @if (selectedId() && isAdmin()) {
+              <button class="btn btn-danger" (click)="deleteRow(table, selectedId())" [disabled]="busy()" style="background: #dc3545; color: #fff; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer;">
+                Удалить
+              </button>
+            }
             @if (selectedId()) {
               <button class="btn btn-secondary" (click)="cancelEdit()">Отмена</button>
             }
@@ -153,49 +158,73 @@ interface TableDef {
 })
 export class AdminComponent implements OnInit {
   private admin = inject(AdminService);
-
+  isAdmin = signal<boolean>(true);
   // Таблицы с настройками связей (type: 'select', refTable, refLabelKey)
   tables: TableDef[] = [
-    { endpoint: 'marks', title: 'Марки (MotoMarks)', fields: [ 
-      { key: 'mark', label: 'Марка (Название)', type: 'text', required: true } 
-    ]}, 
-    { endpoint: 'models', title: 'Модели (MotoModels)', fields: [ 
-      { key: 'markId', label: 'Марка', type: 'select', refTable: 'marks', refLabelKey: 'mark', required: true }, 
-      { key: 'model', label: 'Модель (Название)', type: 'text', required: true } 
-    ]}, 
-    { endpoint: 'groups', title: 'Группы (ZipGroups)', fields: [ 
-      { key: 'groupName', label: 'Название группы', type: 'text', required: true } 
-    ]}, 
-    { endpoint: 'partnumbers', title: 'Парт-номера (PartNumbers)', fields: [ 
-      { key: 'partNumber', label: 'Парт-номер', type: 'text', required: true } 
-    ]}, 
-    { endpoint: 'zip', title: 'Запчасти (Zip)', fields: [ 
-      { key: 'name', label: 'Название запчасти', type: 'text', required: true }, 
-      { key: 'cost', label: 'Стоимость', type: 'number', required: true }, 
-      { key: 'countStored', label: 'Кол-во на складе', type: 'number', required: true }, 
-      { key: 'partNumberId', label: 'Парт-номер', type: 'select', refTable: 'partnumbers', refLabelKey: 'partNumber' }, 
-      { key: 'markId', label: 'Марка', type: 'select', refTable: 'marks', refLabelKey: 'mark' }, 
-      { key: 'modelId', label: 'Модель', type: 'select', refTable: 'models', refLabelKey: 'model' }, 
-      { key: 'groupId', label: 'Группа', type: 'select', refTable: 'groups', refLabelKey: 'groupName' }, 
-      { key: 'year', label: 'Год (числом)', type: 'number' } 
-    ]}, 
-    { endpoint: 'users', title: 'Пользователи (Users)', fields: [ 
-      { key: 'email', label: 'Email', type: 'text', required: true }, 
-      { key: 'fio', label: 'ФИО', type: 'text', required: true }, 
-      { key: 'phoneNumber', label: 'Номер телефона', type: 'text' }, 
-      { key: 'isAdmin', label: 'Администратор', type: 'checkbox' } 
-    ]}, 
-    { endpoint: 'addresses', title: 'Адреса (DeliveryAdressess)', fields: [ 
-      { key: 'address', label: 'Адрес', type: 'text', required: true }, 
-      { key: 'postCode', label: 'Индекс', type: 'text' }, 
-      { key: 'userId', label: 'Пользователь (Email)', type: 'select', refTable: 'users', refLabelKey: 'email' } 
-    ]}, 
-    { endpoint: 'orders', title: 'Заказы (Orders)', fields: [ 
-      { key: 'orderNumber', label: 'Номер заказа', type: 'text', required: true }, 
-      { key: 'countOrdered', label: 'Количество', type: 'number', required: true }, 
-      { key: 'nomenclatureId', label: 'Запчасть', type: 'select', refTable: 'zip', refLabelKey: 'name' }, 
-      { key: 'addressId', label: 'Адрес доставки', type: 'select', refTable: 'addresses', refLabelKey: 'address', required: true } 
-    ]}
+    {
+      endpoint: 'marks', title: 'Марки (MotoMarks)', fields: [
+        { key: 'mark', label: 'Марка (Название)', type: 'text', required: true }
+      ]
+    },
+    {
+      endpoint: 'models', title: 'Модели (MotoModels)', fields: [
+        { key: 'markId', label: 'Марка', type: 'select', refTable: 'marks', refLabelKey: 'mark', required: true },
+        { key: 'model', label: 'Модель (Название)', type: 'text', required: true }
+      ]
+    },
+    {
+      endpoint: 'groups', title: 'Группы (ZipGroups)', fields: [
+        { key: 'groupName', label: 'Название группы', type: 'text', required: true }
+      ]
+    },
+    {
+      endpoint: 'partnumbers', title: 'Парт-номера (PartNumbers)', fields: [
+        { key: 'partNumber', label: 'Парт-номер', type: 'text', required: true }
+      ]
+    },
+    {
+      endpoint: 'zip', title: 'Запчасти (Zip)', fields: [
+        { key: 'name', label: 'Название запчасти', type: 'text', required: true },
+        { key: 'cost', label: 'Стоимость', type: 'number', required: true },
+        { key: 'countStored', label: 'Кол-во на складе', type: 'number', required: true },
+        { key: 'partNumberId', label: 'Парт-номер', type: 'select', refTable: 'partnumbers', refLabelKey: 'partNumber' },
+        { key: 'markId', label: 'Марка', type: 'select', refTable: 'marks', refLabelKey: 'mark' },
+        { key: 'modelId', label: 'Модель', type: 'select', refTable: 'models', refLabelKey: 'model' },
+        { key: 'groupId', label: 'Группа', type: 'select', refTable: 'groups', refLabelKey: 'groupName' },
+        { key: 'year', label: 'Год (числом)', type: 'number' },
+        { key: 'incomeMotoId', label: 'Мотоцикл-донор', type: 'select', refTable: 'incomemotos', refLabelKey: 'description', required: true }
+      ]
+    },
+    {
+      endpoint: 'users', title: 'Пользователи (Users)', fields: [
+        { key: 'email', label: 'Email', type: 'text', required: true },
+        { key: 'fio', label: 'ФИО', type: 'text', required: true },
+        { key: 'phoneNumber', label: 'Номер телефона', type: 'text' },
+        { key: 'isAdmin', label: 'Администратор', type: 'checkbox' },
+        { key: 'isRegistrar', label: 'Регистратор', type: 'checkbox' },
+        { key: 'isSender', label: 'Отправитель', type: 'checkbox' }
+      ]
+    },
+    {
+      endpoint: 'addresses', title: 'Адреса (DeliveryAdressess)', fields: [
+        { key: 'address', label: 'Адрес', type: 'text', required: true },
+        { key: 'postCode', label: 'Индекс', type: 'text' },
+        { key: 'userId', label: 'Пользователь (Email)', type: 'select', refTable: 'users', refLabelKey: 'email' }
+      ]
+    },
+    {
+      endpoint: 'orders', title: 'Заказы (Orders)', fields: [
+        { key: 'orderNumber', label: 'Номер заказа', type: 'text', required: true },
+        { key: 'countOrdered', label: 'Количество', type: 'number', required: true },
+        { key: 'nomenclatureId', label: 'Запчасть', type: 'select', refTable: 'zip', refLabelKey: 'name' },
+        { key: 'addressId', label: 'Адрес доставки', type: 'select', refTable: 'addresses', refLabelKey: 'address', required: true }
+      ]
+    },
+    {
+      endpoint: 'incomemotos', title: 'Мото-доноры (IncomeMoto)', fields: [
+        { key: 'description', label: 'Описание (Description)', type: 'text', required: true }
+      ]
+    }
   ];
 
   current = signal<TableDef | null>(null);
@@ -214,9 +243,83 @@ export class AdminComponent implements OnInit {
   // Хранилище справочников для подстановки имен вместо ID
   references = signal<Record<string, any[]>>({});
 
+  isUserRoleMode = signal(false);
+  userSearchQuery = signal('');
+  foundUsers = signal<any[]>([]);
+
+  deleteRow(table: TableDef, id: any, $event?: Event) {
+    if ($event) {
+      $event.stopPropagation(); // Предотвращаем клик по всей строке таблицы
+    }
+
+    if (!this.isAdmin()) {
+      this.error.set('У вас нет прав для удаления записей');
+      return;
+    }
+
+    if (!confirm('Вы уверены, что хотите удалить эту запись?')) {
+      return;
+    }
+
+    this.busy.set(true);
+    this.error.set('');
+    this.message.set('');
+
+    this.admin.delete(table.endpoint, id).subscribe({
+      next: () => {
+        this.message.set('Запись успешно удалена');
+        this.busy.set(false);
+        if (this.selectedId() === id) {
+          this.cancelEdit();
+        }
+        this.reload(table);
+      },
+      error: (err) => {
+        this.error.set('Ошибка при удалении: ' + (err.error?.message || err.message));
+        this.busy.set(false);
+      }
+    });
+  }
+
+  // Метод включения режима управления ролями
+  enableUserRoleMode() {
+    this.current.set(null); // Скрываем стандартные таблицы из текущего функционала
+    this.isUserRoleMode.set(true);
+    this.foundUsers.set([]);
+    this.userSearchQuery.set('');
+  }
+
+  // Обработка ввода в поиск
+  onSearchUsers(query: string) {
+    this.userSearchQuery.set(query);
+    if (query.length < 2) {
+      this.foundUsers.set([]);
+      return;
+    }
+    this.admin.searchUsers(query).subscribe(users => {
+      this.foundUsers.set(users);
+    });
+  }
+
+  // Сохранение ролей
+  saveUserRoles(user: any) {
+    this.busy.set(true);
+    this.admin.updateUserRoles(user.id, user.isSender, user.isRegistrar).subscribe({
+      next: () => {
+        this.busy.set(false);
+        this.message.set(`Права для ${user.email} успешно обновлены!`);
+        setTimeout(() => this.message.set(''), 3000);
+      },
+      error: (err) => {
+        this.busy.set(false);
+        this.error.set(err.error?.message || 'Ошибка при обновлении прав');
+      }
+    });
+  }
+
   ngOnInit(): void {
     // При запуске загружаем все основные таблицы, чтобы резолвить ID-шники
-    const endpointsToLoad = ['marks', 'models', 'groups', 'partnumbers', 'zip', 'users', 'addresses'];
+    const endpointsToLoad = ['marks', 'models', 'groups', 'partnumbers', 'zip', 'users', 'addresses', 'incomemotos'];
     endpointsToLoad.forEach(ep => {
       this.admin.list(ep).subscribe(data => {
         this.references.update(r => ({ ...r, [ep]: data }));
@@ -227,8 +330,14 @@ export class AdminComponent implements OnInit {
   }
 
   select(table: TableDef): void {
+    // this.current.set(table);
+    // this.cancelEdit();
+    // this.reload(table);
+    this.isUserRoleMode.set(false); // <--- Добавьте эту строку
     this.current.set(table);
-    this.cancelEdit();
+    this.form = {};
+    this.error.set('');
+    this.message.set('');
     this.reload(table);
   }
 
@@ -243,7 +352,6 @@ export class AdminComponent implements OnInit {
   }
 
   // === ЛОГИКА ОТОБРАЖЕНИЯ ЧЕЛОВЕКОЧИТАЕМЫХ ДАННЫХ ===
-  
   getColLabel(col: string): string {
     if (col === 'id') return 'ID';
     const field = this.current()?.fields.find(f => f.key === col);
@@ -253,7 +361,6 @@ export class AdminComponent implements OnInit {
   getDisplayValue(col: string, val: any): any {
     if (val == null) return '';
     const field = this.current()?.fields.find(f => f.key === col);
-    
     // Если это поле со связью (select), заменяем ID на имя из загруженного справочника
     if (field?.type === 'select' && field.refTable) {
       const refData = this.references()[field.refTable];
@@ -263,18 +370,15 @@ export class AdminComponent implements OnInit {
         if (item) return item[field.refLabelKey!];
       }
     }
-    
     // Красивый вывод для булевых значений (isAdmin)
     if (typeof val === 'boolean') return val ? 'Да' : 'Нет';
-    
     return val;
   }
 
   // === ЛОГИКА РЕДАКТИРОВАНИЯ ===
-  
   editRow(row: Record<string, any>) {
     this.selectedId.set(row['id']);
-    this.form = { ...row }; 
+    this.form = { ...row };
     this.error.set('');
     this.message.set('');
   }
@@ -325,17 +429,16 @@ export class AdminComponent implements OnInit {
   }
 
   // === ЛОГИКА АВТОПОДСКАЗОК ПО ЯЧЕЙКАМ (Для текста) ===
-  
   onFieldInput(key: string, value: string) {
     this.form[key] = value;
-    
+
     if (value && value.trim().length > 0) {
       this.activeField.set(key);
       const allValues = this.rows()
         .map(row => row[key])
         .filter(val => typeof val === 'string' && val.toLowerCase().includes(value.toLowerCase()));
-      
-      const uniqueValues = [...new Set(allValues)].slice(0, 8); 
+
+      const uniqueValues = [...new Set(allValues)].slice(0, 8);
       this.fieldSuggestions.set(uniqueValues);
     } else {
       this.activeField.set(null);
@@ -344,7 +447,7 @@ export class AdminComponent implements OnInit {
   }
 
   selectSuggestion(key: string, suggestion: string) {
-    this.form[key] = suggestion; 
+    this.form[key] = suggestion;
     this.activeField.set(null);
     this.fieldSuggestions.set([]);
   }

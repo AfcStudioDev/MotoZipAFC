@@ -23,4 +23,15 @@ export class AdminService {
   update(table: string, id: string | number, payload: Record<string, unknown>): Observable<unknown> {
     return this.http.put(`${this.api}/${table}/${id}`, payload);
   }
+
+  searchUsers(query: string) {
+    return this.http.get<any[]>(`${this.api}/admin/users/search?q=${encodeURIComponent(query)}`);
+  }
+
+  updateUserRoles(userId: number, isSender: boolean, isRegistrar: boolean) {
+    return this.http.put(`${this.api}/admin/users/${userId}/roles`, { isSender, isRegistrar });
+  }
+  delete(endpoint: string, id: any) {
+    return this.http.delete(`${this.api}/${endpoint}/${id}`);
+  }
 }
