@@ -75,29 +75,29 @@ public class AdminController(AppDbContext db) : ControllerBase
     // ---------- PartNumbers ----------
     [HttpGet("partnumbers")]
     public async Task<IActionResult> PartNumbers() =>
-        Ok(await db.PartNumbers.OrderBy(p => p.Id).Select(p => new { p.Id, PartNumber = p.Number }).ToListAsync());
+        Ok(await db.PartNumbers.OrderBy(p => p.Id).Select(p => new { p.Id, PartNumber = p.PartNum }).ToListAsync());
 
     [HttpPost("partnumbers")]
     public async Task<IActionResult> AddPartNumber(AdminPartNumberRequest request)
     {
         if (string.IsNullOrWhiteSpace(request.PartNumber))
             return BadRequest(new { message = "Парт-номер обязателен" });
-        if (await db.PartNumbers.AnyAsync(p => p.Number == request.PartNumber.Trim()))
+        if (await db.PartNumbers.AnyAsync(p => p.PartNum == request.PartNumber.Trim()))
             return Conflict(new { message = "Такой парт-номер уже существует" });
 
-        var partNumber = new PartNumber { Number = request.PartNumber.Trim() };
+        var partNumber = new PartNumber { PartNum = request.PartNumber.Trim() };
         db.PartNumbers.Add(partNumber);
         await db.SaveChangesAsync();
-        return Ok(new { partNumber.Id, PartNumber = partNumber.Number });
+        return Ok(new { partNumber.Id, PartNumber = partNumber.PartNum });
     }
 
     // ---------- Zip ----------
     [HttpGet("zip")]
     public async Task<IActionResult> ZipList() =>
-        Ok(await db.Zip.OrderBy(z => z.Name)
+        Ok(await db.Zips.OrderBy(z => z.Name)
             .Select(z => new
             {
-                z.Id, z.Name, z.Cost, z.CountStored,
+                z.Id, z.Name, z.IncomeCost,
                 z.PartNumberId, z.MarkId, z.ModelId, z.GroupId,
                 Year = z.Year != null ? z.Year.Value.Year : (int?)null,
             })
@@ -108,22 +108,21 @@ public class AdminController(AppDbContext db) : ControllerBase
     {
         if (string.IsNullOrWhiteSpace(request.Name))
             return BadRequest(new { message = "Название запчасти обязательно" });
-        if (request.Cost < 0 || request.CountStored < 0)
+        if (request.IncomeCost < 0 || request.CountStored < 0)
             return BadRequest(new { message = "Стоимость и количество не могут быть отрицательными" });
 
         var zip = new Zip
         {
             Id = Guid.NewGuid(),
             Name = request.Name.Trim(),
-            Cost = request.Cost,
+            IncomeCost = request.IncomeCost,
             PartNumberId = request.PartNumberId,
             MarkId = request.MarkId,
             ModelId = request.ModelId,
             GroupId = request.GroupId,
-            CountStored = request.CountStored,
             Year = request.Year.HasValue ? new DateOnly(request.Year.Value, 1, 1) : null,
         };
-        db.Zip.Add(zip);
+        db.Zips.Add(zip);
         await db.SaveChangesAsync();
         return Ok(new { zip.Id, zip.Name });
     }
@@ -132,7 +131,7 @@ public class AdminController(AppDbContext db) : ControllerBase
     [HttpGet("users")]
     public async Task<IActionResult> Users() =>
         Ok(await db.Users.OrderBy(u => u.Id)
-            .Select(u => new { u.Id, u.Email, u.FIO, u.PhoneNumber, u.IsAdmin })
+            .Select(u => new { u.Id, u.Email, u.FIO, u.PhoneNumber, u.IsAdmin, u.IsSender, u.IsRegistrar })
             .ToListAsync());
 
     [HttpPost("users")]
@@ -150,6 +149,8 @@ public class AdminController(AppDbContext db) : ControllerBase
             FIO = request.FIO.Trim(),
             PhoneNumber = request.PhoneNumber,
             IsAdmin = request.IsAdmin,
+            IsRegistrar = request.IsRegistrar,
+            IsSender = request.IsSender,
             PasswordHash = string.IsNullOrEmpty(request.Password) ? null : PasswordHasher.Hash(request.Password),
         };
         db.Users.Add(user);
@@ -160,7 +161,7 @@ public class AdminController(AppDbContext db) : ControllerBase
     // ---------- DeliveryAdressess ----------
     [HttpGet("addresses")]
     public async Task<IActionResult> Addresses() =>
-        Ok(await db.DeliveryAddresses.OrderBy(a => a.Id)
+        Ok(await db.DeliveryAdressess.OrderBy(a => a.Id)
             .Select(a => new { a.Id, a.Address, a.PostCode, a.UserId })
             .ToListAsync());
 
@@ -178,7 +179,7 @@ public class AdminController(AppDbContext db) : ControllerBase
             PostCode = request.PostCode,
             UserId = request.UserId,
         };
-        db.DeliveryAddresses.Add(address);
+        db.DeliveryAdressess.Add(address);
         await db.SaveChangesAsync();
         return Ok(new { address.Id, address.Address });
     }
@@ -199,9 +200,9 @@ public class AdminController(AppDbContext db) : ControllerBase
     {
         if (string.IsNullOrWhiteSpace(request.OrderNumber))
             return BadRequest(new { message = "Номер заказа обязателен" });
-        if (!await db.DeliveryAddresses.AnyAsync(a => a.Id == request.AddressId))
+        if (!await db.DeliveryAdressess.AnyAsync(a => a.Id == request.AddressId))
             return BadRequest(new { message = "Адрес доставки не найден" });
-        if (request.NomenclatureId.HasValue && !await db.Zip.AnyAsync(z => z.Id == request.NomenclatureId))
+        if (request.NomenclatureId.HasValue && !await db.Zips.AnyAsync(z => z.Id == request.NomenclatureId))
             return BadRequest(new { message = "Запчасть не найдена" });
 
         var order = new Order
@@ -331,5 +332,168 @@ public class AdminController(AppDbContext db) : ControllerBase
         }
 
         return Ok(entity);
+    }
+
+    [HttpGet("users/search")]
+    public async Task<ActionResult> SearchUsers([FromQuery] string q)
+    {
+        if (string.IsNullOrWhiteSpace(q))
+            return Ok(new List<object>());
+
+        var query = q.ToLowerInvariant().Trim();
+
+        // Ищем по частичному совпадению почты или телефона
+        var users = await db.Users
+            .Where(u => u.Email.ToLower().Contains(query) ||
+                       (u.PhoneNumber != null && u.PhoneNumber.Contains(query)))
+            .Select(u => new
+            {
+                u.Id,
+                u.Email,
+                u.FIO,
+                u.PhoneNumber,
+                u.IsSender,
+                u.IsRegistrar,
+                u.IsAdmin,
+            })
+            .Take(10) // Ограничиваем выдачу, чтобы не грузить базу
+            .ToListAsync();
+
+        return Ok(users);
+    }
+
+    [HttpPut("users/{id}/roles")]
+    public async Task<ActionResult> UpdateUserRoles(int id, [FromBody] UpdateUserRolesRequest request)
+    {
+        var user = await db.Users.FindAsync(id);
+        if (user == null)
+            return NotFound(new { message = "Пользователь не найден" });
+
+        // Обновляем значения
+        user.IsSender = request.IsSender;
+        user.IsRegistrar = request.IsRegistrar;
+
+        await db.SaveChangesAsync();
+
+        return Ok(new { message = "Права пользователя обновлены" });
+    }
+
+    [HttpGet("incomemotos")]
+    public async Task<ActionResult> GetIncomeMotos()
+    {
+        var donors = await db.IncomeMotos.ToListAsync();
+        return Ok(donors);
+    }
+
+    [HttpPost("incomemotos")]
+    public async Task<ActionResult> AddIncomeMoto([FromBody] IncomeMoto dto)
+    {
+        if (string.IsNullOrWhiteSpace(dto.Description))
+            return BadRequest(new { message = "Описание не может быть пустым" });
+
+        var newDonor = new IncomeMoto
+        {
+            Id = Guid.NewGuid(), // Генерируем UUID (uuid)
+            Description = dto.Description
+        };
+
+        db.IncomeMotos.Add(newDonor);
+        await db.SaveChangesAsync();
+
+        return Ok(newDonor);
+    }
+
+    [HttpPut("incomemotos/{id}")]
+    public async Task<ActionResult> UpdateIncomeMoto(Guid id, [FromBody] IncomeMoto dto)
+    {
+        var donor = await db.IncomeMotos.FindAsync(id);
+        if (donor == null) return NotFound(new { message = "Донор не найден" });
+
+        donor.Description = dto.Description;
+        await db.SaveChangesAsync();
+
+        return Ok(donor);
+    }
+
+    [HttpDelete("{endpoint}/{id}")]
+    public async Task<IActionResult> DeleteEntity(string endpoint, string id)
+    {
+        // Если у вас есть система авторизации через JWT/Cookies,
+        // проверку можно настроить через [Authorize(Roles = "Admin")] 
+        // или вручную проверить флаг IsAdmin текущего пользователя:
+        // var currentUser = await GetCurrentUserAsync();
+        // if (!currentUser.IsAdmin) return Forbid();
+
+        switch (endpoint.ToLower())
+        {
+            case "marks":
+                var mark = await db.MotoMarks.FindAsync(int.Parse(id));
+                if (mark == null) return NotFound();
+                db.MotoMarks.Remove(mark);
+                break;
+
+            case "models":
+                var model = await db.MotoModels.FindAsync(int.Parse(id));
+                if (model == null) return NotFound();
+                db.MotoModels.Remove(model);
+                break;
+
+            case "groups":
+                var group = await db.ZipGroups.FindAsync(int.Parse(id));
+                if (group == null) return NotFound();
+                db.ZipGroups.Remove(group);
+                break;
+
+            case "partnumbers":
+                var pn = await db.PartNumbers.FindAsync(int.Parse(id));
+                if (pn == null) return NotFound();
+                db.PartNumbers.Remove(pn);
+                break;
+
+            case "zip":
+                var zip = await db.Zips.FindAsync(int.Parse(id));
+                if (zip == null) return NotFound();
+                db.Zips.Remove(zip);
+                break;
+
+            case "users":
+                var user = await db.Users.FindAsync(int.Parse(id));
+                if (user == null) return NotFound();
+                db.Users.Remove(user);
+                break;
+
+            case "addresses":
+                var address = await db.DeliveryAdressess.FindAsync(int.Parse(id));
+                if (address == null) return NotFound();
+                db.DeliveryAdressess.Remove(address);
+                break;
+
+            case "orders":
+                var order = await db.Orders.FindAsync(int.Parse(id));
+                if (order == null) return NotFound();
+                db.Orders.Remove(order);
+                break;
+
+            case "incomemotos":
+                if (!Guid.TryParse(id, out var guidId)) return BadRequest("Неверный формат GUID");
+                var donor = await db.IncomeMotos.FindAsync(guidId);
+                if (donor == null) return NotFound();
+                db.IncomeMotos.Remove(donor);
+                break;
+
+            default:
+                return BadRequest(new { message = "Неизвестный эндпоинт" });
+        }
+
+        try
+        {
+            await db.SaveChangesAsync();
+            return Ok(new { message = "Запись успешно удалена" });
+        }
+        catch (DbUpdateException)
+        {
+            // Перехватываем ошибку, если запись связана с другими таблицами внешним ключом
+            return BadRequest(new { message = "Невозможно удалить запись, так как на неё ссылаются другие данные." });
+        }
     }
 }

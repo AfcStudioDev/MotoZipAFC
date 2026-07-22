@@ -33,7 +33,7 @@ public class PaymentsController(AppDbContext db, YooKassaService yooKassa, ILogg
         if (order.Nomenclature is null)
             return BadRequest(new { message = "В заказе нет номенклатуры" });
 
-        var amount = order.Nomenclature.Cost * order.CountOrdered;
+        var amount = order.Nomenclature.IncomeCost * order.CountOrdered;
         var payment = await yooKassa.CreatePaymentAsync(
             amount, $"Оплата заказа {order.OrderNumber}", request.ReturnUrl, order.Id);
 

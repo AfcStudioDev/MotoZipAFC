@@ -26,7 +26,7 @@ public class CatalogController(AppDbContext db) : ControllerBase
         page = Math.Max(1, page);
         pageSize = Math.Clamp(pageSize, 1, 100);
 
-        var zips = db.Zip
+        var zips = db.Zips
             .Include(z => z.Mark)
             .Include(z => z.Model)
             .Include(z => z.Group)
@@ -38,7 +38,7 @@ public class CatalogController(AppDbContext db) : ControllerBase
             var q = query.Trim();
             zips = zips.Where(z =>
                 EF.Functions.ILike(z.Name, $"%{q}%") ||
-                (z.PartNumber != null && EF.Functions.ILike(z.PartNumber.Number, $"%{q}%")) ||
+                (z.PartNumber != null && EF.Functions.ILike(z.PartNumber.PartNum, $"%{q}%")) ||
                 (z.Mark != null && EF.Functions.ILike(z.Mark.Mark, $"%{q}%")) ||
                 (z.Model != null && EF.Functions.ILike(z.Model.Model, $"%{q}%")));
         }
@@ -48,7 +48,7 @@ public class CatalogController(AppDbContext db) : ControllerBase
         if (groupId.HasValue) zips = zips.Where(z => z.GroupId == groupId);
         if (year.HasValue) zips = zips.Where(z => z.Year != null && z.Year.Value.Year == year);
         if (!string.IsNullOrWhiteSpace(partNumber))
-            zips = zips.Where(z => z.PartNumber != null && EF.Functions.ILike(z.PartNumber.Number, $"%{partNumber.Trim()}%"));
+            zips = zips.Where(z => z.PartNumber != null && EF.Functions.ILike(z.PartNumber.PartNum, $"%{partNumber.Trim()}%"));
 
         var total = await zips.CountAsync();
         var items = await zips
@@ -56,13 +56,13 @@ public class CatalogController(AppDbContext db) : ControllerBase
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .Select(z => new ZipDto(
-                z.Id, z.Name, z.Cost, z.CountStored,
-                z.PartNumber != null ? z.PartNumber.Number : null,
+                z.Id, z.Name, z.IncomeCost,
+                z.PartNumber != null ? z.PartNumber.PartNum : null,
                 z.Mark != null ? z.Mark.Mark : null,
                 z.Model != null ? z.Model.Model : null,
                 z.Group != null ? z.Group.GroupName : null,
                 z.Year != null ? z.Year.Value.Year : null))
-            .ToListAsync();
+            .ToListAsync(); 
 
         return Ok(new PagedResult<ZipDto>(items, total, page, pageSize));
     }
@@ -85,6 +85,6 @@ public class CatalogController(AppDbContext db) : ControllerBase
 
     [HttpGet("years")]
     public async Task<IActionResult> Years() =>
-        Ok(await db.Zip.Where(z => z.Year != null)
+        Ok(await db.Zips.Where(z => z.Year != null)
             .Select(z => z.Year!.Value.Year).Distinct().OrderByDescending(y => y).ToListAsync());
 }

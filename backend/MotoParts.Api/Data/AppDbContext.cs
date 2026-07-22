@@ -1,137 +1,115 @@
 using Microsoft.EntityFrameworkCore;
+
 using MotoParts.Api.Models;
+
+using System.Reflection.Emit;
 
 namespace MotoParts.Api.Data;
 
 public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(options)
 {
-    public DbSet<MotoMark> MotoMarks => Set<MotoMark>();
-    public DbSet<PartNumber> PartNumbers => Set<PartNumber>();
-    public DbSet<ZipGroup> ZipGroups => Set<ZipGroup>();
-    public DbSet<MotoModel> MotoModels => Set<MotoModel>();
-    public DbSet<Zip> Zip => Set<Zip>();
+    public DbSet<MotoMark> MotoMarks { get; set; }
+    public DbSet<PartNumber> PartNumbers { get; set; }
+    public DbSet<ZipGroup> ZipGroups { get; set; }
+    public DbSet<MotoModel> MotoModels { get; set; }
+    public DbSet<Zip> Zips { get; set; }
+    public DbSet<Movement> Movements { get; set; }
+    public DbSet<User> Users { get; set; }
+    public DbSet<DeliveryAddress> DeliveryAdressess { get; set; }
+    public DbSet<Operation> Operations { get; set; }
+    public DbSet<Stored> Stored { get; set; }
+    public DbSet<IncomeMoto> IncomeMotos { get; set; }
     public DbSet<Order> Orders => Set<Order>();
-    public DbSet<User> Users => Set<User>();
-    public DbSet<DeliveryAddress> DeliveryAddresses => Set<DeliveryAddress>();
     public DbSet<Payment> Payments => Set<Payment>();
 
-    protected override void OnModelCreating(ModelBuilder mb)
+
+
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
-        // ---------- MotoMarks ----------
-        mb.Entity<MotoMark>(e =>
-        {
-            e.ToTable("MotoMarks");
-            e.HasKey(x => x.Id);
-            e.Property(x => x.Id).HasColumnName("id").UseIdentityColumn();
-            e.Property(x => x.Mark).HasColumnName("Mark");
-            e.HasIndex(x => x.Mark).IsUnique();
-        });
+        base.OnModelCreating(modelBuilder);
+        
+        // 1. Уникальные индексы (Unique)
+        modelBuilder.Entity<MotoMark>().HasIndex(m => m.Mark).IsUnique();
+        modelBuilder.Entity<PartNumber>().HasIndex(p => p.PartNum).IsUnique();
+        modelBuilder.Entity<User>().HasIndex(u => u.Email).IsUnique();
 
-        // ---------- PartNumbers ----------
-        mb.Entity<PartNumber>(e =>
-        {
-            e.ToTable("PartNumbers");
-            e.HasKey(x => x.Id);
-            e.Property(x => x.Id).HasColumnName("id").UseIdentityColumn();
-            e.Property(x => x.Number).HasColumnName("PartNumber");
-            e.HasIndex(x => x.Number).IsUnique();
-        });
+        // 2. Настройка связей (Foreign Keys) и каскадного удаления согласно схеме
 
-        // ---------- ZipGroups ----------
-        mb.Entity<ZipGroup>(e =>
-        {
-            e.ToTable("ZipGroups");
-            e.HasKey(x => x.Id);
-            e.Property(x => x.Id).HasColumnName("id").UseIdentityColumn();
-            e.Property(x => x.GroupName).HasColumnName("GroupName");
-        });
+        // fk_Марки мотоциклов_id_МоделиМотоциклов (delete: set null)
+        modelBuilder.Entity<MotoModel>()
+            .HasOne(m => m.Mark)
+            .WithMany(m => m.MotoModels)
+            .HasForeignKey(m => m.MarkId)
+            .OnDelete(DeleteBehavior.ClientSetNull);
 
-        // ---------- MotoModels ----------
-        mb.Entity<MotoModel>(e =>
-        {
-            e.ToTable("MotoModels");
-            e.HasKey(x => x.Id);
-            e.Property(x => x.Id).HasColumnName("id").UseIdentityColumn();
-            e.Property(x => x.MarkId).HasColumnName("MarkId");
-            e.Property(x => x.Model).HasColumnName("Model");
+        // fk_ГруппыЗапЧастей_id_ЗапЧасти (delete: set null)
+        modelBuilder.Entity<Zip>()
+            .HasOne(z => z.Group)
+            .WithMany(g => g.Zips)
+            .HasForeignKey(z => z.GroupId)
+            .OnDelete(DeleteBehavior.ClientSetNull);
 
-            e.HasOne(x => x.Mark)
-                .WithMany(m => m.Models)
-                .HasForeignKey(x => x.MarkId)
-                .OnDelete(DeleteBehavior.Cascade);
-        });
+        // fk_МоделиМотоциклов_id_ЗапЧасти (delete: set null)
+        modelBuilder.Entity<Zip>()
+            .HasOne(z => z.Model)
+            .WithMany(m => m.Zips)
+            .HasForeignKey(z => z.ModelId)
+            .OnDelete(DeleteBehavior.ClientSetNull);
 
-        // ---------- Zip ----------
-        mb.Entity<Zip>(e =>
-        {
-            e.ToTable("Zip");
-            e.HasKey(x => x.Id);
-            e.Property(x => x.Id).HasColumnName("id");
-            e.Property(x => x.Name).HasColumnName("Name").IsRequired();
-            e.Property(x => x.Cost).HasColumnName("Cost").HasColumnType("numeric");
-            e.Property(x => x.PartNumberId).HasColumnName("PartNumberId");
-            e.Property(x => x.MarkId).HasColumnName("MarkId");
-            e.Property(x => x.ModelId).HasColumnName("ModelId");
-            e.Property(x => x.GroupId).HasColumnName("GroupId");
-            e.Property(x => x.CountStored).HasColumnName("CountStored").HasDefaultValue(0);
-            e.Property(x => x.Year).HasColumnName("Year").HasColumnType("date");
+        // fk_ПартНомера_id_ЗапЧасти (delete: no action)
+        modelBuilder.Entity<Zip>()
+            .HasOne(z => z.PartNumber)
+            .WithMany(p => p.Zips)
+            .HasForeignKey(z => z.PartNumberId)
+            .OnDelete(DeleteBehavior.Restrict);
 
-            e.HasOne(x => x.Group).WithMany().HasForeignKey(x => x.GroupId).OnDelete(DeleteBehavior.NoAction);
-            e.HasOne(x => x.Model).WithMany().HasForeignKey(x => x.ModelId).OnDelete(DeleteBehavior.NoAction);
-            e.HasOne(x => x.PartNumber).WithMany().HasForeignKey(x => x.PartNumberId).OnDelete(DeleteBehavior.NoAction);
-            e.HasOne(x => x.Mark).WithMany().HasForeignKey(x => x.MarkId).OnDelete(DeleteBehavior.NoAction);
-        });
+        // fk_Марки мотоциклов_id_ЗапЧасти (delete: no action)
+        modelBuilder.Entity<Zip>()
+            .HasOne(z => z.Mark)
+            .WithMany(m => m.Zips)
+            .HasForeignKey(z => z.MarkId)
+            .OnDelete(DeleteBehavior.Restrict);
 
-        // ---------- Orders ----------
-        mb.Entity<Order>(e =>
-        {
-            e.ToTable("Orders");
-            e.HasKey(x => x.Id);
-            e.Property(x => x.Id).HasColumnName("id");
-            e.Property(x => x.OrderNumber).HasColumnName("OrderNumber").IsRequired();
-            e.Property(x => x.CountOrdered).HasColumnName("CountOrdered").HasDefaultValue(0);
-            e.Property(x => x.NomenclatureId).HasColumnName("NomenclatureId");
-            e.Property(x => x.AddressId).HasColumnName("AddressId");
-            e.Property(x => x.OrderDateTime).HasColumnName("OrderDateTime").HasColumnType("timestamptz");
+        // fk_Пользователи_id_АдресаДоставки (delete: no action)
+        modelBuilder.Entity<DeliveryAddress>()
+            .HasOne(d => d.User)
+            .WithMany(u => u.DeliveryAddresses)
+            .HasForeignKey(d => d.UserId)
+            .OnDelete(DeleteBehavior.Restrict);
 
-            e.HasOne(x => x.Nomenclature).WithMany().HasForeignKey(x => x.NomenclatureId).OnDelete(DeleteBehavior.NoAction);
-            e.HasOne(x => x.Address).WithMany(a => a.Orders).HasForeignKey(x => x.AddressId).OnDelete(DeleteBehavior.NoAction);
-        });
+        // fk_АдресаДоставки_id_Заказы (delete: no action)
+        modelBuilder.Entity<Movement>()
+            .HasOne(m => m.Address)
+            .WithMany(d => d.Movements)
+            .HasForeignKey(m => m.AddressId)
+            .OnDelete(DeleteBehavior.Restrict);
 
-        // ---------- Users ----------
-        mb.Entity<User>(e =>
-        {
-            e.ToTable("Users");
-            e.HasKey(x => x.Id);
-            e.Property(x => x.Id).HasColumnName("id").UseIdentityColumn();
-            e.Property(x => x.Email).HasColumnName("Email").IsRequired();
-            e.Property(x => x.IsAdmin).HasColumnName("IsAdmin").HasDefaultValue(false);
-            e.Property(x => x.FIO).HasColumnName("FIO").IsRequired();
-            e.Property(x => x.PhoneNumber).HasColumnName("PhoneNumber");
-            e.HasIndex(x => x.Email).IsUnique();
-        });
+        // fk_Operations_id_Movements (delete: no action)
+        modelBuilder.Entity<Movement>()
+            .HasOne(m => m.OperationType)
+            .WithMany(o => o.Movements)
+            .HasForeignKey(m => m.OperationTypeId)
+            .OnDelete(DeleteBehavior.Restrict);
 
-        // ---------- DeliveryAdressess (имя сохранено как в исходной схеме) ----------
-        mb.Entity<DeliveryAddress>(e =>
-        {
-            e.ToTable("DeliveryAdressess");
-            e.HasKey(x => x.Id);
-            e.Property(x => x.Id).HasColumnName("id").UseIdentityColumn();
-            e.Property(x => x.Address).HasColumnName("Address").IsRequired();
-            e.Property(x => x.PostCode).HasColumnName("PostCode");
-            e.Property(x => x.UserId).HasColumnName("UserId");
+        // fk_Zip_id_Stored (delete: no action)
+        modelBuilder.Entity<Stored>()
+            .HasOne(s => s.Zip)
+            .WithMany(z => z.StoredItems)
+            .HasForeignKey(s => s.ZipId)
+            .OnDelete(DeleteBehavior.Restrict);
 
-            e.HasOne(x => x.User).WithMany(u => u.Addresses).HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.NoAction);
-        });
+        // fk_IncomeMoto_id_Zip (delete: no action)
+        modelBuilder.Entity<Zip>()
+            .HasOne(z => z.IncomeMoto)
+            .WithMany(i => i.Zips)
+            .HasForeignKey(z => z.IncomeMotoId)
+            .OnDelete(DeleteBehavior.Restrict);
 
-        // ---------- Payments (расширение для ЮKassa) ----------
-        mb.Entity<Payment>(e =>
-        {
-            e.ToTable("Payments");
-            e.HasKey(x => x.Id);
-            e.Property(x => x.Amount).HasColumnType("numeric");
-            e.HasIndex(x => x.YooKassaPaymentId).IsUnique();
-            e.HasOne(x => x.Order).WithOne(o => o.Payment).HasForeignKey<Payment>(x => x.OrderId).OnDelete(DeleteBehavior.Cascade);
-        });
+        // fk_Zip_id_Movements (delete: no action)
+        modelBuilder.Entity<Movement>()
+            .HasOne(m => m.Nomenclature)
+            .WithMany(z => z.Movements)
+            .HasForeignKey(m => m.NomenclatureId)
+            .OnDelete(DeleteBehavior.Restrict);
     }
 }

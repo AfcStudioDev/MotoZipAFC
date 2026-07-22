@@ -19,7 +19,7 @@ public class AddressesController(AppDbContext db) : ControllerBase
     public async Task<ActionResult<List<AddressDto>>> List()
     {
         var userId = CurrentUserId;
-        return Ok(await db.DeliveryAddresses
+        return Ok(await db.DeliveryAdressess
             .Where(a => a.UserId == userId)
             .Select(a => new AddressDto(a.Id, a.Address, a.PostCode))
             .ToListAsync());
@@ -37,7 +37,7 @@ public class AddressesController(AppDbContext db) : ControllerBase
             PostCode = request.PostCode,
             UserId = CurrentUserId,
         };
-        db.DeliveryAddresses.Add(address);
+        db.DeliveryAdressess.Add(address);
         await db.SaveChangesAsync();
 
         return Ok(new AddressDto(address.Id, address.Address, address.PostCode));

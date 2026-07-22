@@ -15,7 +15,9 @@ public class TokenService(IConfiguration config)
             new(ClaimTypes.NameIdentifier, user.Id.ToString()),
             new(ClaimTypes.Email, user.Email),
             new(ClaimTypes.Name, user.FIO),
-            new(ClaimTypes.Role, user.IsAdmin ? "Admin" : "User"),
+            new(ClaimTypes.Role, user.IsAdmin ? "Admin" : 
+                user.IsRegistrar ? "Registrar" : 
+                user.IsSender ? "Sender" : "User"),
         };
 
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(config["Jwt:Key"]!));
