@@ -91,10 +91,9 @@ public class AuthController(
 
             var frontendUrl = config["Frontend:BaseUrl"] ?? "http://localhost:4200";
             var link = $"{frontendUrl}/reset-password?email={Uri.EscapeDataString(email)}&token={token}";
-            await emailService.SendAsync(
+            await emailService.SendPasswordResetLinkAsync(
                 email,
-                "Сброс пароля — MotoParts",
-                $"<p>Для сброса пароля перейдите по ссылке (действительна 1 час):</p><p><a href=\"{link}\">{link}</a></p>");
+                $"{link}");
         }
 
         return Ok(new { message = "Если такой email зарегистрирован, на него отправлена ссылка для сброса пароля" });
