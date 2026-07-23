@@ -86,7 +86,7 @@ import { debounceTime, distinctUntilChanged, switchMap, catchError } from 'rxjs/
               @if (zip.partNumber) { <p class="pn">Part number: {{ zip.partNumber }}</p> }
               @if (zip.group) { <p class="muted">Группа: {{ zip.group }}</p> }
               <div class="zip-footer">
-                <span class="price">{{ zip.cost | currency:'RUB':'symbol-narrow':'1.0-0' }}</span>
+                <span class="price">{{ zip.incomeCost | currency:'RUB':'symbol-narrow':'1.0-0' }}</span>
                 @if (zip.countStored > 0) {
                   <button class="btn" (click)="openBuy(zip)">Купить</button>
                 } @else {
@@ -114,7 +114,7 @@ import { debounceTime, distinctUntilChanged, switchMap, catchError } from 'rxjs/
       <div class="modal-backdrop" (click)="closeBuy()">
         <div class="card modal" (click)="$event.stopPropagation()">
           <h3>Оформление заказа</h3>
-          <p>{{ zip.name }} — <b>{{ zip.cost | currency:'RUB':'symbol-narrow':'1.0-0' }}</b></p>
+          <p>{{ zip.name }} — <b>{{ zip.incomeCost | currency:'RUB':'symbol-narrow':'1.0-0' }}</b></p>
           <div class="form-field">
             <label>Количество (в наличии {{ zip.countStored }})</label>
             <input type="number" min="1" [max]="zip.countStored" [(ngModel)]="buyCount" />
