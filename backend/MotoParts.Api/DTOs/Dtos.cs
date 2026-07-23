@@ -20,7 +20,9 @@ public record ZipDto(
     string? Mark,
     string? Model,
     string? Group,
-    int? Year);
+    int? Year,
+    Guid IncomeMotoId,
+    int countStored);
 
 public record PagedResult<T>(IReadOnlyList<T> Items, int Total, int Page, int PageSize)
 {
@@ -37,7 +39,8 @@ public record OrderDto(
     string? ZipName,
     decimal? ZipCost,
     string Address,
-    string? PaymentStatus);
+    string? PaymentStatus,
+    decimal? SellCost);
 
 // ---------- Addresses ----------
 public record CreateAddressRequest(string Address, string? PostCode);

@@ -15,7 +15,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<Zip> Zips { get; set; }
     public DbSet<Movement> Movements { get; set; }
     public DbSet<User> Users { get; set; }
-    public DbSet<DeliveryAddress> DeliveryAdressess { get; set; }
+    public DbSet<DeliveryAddress> DeliveryAdresses { get; set; }
     public DbSet<Operation> Operations { get; set; }
     public DbSet<Stored> Stored { get; set; }
     public DbSet<IncomeMoto> IncomeMotos { get; set; }

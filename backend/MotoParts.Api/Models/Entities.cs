@@ -11,10 +11,11 @@ public class Order
     public Guid? NomenclatureId { get; set; }
     public int AddressId { get; set; }
     public DateTimeOffset OrderDateTime { get; set; }
-
+    public decimal? SellCost { get; set; }
     public Zip? Nomenclature { get; set; }
     public DeliveryAddress Address { get; set; } = null!;
     public Payment? Payment { get; set; }
+    public string DeliveryStatus { get; set; } = "created"; // created | sent | completed | canceled
 }
 
 public class Payment
@@ -181,7 +182,7 @@ public class Operation
     [Key]
     public short Id { get; set; }
 
-    public Guid? ZipId { get; set; }
+    public string Description { get; set; } = string.Empty;
 
     public short? Type { get; set; }
 

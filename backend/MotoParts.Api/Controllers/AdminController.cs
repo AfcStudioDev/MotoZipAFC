@@ -12,7 +12,7 @@ namespace MotoParts.Api.Controllers;
 /// <summary>Админ-панель: ручное добавление записей в каждую таблицу и просмотр содержимого.</summary>
 [ApiController]
 [Route("api/admin")]
-[Authorize(Roles = "Admin")]
+[Authorize(Roles = "Admin,Sender,Registrar")]
 public class AdminController(AppDbContext db) : ControllerBase
 {
     // ---------- MotoMarks ----------
@@ -100,6 +100,7 @@ public class AdminController(AppDbContext db) : ControllerBase
                 z.Id, z.Name, z.IncomeCost,
                 z.PartNumberId, z.MarkId, z.ModelId, z.GroupId,
                 Year = z.Year != null ? z.Year.Value.Year : (int?)null,
+                z.IncomeMotoId
             })
             .ToListAsync());
 
@@ -158,10 +159,10 @@ public class AdminController(AppDbContext db) : ControllerBase
         return Ok(new { user.Id, user.Email, user.FIO, user.IsAdmin });
     }
 
-    // ---------- DeliveryAdressess ----------
+    // ---------- DeliveryAdresses ----------
     [HttpGet("addresses")]
     public async Task<IActionResult> Addresses() =>
-        Ok(await db.DeliveryAdressess.OrderBy(a => a.Id)
+        Ok(await db.DeliveryAdresses.OrderBy(a => a.Id)
             .Select(a => new { a.Id, a.Address, a.PostCode, a.UserId })
             .ToListAsync());
 
@@ -179,7 +180,7 @@ public class AdminController(AppDbContext db) : ControllerBase
             PostCode = request.PostCode,
             UserId = request.UserId,
         };
-        db.DeliveryAdressess.Add(address);
+        db.DeliveryAdresses.Add(address);
         await db.SaveChangesAsync();
         return Ok(new { address.Id, address.Address });
     }
@@ -191,7 +192,7 @@ public class AdminController(AppDbContext db) : ControllerBase
             .Select(o => new
             {
                 o.Id, o.OrderNumber, o.CountOrdered, o.NomenclatureId, o.AddressId, o.OrderDateTime,
-                Zip = o.Nomenclature != null ? o.Nomenclature.Name : null,
+                Zip = o.Nomenclature != null ? o.Nomenclature.Name : null, SellCost = o.SellCost, 
             })
             .ToListAsync());
 
@@ -200,7 +201,7 @@ public class AdminController(AppDbContext db) : ControllerBase
     {
         if (string.IsNullOrWhiteSpace(request.OrderNumber))
             return BadRequest(new { message = "Номер заказа обязателен" });
-        if (!await db.DeliveryAdressess.AnyAsync(a => a.Id == request.AddressId))
+        if (!await db.DeliveryAdresses.AnyAsync(a => a.Id == request.AddressId))
             return BadRequest(new { message = "Адрес доставки не найден" });
         if (request.NomenclatureId.HasValue && !await db.Zips.AnyAsync(z => z.Id == request.NomenclatureId))
             return BadRequest(new { message = "Запчасть не найдена" });
@@ -463,9 +464,9 @@ public class AdminController(AppDbContext db) : ControllerBase
                 break;
 
             case "addresses":
-                var address = await db.DeliveryAdressess.FindAsync(int.Parse(id));
+                var address = await db.DeliveryAdresses.FindAsync(int.Parse(id));
                 if (address == null) return NotFound();
-                db.DeliveryAdressess.Remove(address);
+                db.DeliveryAdresses.Remove(address);
                 break;
 
             case "orders":
