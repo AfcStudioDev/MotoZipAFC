@@ -74,4 +74,20 @@ public class OrdersController(AppDbContext db) : ControllerBase
 
         return Ok(order);
     }
+
+    [HttpDelete("orders/{id}")]
+    public async Task<IActionResult> DeleteOrder(Guid id)
+    {
+        var order = await db.Orders
+            // Если у вас есть связанные оплаты, EF Core удалит их каскадно (если настроено)
+            // или их нужно будет включить и удалить явно, например: .Include(o => o.Payment)
+            .FirstOrDefaultAsync(o => o.Id == id);
+
+        if (order == null) return NotFound(new { message = "Заказ не найден" });
+
+        db.Orders.Remove(order);
+        await db.SaveChangesAsync();
+
+        return Ok(new { message = "Заказ успешно удален" });
+    }
 }
