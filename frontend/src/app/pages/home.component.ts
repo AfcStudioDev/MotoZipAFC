@@ -253,6 +253,8 @@ export class HomeComponent implements OnInit {
     this.search(1);
 
     this.catalog.models().subscribe(m => this.models.set(m));
+    this.catalog.marks().subscribe(m => this.marks.set(m));
+    this.catalog.groups().subscribe(g => this.groups.set(g));
   }
 
   // ДОБАВЛЕНО: Метод, вызываемый при каждом изменении поля ввода
