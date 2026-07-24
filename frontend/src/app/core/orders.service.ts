@@ -35,4 +35,8 @@ export class OrdersService {
   paymentStatus(orderId: string): Observable<{ orderId: string; status: string }> {
     return this.http.get<{ orderId: string; status: string }>(`${this.api}/payments/status/${orderId}`);
   }
+
+  deleteSenderOrder(id: string): Observable<any> {
+  return this.http.delete(`${environment.apiUrl}/sender/orders/${id}`);
+}
 }

@@ -13,8 +13,11 @@ import { AuthService } from './core/auth.service';
           <a routerLink="/">Каталог</a>
           @if (auth.user(); as user) {
             <a routerLink="/cabinet">Личный кабинет</a>
-            @if (user.isAdmin || user.isSender) {
+            @if (user.isAdmin || user.isSender || user.isRegistrar) {
               <a routerLink="/admin">Админ-панель</a>
+            }
+            @if (user.isAdmin || user.isSender) {
+              <a routerLink="/sender">Отправления</a>
             }
             <span class="user-name">{{ user.fio }}</span>
             <button class="btn btn-secondary" (click)="logout()">Выйти</button>
