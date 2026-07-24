@@ -1,4 +1,4 @@
-using Org.BouncyCastle.Utilities.Collections;
+using MotoParts.Api.Extensions;
 
 using System.ComponentModel.DataAnnotations;
 
@@ -11,21 +11,21 @@ public class Order
     public Guid? NomenclatureId { get; set; }
     public int AddressId { get; set; }
     public DateTimeOffset OrderDateTime { get; set; }
-
+    public decimal? SellCost { get; set; }
     public Zip? Nomenclature { get; set; }
     public DeliveryAddress Address { get; set; } = null!;
     public Payment? Payment { get; set; }
+    public string DeliveryStatus { get; set; } = DeliveryStatusEnum.created.GetDescription(); // created | sent | completed | canceled
 }
-
+    
 public class Payment
 {
     public Guid Id { get; set; }
     public Guid OrderId { get; set; }
     public string YooKassaPaymentId { get; set; } = null!;
-    public string Status { get; set; } = "pending"; // pending | waiting_for_capture | succeeded | canceled
+    public string Status { get; set; } = 0.GetDescription<PaymentStatusEnum>(); // pending | waiting_for_capture | succeeded | canceled
     public decimal Amount { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
-
     public Order Order { get; set; } = null!;
 }
 
@@ -181,7 +181,7 @@ public class Operation
     [Key]
     public short Id { get; set; }
 
-    public Guid? ZipId { get; set; }
+    public string Description { get; set; } = string.Empty;
 
     public short? Type { get; set; }
 
