@@ -61,7 +61,10 @@ public class CatalogController(AppDbContext db) : ControllerBase
                 z.Mark != null ? z.Mark.Mark : null,
                 z.Model != null ? z.Model.Model : null,
                 z.Group != null ? z.Group.GroupName : null,
-                z.Year != null ? z.Year.Value.Year : null))
+                z.Year != null ? z.Year.Value.Year : null,
+                z.IncomeMotoId,
+                z.StoredItems.Sum(s => s.Count)
+                ))
             .ToListAsync(); 
 
         return Ok(new PagedResult<ZipDto>(items, total, page, pageSize));
