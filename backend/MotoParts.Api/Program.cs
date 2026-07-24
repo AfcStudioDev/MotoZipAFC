@@ -39,7 +39,7 @@ builder.Services
 builder.Services.AddAuthorization();
 
 builder.Services.AddCors(options => options.AddDefaultPolicy(policy => policy
-    .WithOrigins(builder.Configuration["Frontend:BaseUrl"] ?? "http://localhost:4200")
+    .WithOrigins(builder.Configuration["Frontend:BaseUrl"] ?? "http://192.168.88.122:4200")
     .AllowAnyHeader()
     .AllowAnyMethod()));
 
