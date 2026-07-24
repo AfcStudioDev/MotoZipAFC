@@ -4,6 +4,8 @@ export interface UserDto {
   fio: string;
   phoneNumber?: string;
   isAdmin: boolean;
+  isSender: boolean;
+  isRegistrar: boolean;
 }
 
 export interface AuthResponse {
@@ -14,13 +16,14 @@ export interface AuthResponse {
 export interface ZipDto {
   id: string;
   name: string;
-  cost: number;
-  countStored: number;
+  incomeCost: number;
   partNumber?: string;
   mark?: string;
   model?: string;
   group?: string;
   year?: number;
+  incomeMotoId: string;
+  countStored: number;
 }
 
 export interface PagedResult<T> {
@@ -44,6 +47,7 @@ export interface OrderDto {
   zipCost?: number;
   address: string;
   paymentStatus?: string;
+  sellCost: number;
 }
 
 export interface AddressDto {

@@ -26,6 +26,14 @@ export class AuthService {
     return this.user()?.isAdmin ?? false;
   }
 
+    get isSender(): boolean {
+    return this.user()?.isSender ?? false;
+  }
+
+    get isRegistrar(): boolean {
+    return this.user()?.isRegistrar ?? false;
+  }
+
   register(email: string, password: string, fio: string, phoneNumber?: string): Observable<AuthResponse> {
     return this.http.post<AuthResponse>(`${this.api}/register`, { email, password, fio, phoneNumber })
       .pipe(tap(r => this.store(r)));
