@@ -15,7 +15,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<Zip> Zips { get; set; }
     public DbSet<Movement> Movements { get; set; }
     public DbSet<User> Users { get; set; }
-    public DbSet<DeliveryAddress> DeliveryAdressess { get; set; }
+    public DbSet<DeliveryAdress> DeliveryAdresses { get; set; }
     public DbSet<Operation> Operations { get; set; }
     public DbSet<Stored> Stored { get; set; }
     public DbSet<IncomeMoto> IncomeMotos { get; set; }
@@ -71,7 +71,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             .OnDelete(DeleteBehavior.Restrict);
 
         // fk_Пользователи_id_АдресаДоставки (delete: no action)
-        modelBuilder.Entity<DeliveryAddress>()
+        modelBuilder.Entity<DeliveryAdress>()
             .HasOne(d => d.User)
             .WithMany(u => u.DeliveryAddresses)
             .HasForeignKey(d => d.UserId)
