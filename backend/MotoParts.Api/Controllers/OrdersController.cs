@@ -1,10 +1,13 @@
-using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+
 using MotoParts.Api.Data;
 using MotoParts.Api.DTOs;
 using MotoParts.Api.Models;
+
+using System.Linq;
+using System.Security.Claims;
 
 namespace MotoParts.Api.Controllers;
 
@@ -35,8 +38,9 @@ public class OrdersController(AppDbContext db) : ControllerBase
                 o.Id, o.OrderNumber, o.CountOrdered, o.OrderDateTime,
                 o.Nomenclature != null ? o.Nomenclature.Name : null,
                 o.Nomenclature != null ? o.Nomenclature.IncomeCost : null,
-                o.Address.Address,
-                o.Payment != null ? o.Payment.Status : null))
+                o.Address.Adress,
+                o.Payment != null ? o.Payment.Status : null,
+                o.SellCost))
             .ToListAsync();
 
         return Ok(new PagedResult<OrderDto>(items, total, page, pageSize));
@@ -45,38 +49,45 @@ public class OrdersController(AppDbContext db) : ControllerBase
     [HttpPost]
     public async Task<ActionResult<OrderDto>> Create(CreateOrderRequest request)
     {
-        if (request.Count <= 0)
-            return BadRequest(new { message = "Количество должно быть больше нуля" });
+        var storedItem = await db.Stored.FirstOrDefaultAsync(s => s.ZipId == request.ZipId);
 
-        var userId = CurrentUserId;
-        var address = await db.DeliveryAdressess
-            .FirstOrDefaultAsync(a => a.Id == request.AddressId && a.UserId == userId);
-        if (address is null)
-            return BadRequest(new { message = "Адрес доставки не найден" });
+        if (storedItem == null || storedItem.Count < request.Count)
+        {
+            return BadRequest(new { message = "Недостаточно товара на складе. Доступно: " + (storedItem?.Count ?? 0) });
+        }
 
-        var zip = await db.Zips.FindAsync(request.ZipId);
-        if (zip is null)
-            return NotFound(new { message = "Запчасть не найдена" });
-            //todo: сделать поиск остатков по таблице склада и переделать проверку
-        //if (zip.CountStored < request.Count)
-        //    return BadRequest(new { message = $"На складе только {zip.CountStored} шт." });
+        storedItem.Count -= request.Count;
 
         var order = new Order
         {
             Id = Guid.NewGuid(),
-            OrderNumber = $"ORD-{DateTime.UtcNow:yyyyMMdd}-{Random.Shared.Next(100000, 999999)}",
+            OrderNumber = "ORD-" + DateTimeOffset.Now.ToUnixTimeSeconds(),
             CountOrdered = request.Count,
-            NomenclatureId = zip.Id,
-            AddressId = address.Id,
+            NomenclatureId = request.ZipId,
+            AdressId = request.AddressId,
             OrderDateTime = DateTimeOffset.UtcNow,
+            DeliveryStatus = "created"
         };
-        //zip.CountStored -= request.Count;
 
         db.Orders.Add(order);
         await db.SaveChangesAsync();
 
-        return Ok(new OrderDto(
-            order.Id, order.OrderNumber, order.CountOrdered, order.OrderDateTime,
-            zip.Name, request.SellCost, address.Address, null));
+        return Ok(order);
+    }
+
+    [HttpDelete("orders/{id}")]
+    public async Task<IActionResult> DeleteOrder(Guid id)
+    {
+        var order = await db.Orders
+            // Если у вас есть связанные оплаты, EF Core удалит их каскадно (если настроено)
+            // или их нужно будет включить и удалить явно, например: .Include(o => o.Payment)
+            .FirstOrDefaultAsync(o => o.Id == id);
+
+        if (order == null) return NotFound(new { message = "Заказ не найден" });
+
+        db.Orders.Remove(order);
+        await db.SaveChangesAsync();
+
+        return Ok(new { message = "Заказ успешно удален" });
     }
 }
