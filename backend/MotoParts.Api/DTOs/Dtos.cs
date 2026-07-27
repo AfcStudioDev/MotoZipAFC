@@ -42,9 +42,9 @@ public record OrderDto(
     string? PaymentStatus,
     decimal? SellCost);
 
-// ---------- Addresses ----------
-public record CreateAddressRequest(string Address, string? PostCode);
-public record AddressDto(int Id, string Address, string? PostCode);
+// ---------- Adresses ----------
+public record CreateAdressRequest(string Adress, string? PostCode);
+public record AdressDto(int Id, string Adress, string? PostCode);
 
 // ---------- Payments ----------
 public record CreatePaymentRequest(Guid OrderId, string ReturnUrl);
@@ -57,8 +57,8 @@ public record AdminGroupRequest(string GroupName);
 public record AdminPartNumberRequest(string PartNumber);
 public record AdminZipRequest(string Name, decimal IncomeCost, int? PartNumberId, int? MarkId, int? ModelId, int? GroupId, int CountStored, int? Year);
 public record AdminUserRequest(string Email, string FIO, string? PhoneNumber, bool IsAdmin, bool IsRegistrar, bool IsSender, string? Password);
-public record AdminAddressRequest(string Address, string? PostCode, int? UserId);
-public record AdminOrderRequest(string OrderNumber, int CountOrdered, Guid? NomenclatureId, int AddressId, DateTimeOffset? OrderDateTime);
+public record AdminAdressRequest(string Adress, string? PostCode, int? UserId);
+public record AdminOrderRequest(string OrderNumber, int CountOrdered, Guid? NomenclatureId, int AdressId, DateTimeOffset? OrderDateTime);
 
 public class UpdateUserRolesRequest
 {

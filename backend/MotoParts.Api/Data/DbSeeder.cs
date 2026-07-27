@@ -188,9 +188,9 @@ public static class DbSeeder
         var address1 = await db.DeliveryAdresses.FirstOrDefaultAsync(a => a.UserId == clientUser.Id);
         if (address1 == null)
         {
-            address1 = new DeliveryAddress
+            address1 = new DeliveryAdress
             {
-                Address = "г. Москва, ул. Мотоциклетная, д. 42, кв. 10",
+                Adress = "г. Москва, ул. Мотоциклетная, д. 42, кв. 10",
                 PostCode = "101000",
                 UserId = clientUser.Id
             };
@@ -207,7 +207,7 @@ public static class DbSeeder
                 OrderNumber = "ORD-00001",
                 CountOrdered = 1,
                 NomenclatureId = zip1Id,
-                AddressId = address1.Id, // Используем явно ID сохраненного адреса
+                AdressId = address1.Id, // Используем явно ID сохраненного адреса
                 OrderDateTime = DateTimeOffset.UtcNow,
                 SellCost = decimal.Parse( "1000.23")
             };

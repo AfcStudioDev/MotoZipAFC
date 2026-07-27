@@ -22,7 +22,7 @@ namespace MotoParts.Api.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
-            modelBuilder.Entity("MotoParts.Api.Models.DeliveryAddress", b =>
+            modelBuilder.Entity("MotoParts.Api.Models.DeliveryAdress", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -30,7 +30,7 @@ namespace MotoParts.Api.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
-                    b.Property<string>("Address")
+                    b.Property<string>("Adress")
                         .IsRequired()
                         .HasColumnType("text");
 
@@ -174,6 +174,9 @@ namespace MotoParts.Api.Migrations
                         .HasColumnType("uuid");
 
                     b.Property<int>("AddressId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("AdressId")
                         .HasColumnType("integer");
 
                     b.Property<int>("CountOrdered")
@@ -392,7 +395,7 @@ namespace MotoParts.Api.Migrations
                     b.ToTable("ZipGroups", (string)null);
                 });
 
-            modelBuilder.Entity("MotoParts.Api.Models.DeliveryAddress", b =>
+            modelBuilder.Entity("MotoParts.Api.Models.DeliveryAdress", b =>
                 {
                     b.HasOne("MotoParts.Api.Models.User", "User")
                         .WithMany("DeliveryAddresses")
@@ -413,7 +416,7 @@ namespace MotoParts.Api.Migrations
 
             modelBuilder.Entity("MotoParts.Api.Models.Movement", b =>
                 {
-                    b.HasOne("MotoParts.Api.Models.DeliveryAddress", "Address")
+                    b.HasOne("MotoParts.Api.Models.DeliveryAdress", "Address")
                         .WithMany("Movements")
                         .HasForeignKey("AddressId")
                         .OnDelete(DeleteBehavior.Restrict)
@@ -438,7 +441,7 @@ namespace MotoParts.Api.Migrations
 
             modelBuilder.Entity("MotoParts.Api.Models.Order", b =>
                 {
-                    b.HasOne("MotoParts.Api.Models.DeliveryAddress", "Address")
+                    b.HasOne("MotoParts.Api.Models.DeliveryAdress", "Address")
                         .WithMany()
                         .HasForeignKey("AddressId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -512,7 +515,7 @@ namespace MotoParts.Api.Migrations
                     b.Navigation("PartNumber");
                 });
 
-            modelBuilder.Entity("MotoParts.Api.Models.DeliveryAddress", b =>
+            modelBuilder.Entity("MotoParts.Api.Models.DeliveryAdress", b =>
                 {
                     b.Navigation("Movements");
                 });

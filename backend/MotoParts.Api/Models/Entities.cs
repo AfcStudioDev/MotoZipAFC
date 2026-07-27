@@ -9,11 +9,11 @@ public class Order
     public string OrderNumber { get; set; } = null!;
     public int CountOrdered { get; set; }
     public Guid? NomenclatureId { get; set; }
-    public int AddressId { get; set; }
+    public int AdressId { get; set; }
     public DateTimeOffset OrderDateTime { get; set; }
     public decimal? SellCost { get; set; }
     public Zip? Nomenclature { get; set; }
-    public DeliveryAddress Address { get; set; } = null!;
+    public DeliveryAdress Address { get; set; } = null!;
     public Payment? Payment { get; set; }
     public string DeliveryStatus { get; set; } = DeliveryStatusEnum.created.GetDescription(); // created | sent | completed | canceled
 }
@@ -120,7 +120,7 @@ public class Movement
     public Zip Nomenclature { get; set; }
 
     public int AddressId { get; set; }
-    public DeliveryAddress Address { get; set; }
+    public DeliveryAdress Address { get; set; }
 
     public DateTime OrderDateTime { get; set; }
 
@@ -153,20 +153,20 @@ public class User
 
     public string? PhoneNumber { get; set; }
 
-    public ICollection<DeliveryAddress> DeliveryAddresses { get; set; } = new HashSet<DeliveryAddress>();
+    public ICollection<DeliveryAdress> DeliveryAddresses { get; set; } = new HashSet<DeliveryAdress>();
 
     public string? OAuthProvider { get; set; }       // "google" | "vk" | null
 
     public string? OAuthSubject { get; set; }        // внешний id пользователя у провайдера
 }
 
-public class DeliveryAddress
+public class DeliveryAdress
 {
     [Key]
     public int Id { get; set; }
 
     [Required]
-    public string Address { get; set; }
+    public string Adress { get; set; }
 
     public string PostCode { get; set; }
 
