@@ -1,20 +1,37 @@
-using Org.BouncyCastle.Utilities.Collections;
+using MotoParts.Api.Extensions;
 
 using System.ComponentModel.DataAnnotations;
 
 namespace MotoParts.Api.Models;
 public class Order
 {
+    [Key]
     public Guid Id { get; set; }
+
+    [Required]
     public string OrderNumber { get; set; } = null!;
-    public int CountOrdered { get; set; }
-    public Guid? NomenclatureId { get; set; }
-    public int AddressId { get; set; }
+
+    public int CountOrdered { get; set; } = 0;
+
+    public Guid NomenclatureId { get; set; }
+    public int AdressId { get; set; }
     public DateTimeOffset OrderDateTime { get; set; }
 
-    public Zip? Nomenclature { get; set; }
-    public DeliveryAddress Address { get; set; } = null!;
-    public Payment? Payment { get; set; }
+    // Новые поля из DBML
+    public decimal SellCost { get; set; }
+    public short? OperationTypeId { get; set; }
+    public decimal? Discount { get; set; }
+    public int UserId { get; set; }
+    public short? DeliveryStatusId { get; set; }
+
+    // Навигационные свойства
+    public Zip Nomenclature { get; set; } = null!;
+    public DeliveryAdress Adress { get; set; } = null!;
+    public Operation? OperationType { get; set; }
+    public User User { get; set; } = null!;
+    public DeliveryStatus? DeliveryStatus { get; set; }
+
+    public ICollection<Log> Logs { get; set; } = new HashSet<Log>();
 }
 
 public class Payment
@@ -22,10 +39,9 @@ public class Payment
     public Guid Id { get; set; }
     public Guid OrderId { get; set; }
     public string YooKassaPaymentId { get; set; } = null!;
-    public string Status { get; set; } = "pending"; // pending | waiting_for_capture | succeeded | canceled
+    public string Status { get; set; } = 0.GetDescription<PaymentStatusEnum>(); // pending | waiting_for_capture | succeeded | canceled
     public decimal Amount { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
-
     public Order Order { get; set; } = null!;
 }
 
@@ -85,7 +101,7 @@ public class Zip
 
     public decimal IncomeCost { get; set; }
 
-    public int? PartNumberId { get; set; }
+    public int? PartNumId { get; set; }
     public PartNumber PartNumber { get; set; }
 
     public int? MarkId { get; set; }
@@ -102,33 +118,31 @@ public class Zip
     public Guid IncomeMotoId { get; set; }
     public IncomeMoto IncomeMoto { get; set; }
 
-    public ICollection<Movement> Movements { get; set; } = new HashSet<Movement>();
+    public ICollection<Order> Orders { get; set; } = new HashSet<Order>();
     public ICollection<Stored> StoredItems { get; set; } = new HashSet<Stored>();
 }
 
-public class Movement
+public class Log
 {
     [Key]
-    public Guid Id { get; set; }
+    public int Id { get; set; }
 
     [Required]
-    public string OrderNumber { get; set; }
+    public Guid OrderId { get; set; }
 
-    public int CountOrdered { get; set; } = 0;
+    public string Description { get; set; }
+    public Order? Order { get; set; }
+}
 
-    public Guid? NomenclatureId { get; set; }
-    public Zip Nomenclature { get; set; }
+public class DeliveryStatus
+{
+    [Key]
+    public short Id { get; set; }
 
-    public int AddressId { get; set; }
-    public DeliveryAddress Address { get; set; }
+    [Required]
+    public string Description { get; set; } = null!;
 
-    public DateTime OrderDateTime { get; set; }
-
-    public short? OperationTypeId { get; set; }
-    public Operation OperationType { get; set; }
-
-    public decimal SellCost { get; set; }
-    public decimal? Discount { get; set; }
+    public ICollection<Order> Orders { get; set; } = new HashSet<Order>();
 }
 
 public class User
@@ -153,27 +167,27 @@ public class User
 
     public string? PhoneNumber { get; set; }
 
-    public ICollection<DeliveryAddress> DeliveryAddresses { get; set; } = new HashSet<DeliveryAddress>();
+    public ICollection<DeliveryAdress> DeliveryAddresses { get; set; } = new HashSet<DeliveryAdress>();
 
     public string? OAuthProvider { get; set; }       // "google" | "vk" | null
 
     public string? OAuthSubject { get; set; }        // внешний id пользователя у провайдера
+    public ICollection<Order> Orders { get; set; } = new HashSet<Order>();
 }
 
-public class DeliveryAddress
+public class DeliveryAdress
 {
     [Key]
     public int Id { get; set; }
 
     [Required]
-    public string Address { get; set; }
+    public string Adress { get; set; }
 
     public string PostCode { get; set; }
 
     public int? UserId { get; set; }
     public User User { get; set; }
-
-    public ICollection<Movement> Movements { get; set; } = new HashSet<Movement>();
+    public ICollection<Order> Orders { get; set; } = new HashSet<Order>();
 }
 
 public class Operation
@@ -181,11 +195,11 @@ public class Operation
     [Key]
     public short Id { get; set; }
 
-    public Guid? ZipId { get; set; }
+    public string Description { get; set; } = string.Empty;
 
     public short? Type { get; set; }
 
-    public ICollection<Movement> Movements { get; set; } = new HashSet<Movement>();
+    public ICollection<Order> Orders { get; set; } = new HashSet<Order>();
 }
 
 public class Stored

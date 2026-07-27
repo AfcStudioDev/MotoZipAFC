@@ -1,0 +1,125 @@
+﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+
+using MotoParts.Api.Data;
+using MotoParts.Api.Models;
+
+namespace MotoParts.Api.Controllers
+{
+    [ApiController]
+    [Route("api/sender")]
+    [Authorize(Roles = "Admin,Sender")] // Защищаем эндпоинты авторизацией
+    public class SenderController(AppDbContext db) : ControllerBase
+    {
+        [HttpGet("orders")]
+        public async Task<IActionResult> GetOrders()
+        {
+            var orders = await db.Orders
+                .Include(o => o.Nomenclature)
+                .Include(o => o.Adress) // Исправлено с Adress на Address
+                .Include(o => o.DeliveryStatus) // Подтягиваем новый справочник статусов
+                .OrderByDescending(o => o.OrderDateTime)
+                .Select(o => new
+                {
+                    o.Id,
+                    o.OrderNumber,
+                    o.CountOrdered,
+                    // Для фронтенда отдаем текстовое описание статуса (например, "created", "sent")
+                    DeliveryStatus = o.DeliveryStatus != null ? o.DeliveryStatus.Description : "unknown",
+                    o.OrderDateTime,
+                    ZipName = o.Nomenclature.Name,
+                    Address = o.Adress.Adress // Исправлено с Adress.Adress на Address.Address
+                })
+                .ToListAsync();
+
+            return Ok(orders);
+        }
+
+        [HttpPut("orders/{id}/status")]
+        public async Task<IActionResult> UpdateStatus(Guid id, [FromBody] UpdateStatusDto request)
+        {
+            // Находим заказ и его текущий статус
+            var order = await db.Orders
+                .Include(o => o.DeliveryStatus)
+                .FirstOrDefaultAsync(o => o.Id == id);
+
+            if (order == null) return NotFound(new { message = "Заказ не найден" });
+
+            // Ищем новый статус в БД по строке, пришедшей с фронтенда (например, "canceled")
+            var newStatus = await db.DeliveryStatuses
+                .FirstOrDefaultAsync(s => s.Description == request.Status.ToLower());
+
+            if (newStatus == null)
+                return BadRequest(new { message = "Неизвестный статус доставки" });
+
+            var oldStatusDescription = order.DeliveryStatus?.Description;
+
+            // Если статус не изменился, просто возвращаем Ok
+            if (order.DeliveryStatusId == newStatus.Id)
+                return Ok(new { message = "Статус уже установлен" });
+
+            // --- ЛОГИКА СКЛАДА ---
+            // Если заказ отменяют - возвращаем товар на склад
+            if (newStatus.Description == "canceled" && oldStatusDescription != "canceled")
+            {
+                var storedItem = await db.Stored.FirstOrDefaultAsync(s => s.ZipId == order.NomenclatureId);
+                if (storedItem != null)
+                {
+                    storedItem.Count += order.CountOrdered;
+                }
+                else
+                {
+                    db.Stored.Add(new Stored { ZipId = order.NomenclatureId, Count = order.CountOrdered });
+                }
+            }
+            // Если заказ восстанавливают из отмененных - нужно снова списать товар со склада
+            else if (oldStatusDescription == "canceled" && newStatus.Description != "canceled")
+            {
+                var storedItem = await db.Stored.FirstOrDefaultAsync(s => s.ZipId == order.NomenclatureId);
+                if (storedItem != null)
+                {
+                    storedItem.Count = Math.Max(0, storedItem.Count - order.CountOrdered);
+                }
+            }
+
+            // --- ОБНОВЛЕНИЕ СТАТУСА ---
+            order.DeliveryStatusId = newStatus.Id;
+
+            // --- ЛОГИРОВАНИЕ ---
+            // Записываем действие в новую таблицу Logs
+            var log = new Log
+            {
+                OrderId = order.Id,
+                Description = $"Статус доставки изменен с '{oldStatusDescription ?? "нет"}' на '{newStatus.Description}'"
+            };
+            db.Logs.Add(log);
+
+            await db.SaveChangesAsync();
+
+            return Ok(new { message = "Статус успешно обновлен" });
+        }
+
+        // Отключено, т.к. сазали пока нет необходимости в этой фиче
+        //[HttpDelete("orders/{id}")]
+        //public async Task<IActionResult> DeleteOrder(Guid id)
+        //{
+        //    var order = await db.Orders.FindAsync(id);
+        //    if (order == null) return NotFound();
+
+        //    db.Orders.Remove(order);
+
+        //    try
+        //    {
+        //        await db.SaveChangesAsync();
+        //        return Ok(new { message = "Заказ успешно удален" });
+        //    }
+        //    catch (Exception ex)
+        //    {
+        //        return BadRequest(new { message = "Не удалось удалить заказ", error = ex.Message });
+        //    }
+        //}
+    }
+
+    public class UpdateStatusDto { public string Status { get; set; } = null!; }
+}
