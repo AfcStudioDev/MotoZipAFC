@@ -19,12 +19,12 @@ export class OrdersService {
     return this.http.post<OrderDto>(`${this.api}/orders`, { zipId, count, addressId });
   }
 
-  addresses(): Observable<AddressDto[]> {
-    return this.http.get<AddressDto[]>(`${this.api}/addresses`);
+  adresses(): Observable<AddressDto[]> {
+    return this.http.get<AddressDto[]>(`${this.api}/adresses`);
   }
 
   addAddress(address: string, postCode?: string): Observable<AddressDto> {
-    return this.http.post<AddressDto>(`${this.api}/addresses`, { address, postCode });
+    return this.http.post<AddressDto>(`${this.api}/adresses`, { address, postCode });
   }
 
   createPayment(orderId: string, returnUrl: string): Observable<{ paymentId: string; confirmationUrl: string }> {
