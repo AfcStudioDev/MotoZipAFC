@@ -38,7 +38,7 @@ public class OrdersController(AppDbContext db) : ControllerBase
                 o.Id, o.OrderNumber, o.CountOrdered, o.OrderDateTime,
                 o.Nomenclature != null ? o.Nomenclature.Name : null,
                 o.Nomenclature != null ? o.Nomenclature.IncomeCost : null,
-                o.Address.Address,
+                o.Address.Adress,
                 o.Payment != null ? o.Payment.Status : null,
                 o.SellCost))
             .ToListAsync();
@@ -64,7 +64,7 @@ public class OrdersController(AppDbContext db) : ControllerBase
             OrderNumber = "ORD-" + DateTimeOffset.Now.ToUnixTimeSeconds(),
             CountOrdered = request.Count,
             NomenclatureId = request.ZipId,
-            AddressId = request.AddressId,
+            AdressId = request.AddressId,
             OrderDateTime = DateTimeOffset.UtcNow,
             DeliveryStatus = "created"
         };

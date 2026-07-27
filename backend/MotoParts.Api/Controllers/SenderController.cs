@@ -26,7 +26,7 @@ namespace MotoParts.Api.Controllers
                     o.DeliveryStatus,
                     o.OrderDateTime,
                     ZipName = o.Nomenclature.Name,
-                    Address = o.Address.Address
+                    Address = o.Address.Adress
                 })
                 .ToListAsync();
 

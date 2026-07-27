@@ -160,29 +160,29 @@ public class AdminController(AppDbContext db) : ControllerBase
     }
 
     // ---------- DeliveryAdresses ----------
-    [HttpGet("addresses")]
-    public async Task<IActionResult> Addresses() =>
+    [HttpGet("adresses")]
+    public async Task<IActionResult> Adresses() =>
         Ok(await db.DeliveryAdresses.OrderBy(a => a.Id)
-            .Select(a => new { a.Id, a.Address, a.PostCode, a.UserId })
+            .Select(a => new { a.Id, a.Adress, a.PostCode, a.UserId })
             .ToListAsync());
 
-    [HttpPost("addresses")]
-    public async Task<IActionResult> AddAddress(AdminAddressRequest request)
+    [HttpPost("adresses")]
+    public async Task<IActionResult> AddAdress(AdminAdressRequest request)
     {
-        if (string.IsNullOrWhiteSpace(request.Address))
+        if (string.IsNullOrWhiteSpace(request.Adress))
             return BadRequest(new { message = "Адрес обязателен" });
         if (request.UserId.HasValue && !await db.Users.AnyAsync(u => u.Id == request.UserId))
             return BadRequest(new { message = "Пользователь не найден" });
 
-        var address = new DeliveryAddress
+        var adress = new DeliveryAdress
         {
-            Address = request.Address.Trim(),
+            Adress = request.Adress.Trim(),
             PostCode = request.PostCode,
             UserId = request.UserId,
         };
-        db.DeliveryAdresses.Add(address);
+        db.DeliveryAdresses.Add(adress);
         await db.SaveChangesAsync();
-        return Ok(new { address.Id, address.Address });
+        return Ok(new { adress.Id, adress.Adress });
     }
 
     // ---------- Orders ----------
@@ -191,7 +191,7 @@ public class AdminController(AppDbContext db) : ControllerBase
         Ok(await db.Orders.OrderByDescending(o => o.OrderDateTime)
             .Select(o => new
             {
-                o.Id, o.OrderNumber, o.CountOrdered, o.NomenclatureId, o.AddressId, o.OrderDateTime,
+                o.Id, o.OrderNumber, o.CountOrdered, o.NomenclatureId, o.AdressId, o.OrderDateTime,
                 Zip = o.Nomenclature != null ? o.Nomenclature.Name : null, SellCost = o.SellCost, 
             })
             .ToListAsync());
@@ -201,7 +201,7 @@ public class AdminController(AppDbContext db) : ControllerBase
     {
         if (string.IsNullOrWhiteSpace(request.OrderNumber))
             return BadRequest(new { message = "Номер заказа обязателен" });
-        if (!await db.DeliveryAdresses.AnyAsync(a => a.Id == request.AddressId))
+        if (!await db.DeliveryAdresses.AnyAsync(a => a.Id == request.AdressId))
             return BadRequest(new { message = "Адрес доставки не найден" });
         if (request.NomenclatureId.HasValue && !await db.Zips.AnyAsync(z => z.Id == request.NomenclatureId))
             return BadRequest(new { message = "Запчасть не найдена" });
@@ -212,7 +212,7 @@ public class AdminController(AppDbContext db) : ControllerBase
             OrderNumber = request.OrderNumber.Trim(),
             CountOrdered = request.CountOrdered,
             NomenclatureId = request.NomenclatureId,
-            AddressId = request.AddressId,
+            AdressId = request.AdressId,
             OrderDateTime = request.OrderDateTime ?? DateTimeOffset.UtcNow,
         };
         db.Orders.Add(order);
@@ -463,10 +463,10 @@ public class AdminController(AppDbContext db) : ControllerBase
                 db.Users.Remove(user);
                 break;
 
-            case "addresses":
-                var address = await db.DeliveryAdresses.FindAsync(int.Parse(id));
-                if (address == null) return NotFound();
-                db.DeliveryAdresses.Remove(address);
+            case "adresses":
+                var adress = await db.DeliveryAdresses.FindAsync(int.Parse(id));
+                if (adress == null) return NotFound();
+                db.DeliveryAdresses.Remove(adress);
                 break;
 
             case "orders":
