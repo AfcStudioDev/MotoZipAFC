@@ -23,7 +23,7 @@ public class Payment
     public Guid Id { get; set; }
     public Guid OrderId { get; set; }
     public string YooKassaPaymentId { get; set; } = null!;
-    public string Status { get; set; } = 0.GetDescription<PaymentStatusEnum>(); // pending | waiting_for_capture | succeeded | canceled
+    public string Status { get; set; } = PaymentStatusEnum.pending.GetDescription(); // pending | waiting_for_capture | succeeded | canceled
     public decimal Amount { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public Order Order { get; set; } = null!;
