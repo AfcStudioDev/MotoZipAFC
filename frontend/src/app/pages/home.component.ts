@@ -123,7 +123,7 @@ import { debounceTime, distinctUntilChanged, switchMap, catchError } from 'rxjs/
             <label>Адрес доставки</label>
             <select [(ngModel)]="buyAddressId">
               <option [ngValue]="undefined">— выберите адрес —</option>
-              @for (a of addresses(); track a.id) {
+              @for (a of adresses(); track a.id) {
                 <option [ngValue]="a.id">{{ a.address }}</option>
               }
             </select>
@@ -227,7 +227,7 @@ export class HomeComponent implements OnInit {
   buyCount = 1;
   buyAddressId?: number;
   newAddress = '';
-  addresses = signal<AddressDto[]>([]);
+  adresses = signal<AddressDto[]>([]);
   buyError = signal('');
   busy = signal(false);
 
@@ -301,8 +301,8 @@ export class HomeComponent implements OnInit {
     this.buyCount = 1;
     this.newAddress = '';
     this.buying.set(zip);
-    this.orders.addresses().subscribe(a => {
-      this.addresses.set(a);
+    this.orders.adresses().subscribe(a => {
+      this.adresses.set(a);
       this.buyAddressId = a[0]?.id;
     });
   }

@@ -206,8 +206,8 @@ export class AdminComponent implements OnInit {
       ]
     },
     {
-      endpoint: 'addresses', title: 'Адреса (DeliveryAdresses)', fields: [
-        { key: 'address', label: 'Адрес', type: 'text', required: true },
+      endpoint: 'adresses', title: 'Адреса (DeliveryAdresses)', fields: [
+        { key: 'adress', label: 'Адрес', type: 'text', required: true },
         { key: 'postCode', label: 'Индекс', type: 'text' },
         { key: 'userId', label: 'Пользователь (Email)', type: 'select', refTable: 'users', refLabelKey: 'email' }
       ]
@@ -217,7 +217,7 @@ export class AdminComponent implements OnInit {
         { key: 'orderNumber', label: 'Номер заказа', type: 'text', required: true },
         { key: 'countOrdered', label: 'Количество', type: 'number', required: true },
         { key: 'nomenclatureId', label: 'Запчасть', type: 'select', refTable: 'zip', refLabelKey: 'name' },
-        { key: 'addressId', label: 'Адрес доставки', type: 'select', refTable: 'addresses', refLabelKey: 'address', required: true },
+        { key: 'addressId', label: 'Адрес доставки', type: 'select', refTable: 'adresses', refLabelKey: 'address', required: true },
         { key: 'sellCost', label: 'Цена продажи', type: 'number', required: true }
       ]
     },
@@ -320,7 +320,7 @@ export class AdminComponent implements OnInit {
 
   ngOnInit(): void {
     // При запуске загружаем все основные таблицы, чтобы резолвить ID-шники
-    const endpointsToLoad = ['marks', 'models', 'groups', 'partnumbers', 'zip', 'users', 'addresses', 'incomemotos', 'orders'];
+    const endpointsToLoad = ['marks', 'models', 'groups', 'partnumbers', 'zip', 'users', 'adresses', 'incomemotos', 'orders'];
     endpointsToLoad.forEach(ep => {
       this.admin.list(ep).subscribe(data => {
         this.references.update(r => ({ ...r, [ep]: data }));
