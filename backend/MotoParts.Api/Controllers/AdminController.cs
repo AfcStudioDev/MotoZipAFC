@@ -5,7 +5,8 @@ using MotoParts.Api.Data;
 using MotoParts.Api.DTOs;
 using MotoParts.Api.Models;
 using MotoParts.Api.Services;
-using System.Text.Json;
+
+using static System.Runtime.InteropServices.JavaScript.JSType;
 
 namespace MotoParts.Api.Controllers;
 
@@ -44,10 +45,8 @@ public class AdminController(AppDbContext db) : ControllerBase
     [HttpPost("models")]
     public async Task<IActionResult> AddModel(AdminModelRequest request)
     {
-        if (string.IsNullOrWhiteSpace(request.Model))
+        if (string.IsNullOrWhiteSpace(request.Model)) 
             return BadRequest(new { message = "Название модели обязательно" });
-        if (!await db.MotoMarks.AnyAsync(m => m.Id == request.MarkId))
-            return BadRequest(new { message = "Марка не найдена" });
 
         var model = new MotoModel { MarkId = request.MarkId, Model = request.Model.Trim() };
         db.MotoModels.Add(model);
@@ -75,32 +74,40 @@ public class AdminController(AppDbContext db) : ControllerBase
     // ---------- PartNumbers ----------
     [HttpGet("partnumbers")]
     public async Task<IActionResult> PartNumbers() =>
-        Ok(await db.PartNumbers.OrderBy(p => p.Id).Select(p => new { p.Id, PartNumber = p.PartNum }).ToListAsync());
+        Ok(await db.PartNumbers.OrderBy(p => p.Id).Select(p => new { p.Id, p.PartNum }).ToListAsync());
 
     [HttpPost("partnumbers")]
     public async Task<IActionResult> AddPartNumber(AdminPartNumberRequest request)
     {
-        if (string.IsNullOrWhiteSpace(request.PartNumber))
-            return BadRequest(new { message = "Парт-номер обязателен" });
-        if (await db.PartNumbers.AnyAsync(p => p.PartNum == request.PartNumber.Trim()))
-            return Conflict(new { message = "Такой парт-номер уже существует" });
+        if (string.IsNullOrWhiteSpace(request.PartNum))
+            return BadRequest(new { message = "Номер запчасти обязателен" });
 
-        var partNumber = new PartNumber { PartNum = request.PartNumber.Trim() };
-        db.PartNumbers.Add(partNumber);
+        var pn = new PartNumber { PartNum = request.PartNum.Trim() };
+        db.PartNumbers.Add(pn);
         await db.SaveChangesAsync();
-        return Ok(new { partNumber.Id, PartNumber = partNumber.PartNum });
+        return Ok(new { pn.Id, pn.PartNum });
     }
 
     // ---------- Zip ----------
     [HttpGet("zip")]
-    public async Task<IActionResult> ZipList() =>
+    public async Task<IActionResult> Zips() =>
         Ok(await db.Zips.OrderBy(z => z.Name)
             .Select(z => new
             {
-                z.Id, z.Name, z.IncomeCost,
-                z.PartNumberId, z.MarkId, z.ModelId, z.GroupId,
-                Year = z.Year != null ? z.Year.Value.Year : (int?)null,
-                z.IncomeMotoId
+                z.Id,
+                z.Name,
+                z.IncomeCost,
+                z.PartNumId, // Обновлено поле
+                PartNum = z.PartNumber != null ? z.PartNumber.PartNum : null,
+                z.MarkId,
+                Mark = z.Mark != null ? z.Mark.Mark : null,
+                z.ModelId,
+                Model = z.Model != null ? z.Model.Model : null,
+                z.GroupId,
+                Group = z.Group != null ? z.Group.GroupName : null,
+                z.Year,
+                z.IncomeMotoId,
+                IncomeMoto = z.IncomeMoto != null ? z.IncomeMoto.Description : null
             })
             .ToListAsync());
 
@@ -109,20 +116,20 @@ public class AdminController(AppDbContext db) : ControllerBase
     {
         if (string.IsNullOrWhiteSpace(request.Name))
             return BadRequest(new { message = "Название запчасти обязательно" });
-        if (request.IncomeCost < 0 || request.CountStored < 0)
-            return BadRequest(new { message = "Стоимость и количество не могут быть отрицательными" });
 
         var zip = new Zip
         {
             Id = Guid.NewGuid(),
             Name = request.Name.Trim(),
             IncomeCost = request.IncomeCost,
-            PartNumberId = request.PartNumberId,
+            PartNumId = request.PartNumId, // Обновлено поле
             MarkId = request.MarkId,
             ModelId = request.ModelId,
             GroupId = request.GroupId,
             Year = request.Year.HasValue ? new DateOnly(request.Year.Value, 1, 1) : null,
+            IncomeMotoId = request.IncomeMotoId
         };
+
         db.Zips.Add(zip);
         await db.SaveChangesAsync();
         return Ok(new { zip.Id, zip.Name });
@@ -160,29 +167,36 @@ public class AdminController(AppDbContext db) : ControllerBase
     }
 
     // ---------- DeliveryAdresses ----------
-    [HttpGet("adresses")]
-    public async Task<IActionResult> Adresses() =>
-        Ok(await db.DeliveryAdresses.OrderBy(a => a.Id)
-            .Select(a => new { a.Id, a.Adress, a.PostCode, a.UserId })
+    [HttpGet("addresses")]
+    public async Task<IActionResult> Addresses() =>
+        Ok(await db.DeliveryAddressess.OrderBy(a => a.Id) // Исправлено на DeliveryAddressess
+            .Select(a => new
+            {
+                a.Id,
+                a.Address,
+                a.PostCode,
+                a.UserId,
+                UserEmail = a.User != null ? a.User.Email : null
+            })
             .ToListAsync());
 
-    [HttpPost("adresses")]
-    public async Task<IActionResult> AddAdress(AdminAdressRequest request)
+    [HttpPost("addresses")]
+    public async Task<IActionResult> AddAddress(AdminAddressRequest request)
     {
-        if (string.IsNullOrWhiteSpace(request.Adress))
+        if (string.IsNullOrWhiteSpace(request.Address))
             return BadRequest(new { message = "Адрес обязателен" });
         if (request.UserId.HasValue && !await db.Users.AnyAsync(u => u.Id == request.UserId))
             return BadRequest(new { message = "Пользователь не найден" });
 
-        var adress = new DeliveryAdress
+        var address = new DeliveryAddress
         {
-            Adress = request.Adress.Trim(),
+            Address = request.Address.Trim(),
             PostCode = request.PostCode,
             UserId = request.UserId,
         };
-        db.DeliveryAdresses.Add(adress);
+        db.DeliveryAddressess.Add(address);
         await db.SaveChangesAsync();
-        return Ok(new { adress.Id, adress.Adress });
+        return Ok(new { address.Id, address.Address });
     }
 
     // ---------- Orders ----------
@@ -191,8 +205,19 @@ public class AdminController(AppDbContext db) : ControllerBase
         Ok(await db.Orders.OrderByDescending(o => o.OrderDateTime)
             .Select(o => new
             {
-                o.Id, o.OrderNumber, o.CountOrdered, o.NomenclatureId, o.AdressId, o.OrderDateTime,
-                Zip = o.Nomenclature != null ? o.Nomenclature.Name : null, SellCost = o.SellCost, 
+                o.Id,
+                o.OrderNumber,
+                o.CountOrdered,
+                o.NomenclatureId,
+                NomenclatureName = o.Nomenclature != null ? o.Nomenclature.Name : null,
+                o.AddressId,
+                o.OrderDateTime,
+                o.SellCost,         
+                o.OperationTypeId,  
+                o.Discount,         
+                o.UserId,           
+                o.DeliveryStatusId, 
+                DeliveryStatus = o.DeliveryStatus != null ? o.DeliveryStatus.Description : null
             })
             .ToListAsync());
 
@@ -201,9 +226,9 @@ public class AdminController(AppDbContext db) : ControllerBase
     {
         if (string.IsNullOrWhiteSpace(request.OrderNumber))
             return BadRequest(new { message = "Номер заказа обязателен" });
-        if (!await db.DeliveryAdresses.AnyAsync(a => a.Id == request.AdressId))
+        if (!await db.DeliveryAddressess.AnyAsync(a => a.Id == request.AddressId))
             return BadRequest(new { message = "Адрес доставки не найден" });
-        if (request.NomenclatureId.HasValue && !await db.Zips.AnyAsync(z => z.Id == request.NomenclatureId))
+        if (!await db.Zips.AnyAsync(z => z.Id == request.NomenclatureId))
             return BadRequest(new { message = "Запчасть не найдена" });
 
         var order = new Order
@@ -212,7 +237,7 @@ public class AdminController(AppDbContext db) : ControllerBase
             OrderNumber = request.OrderNumber.Trim(),
             CountOrdered = request.CountOrdered,
             NomenclatureId = request.NomenclatureId,
-            AdressId = request.AdressId,
+            AddressId = request.AddressId,
             OrderDateTime = request.OrderDateTime ?? DateTimeOffset.UtcNow,
         };
         db.Orders.Add(order);
@@ -452,7 +477,8 @@ public class AdminController(AppDbContext db) : ControllerBase
                 break;
 
             case "zip":
-                var zip = await db.Zips.FindAsync(int.Parse(id));
+                if (!Guid.TryParse(id, out var zipGuid)) return BadRequest("Неверный формат GUID");
+                var zip = await db.Zips.FindAsync(zipGuid);
                 if (zip == null) return NotFound();
                 db.Zips.Remove(zip);
                 break;
@@ -464,22 +490,35 @@ public class AdminController(AppDbContext db) : ControllerBase
                 break;
 
             case "adresses":
-                var adress = await db.DeliveryAdresses.FindAsync(int.Parse(id));
-                if (adress == null) return NotFound();
-                db.DeliveryAdresses.Remove(adress);
+                var address = await db.DeliveryAddressess.FindAsync(int.Parse(id)); // Исправлено на DeliveryAddressess
+                if (address == null) return NotFound();
+                db.DeliveryAddressess.Remove(address);
                 break;
 
             case "orders":
-                var order = await db.Orders.FindAsync(int.Parse(id));
+                if (!Guid.TryParse(id, out var orderGuid)) return BadRequest("Неверный формат GUID");
+                var order = await db.Orders.FindAsync(orderGuid);
                 if (order == null) return NotFound();
                 db.Orders.Remove(order);
                 break;
 
             case "incomemotos":
-                if (!Guid.TryParse(id, out var guidId)) return BadRequest("Неверный формат GUID");
-                var donor = await db.IncomeMotos.FindAsync(guidId);
+                if (!Guid.TryParse(id, out var donorGuid)) return BadRequest("Неверный формат GUID");
+                var donor = await db.IncomeMotos.FindAsync(donorGuid);
                 if (donor == null) return NotFound();
                 db.IncomeMotos.Remove(donor);
+                break;
+
+            case "logs":
+                var log = await db.Logs.FindAsync(int.Parse(id));
+                if (log == null) return NotFound();
+                db.Logs.Remove(log);
+                break;
+
+            case "deliverystatuses":
+                var ds = await db.DeliveryStatuses.FindAsync(short.Parse(id));
+                if (ds == null) return NotFound();
+                db.DeliveryStatuses.Remove(ds);
                 break;
 
             default:
@@ -491,10 +530,9 @@ public class AdminController(AppDbContext db) : ControllerBase
             await db.SaveChangesAsync();
             return Ok(new { message = "Запись успешно удалена" });
         }
-        catch (DbUpdateException)
+        catch (Exception ex)
         {
-            // Перехватываем ошибку, если запись связана с другими таблицами внешним ключом
-            return BadRequest(new { message = "Невозможно удалить запись, так как на неё ссылаются другие данные." });
+            return BadRequest(new { message = "Невозможно удалить запись, так как на нее ссылаются другие данные", error = ex.Message });
         }
     }
 }

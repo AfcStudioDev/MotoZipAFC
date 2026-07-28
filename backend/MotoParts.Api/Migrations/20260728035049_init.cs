@@ -7,11 +7,24 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace MotoParts.Api.Migrations
 {
     /// <inheritdoc />
-    public partial class Init : Migration
+    public partial class init : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
+            migrationBuilder.CreateTable(
+                name: "DeliveryStatuses",
+                columns: table => new
+                {
+                    Id = table.Column<short>(type: "smallint", nullable: false)
+                        .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
+                    Description = table.Column<string>(type: "text", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_DeliveryStatuses", x => x.Id);
+                });
+
             migrationBuilder.CreateTable(
                 name: "IncomeMotos",
                 columns: table => new
@@ -43,7 +56,7 @@ namespace MotoParts.Api.Migrations
                 {
                     Id = table.Column<short>(type: "smallint", nullable: false)
                         .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
-                    ZipId = table.Column<Guid>(type: "uuid", nullable: true),
+                    Description = table.Column<string>(type: "text", nullable: false),
                     Type = table.Column<short>(type: "smallint", nullable: true)
                 },
                 constraints: table =>
@@ -120,7 +133,7 @@ namespace MotoParts.Api.Migrations
                 });
 
             migrationBuilder.CreateTable(
-                name: "DeliveryAdressess",
+                name: "DeliveryAddressess",
                 columns: table => new
                 {
                     Id = table.Column<int>(type: "integer", nullable: false)
@@ -131,9 +144,9 @@ namespace MotoParts.Api.Migrations
                 },
                 constraints: table =>
                 {
-                    table.PrimaryKey("PK_DeliveryAdressess", x => x.Id);
+                    table.PrimaryKey("PK_DeliveryAddressess", x => x.Id);
                     table.ForeignKey(
-                        name: "FK_DeliveryAdressess_Users_UserId",
+                        name: "FK_DeliveryAddressess_Users_UserId",
                         column: x => x.UserId,
                         principalTable: "Users",
                         principalColumn: "Id",
@@ -147,7 +160,7 @@ namespace MotoParts.Api.Migrations
                     Id = table.Column<Guid>(type: "uuid", nullable: false),
                     Name = table.Column<string>(type: "text", nullable: false),
                     IncomeCost = table.Column<decimal>(type: "numeric", nullable: false),
-                    PartNumberId = table.Column<int>(type: "integer", nullable: true),
+                    PartNumId = table.Column<int>(type: "integer", nullable: true),
                     MarkId = table.Column<int>(type: "integer", nullable: true),
                     ModelId = table.Column<int>(type: "integer", nullable: true),
                     GroupId = table.Column<int>(type: "integer", nullable: true),
@@ -175,8 +188,8 @@ namespace MotoParts.Api.Migrations
                         principalTable: "MotoModels",
                         principalColumn: "Id");
                     table.ForeignKey(
-                        name: "FK_Zips_PartNumbers_PartNumberId",
-                        column: x => x.PartNumberId,
+                        name: "FK_Zips_PartNumbers_PartNumId",
+                        column: x => x.PartNumId,
                         principalTable: "PartNumbers",
                         principalColumn: "Id",
                         onDelete: ReferentialAction.Restrict);
@@ -188,67 +201,54 @@ namespace MotoParts.Api.Migrations
                 });
 
             migrationBuilder.CreateTable(
-                name: "Movements",
-                columns: table => new
-                {
-                    Id = table.Column<Guid>(type: "uuid", nullable: false),
-                    OrderNumber = table.Column<string>(type: "text", nullable: false),
-                    CountOrdered = table.Column<int>(type: "integer", nullable: false),
-                    NomenclatureId = table.Column<Guid>(type: "uuid", nullable: true),
-                    AddressId = table.Column<int>(type: "integer", nullable: false),
-                    OrderDateTime = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
-                    OperationTypeId = table.Column<short>(type: "smallint", nullable: true),
-                    SellCost = table.Column<decimal>(type: "numeric", nullable: false),
-                    Discount = table.Column<decimal>(type: "numeric", nullable: true)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_Movements", x => x.Id);
-                    table.ForeignKey(
-                        name: "FK_Movements_DeliveryAdressess_AddressId",
-                        column: x => x.AddressId,
-                        principalTable: "DeliveryAdressess",
-                        principalColumn: "Id",
-                        onDelete: ReferentialAction.Restrict);
-                    table.ForeignKey(
-                        name: "FK_Movements_Operations_OperationTypeId",
-                        column: x => x.OperationTypeId,
-                        principalTable: "Operations",
-                        principalColumn: "Id",
-                        onDelete: ReferentialAction.Restrict);
-                    table.ForeignKey(
-                        name: "FK_Movements_Zips_NomenclatureId",
-                        column: x => x.NomenclatureId,
-                        principalTable: "Zips",
-                        principalColumn: "Id",
-                        onDelete: ReferentialAction.Restrict);
-                });
-
-            migrationBuilder.CreateTable(
                 name: "Orders",
                 columns: table => new
                 {
                     Id = table.Column<Guid>(type: "uuid", nullable: false),
                     OrderNumber = table.Column<string>(type: "text", nullable: false),
                     CountOrdered = table.Column<int>(type: "integer", nullable: false),
-                    NomenclatureId = table.Column<Guid>(type: "uuid", nullable: true),
+                    NomenclatureId = table.Column<Guid>(type: "uuid", nullable: false),
                     AddressId = table.Column<int>(type: "integer", nullable: false),
-                    OrderDateTime = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false)
+                    OrderDateTime = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
+                    SellCost = table.Column<decimal>(type: "numeric", nullable: false),
+                    OperationTypeId = table.Column<short>(type: "smallint", nullable: true),
+                    Discount = table.Column<decimal>(type: "numeric", nullable: true),
+                    UserId = table.Column<int>(type: "integer", nullable: false),
+                    DeliveryStatusId = table.Column<short>(type: "smallint", nullable: true)
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_Orders", x => x.Id);
                     table.ForeignKey(
-                        name: "FK_Orders_DeliveryAdressess_AddressId",
+                        name: "FK_Orders_DeliveryAddressess_AddressId",
                         column: x => x.AddressId,
-                        principalTable: "DeliveryAdressess",
+                        principalTable: "DeliveryAddressess",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_Orders_DeliveryStatuses_DeliveryStatusId",
+                        column: x => x.DeliveryStatusId,
+                        principalTable: "DeliveryStatuses",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_Orders_Operations_OperationTypeId",
+                        column: x => x.OperationTypeId,
+                        principalTable: "Operations",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_Orders_Users_UserId",
+                        column: x => x.UserId,
+                        principalTable: "Users",
                         principalColumn: "Id",
                         onDelete: ReferentialAction.Cascade);
                     table.ForeignKey(
                         name: "FK_Orders_Zips_NomenclatureId",
                         column: x => x.NomenclatureId,
                         principalTable: "Zips",
-                        principalColumn: "Id");
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
                 });
 
             migrationBuilder.CreateTable(
@@ -272,31 +272,34 @@ namespace MotoParts.Api.Migrations
                 });
 
             migrationBuilder.CreateTable(
-                name: "Payments",
+                name: "Logs",
                 columns: table => new
                 {
-                    Id = table.Column<Guid>(type: "uuid", nullable: false),
+                    Id = table.Column<int>(type: "integer", nullable: false)
+                        .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
                     OrderId = table.Column<Guid>(type: "uuid", nullable: false),
-                    YooKassaPaymentId = table.Column<string>(type: "text", nullable: false),
-                    Status = table.Column<string>(type: "text", nullable: false),
-                    Amount = table.Column<decimal>(type: "numeric", nullable: false),
-                    CreatedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false)
+                    Description = table.Column<string>(type: "text", nullable: false)
                 },
                 constraints: table =>
                 {
-                    table.PrimaryKey("PK_Payments", x => x.Id);
+                    table.PrimaryKey("PK_Logs", x => x.Id);
                     table.ForeignKey(
-                        name: "FK_Payments_Orders_OrderId",
+                        name: "FK_Logs_Orders_OrderId",
                         column: x => x.OrderId,
                         principalTable: "Orders",
                         principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
+                        onDelete: ReferentialAction.Restrict);
                 });
 
             migrationBuilder.CreateIndex(
-                name: "IX_DeliveryAdressess_UserId",
-                table: "DeliveryAdressess",
+                name: "IX_DeliveryAddressess_UserId",
+                table: "DeliveryAddressess",
                 column: "UserId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Logs_OrderId",
+                table: "Logs",
+                column: "OrderId");
 
             migrationBuilder.CreateIndex(
                 name: "IX_MotoMarks_Mark",
@@ -310,24 +313,14 @@ namespace MotoParts.Api.Migrations
                 column: "MarkId");
 
             migrationBuilder.CreateIndex(
-                name: "IX_Movements_AddressId",
-                table: "Movements",
-                column: "AddressId");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_Movements_NomenclatureId",
-                table: "Movements",
-                column: "NomenclatureId");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_Movements_OperationTypeId",
-                table: "Movements",
-                column: "OperationTypeId");
-
-            migrationBuilder.CreateIndex(
                 name: "IX_Orders_AddressId",
                 table: "Orders",
                 column: "AddressId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Orders_DeliveryStatusId",
+                table: "Orders",
+                column: "DeliveryStatusId");
 
             migrationBuilder.CreateIndex(
                 name: "IX_Orders_NomenclatureId",
@@ -335,15 +328,19 @@ namespace MotoParts.Api.Migrations
                 column: "NomenclatureId");
 
             migrationBuilder.CreateIndex(
+                name: "IX_Orders_OperationTypeId",
+                table: "Orders",
+                column: "OperationTypeId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Orders_UserId",
+                table: "Orders",
+                column: "UserId");
+
+            migrationBuilder.CreateIndex(
                 name: "IX_PartNumbers_PartNum",
                 table: "PartNumbers",
                 column: "PartNum",
-                unique: true);
-
-            migrationBuilder.CreateIndex(
-                name: "IX_Payments_OrderId",
-                table: "Payments",
-                column: "OrderId",
                 unique: true);
 
             migrationBuilder.CreateIndex(
@@ -378,31 +375,31 @@ namespace MotoParts.Api.Migrations
                 column: "ModelId");
 
             migrationBuilder.CreateIndex(
-                name: "IX_Zips_PartNumberId",
+                name: "IX_Zips_PartNumId",
                 table: "Zips",
-                column: "PartNumberId");
+                column: "PartNumId");
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.DropTable(
-                name: "Movements");
-
-            migrationBuilder.DropTable(
-                name: "Payments");
+                name: "Logs");
 
             migrationBuilder.DropTable(
                 name: "Stored");
 
             migrationBuilder.DropTable(
-                name: "Operations");
-
-            migrationBuilder.DropTable(
                 name: "Orders");
 
             migrationBuilder.DropTable(
-                name: "DeliveryAdressess");
+                name: "DeliveryAddressess");
+
+            migrationBuilder.DropTable(
+                name: "DeliveryStatuses");
+
+            migrationBuilder.DropTable(
+                name: "Operations");
 
             migrationBuilder.DropTable(
                 name: "Zips");

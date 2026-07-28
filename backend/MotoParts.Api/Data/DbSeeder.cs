@@ -14,6 +14,29 @@ public static class DbSeeder
         var adminEmail = (config["Seed:AdminEmail"] ?? "Admin").ToLowerInvariant();
         var senderEmail = (config["Seed:SenderEmail"] ?? "Sender").ToLowerInvariant();
         var registrarEmail = (config["Seed:RegistrarEmail"] ?? "Registrar").ToLowerInvariant();
+
+        // СИДИРОВАНИЕ СПРАВОЧНИКОВ (Статусы и Операции)
+        if (!await db.DeliveryStatuses.AnyAsync())
+        {
+            await db.DeliveryStatuses.AddRangeAsync(
+                new DeliveryStatus { Id = 1, Description = "created" },
+                new DeliveryStatus { Id = 2, Description = "sent" },
+                new DeliveryStatus { Id = 3, Description = "completed" },
+                new DeliveryStatus { Id = 4, Description = "canceled" }
+            );
+            await db.SaveChangesAsync();
+        }
+
+        if (!await db.Operations.AnyAsync())
+        {
+            await db.Operations.AddRangeAsync(
+                new Operation { Id = 1, Type = 1, Description = "Продажа" },
+                new Operation { Id = 2, Type = 2, Description = "Возврат" },
+                new Operation { Id = 3, Type = 3, Description = "Приход на склад" }
+            );
+            await db.SaveChangesAsync();
+        }
+
         // ID запчастей в переменные, чтобы могли на них сослаться в заказах
         var zip1Id = Guid.NewGuid();
         var zip2Id = Guid.NewGuid();
@@ -48,7 +71,35 @@ public static class DbSeeder
                 PasswordHash = PasswordHasher.Hash(config["Seed:SenderPassword"] ?? "Sender123!"),
             });
         }
+        await db.SaveChangesAsync();
 
+        var clientEmail = "client@example.com";
+        var clientUser = await db.Users.FirstOrDefaultAsync(u => u.Email == clientEmail);
+        if (clientUser == null)
+        {
+            clientUser = new User
+            {
+                Email = clientEmail,
+                FIO = "Петров Петр Петрович",
+                PhoneNumber = "+79997654321",
+                PasswordHash = "100000.Jbu/lFzjTuCTS/Kral3AEg==.nr4Ap2lMMY4HifQ9+FZRpec3jQSXDbh3GrZsrll1Sm4=",
+                IsAdmin = false
+            };
+            await db.Users.AddAsync(clientUser);
+            await db.SaveChangesAsync(); // Сохраняем, чтобы сгенерировался числовой Id клиента
+        }
+
+        // Добавляем адрес для клиента
+        if (clientUser != null && !await db.DeliveryAddressess.AnyAsync(a => a.UserId == clientUser.Id))
+        {
+            await db.DeliveryAddressess.AddAsync(new DeliveryAddress
+            {
+                Address = "г. Москва, ул. Мотоциклетная, д. 42, кв. 10",
+                PostCode = "101000",
+                UserId = clientUser.Id
+            });
+            await db.SaveChangesAsync(); // Сохраняем адрес, чтобы получить его ID
+        }
 
         if (!await db.MotoMarks.AnyAsync())
         {
@@ -159,92 +210,81 @@ public static class DbSeeder
                     Year = new DateOnly(2022, 1, 1),
                 });
         }
-        if (!await db.Operations.AnyAsync())
-        {
-            var opSale = new Operation { Id = 1, Type = 1, Description = "Продажа" };   // 1 - Продажа
-            var opRefund = new Operation { Id = 2, Type = 2, Description = "Возврат" }; // 2 - Возврат
-            var opSupply = new Operation { Id = 3, Type = 3, Description = "Приход на склад" }; // 3 - Приход на склад
-            await db.Operations.AddRangeAsync(opSale, opRefund, opSupply);
-            await db.SaveChangesAsync(); // Сразу сохраняем справочник
-        }
 
-        var clientEmail = "client@example.com";
-        var clientUser = await db.Users.FirstOrDefaultAsync(u => u.Email == clientEmail);
+        var zips = await db.Zips.Take(2).ToListAsync();
+        if (zips.Count < 1) return;
 
-        if (clientUser == null)
-        {
-            clientUser = new User
-            {
-                Email = clientEmail,
-                FIO = "Петров Петр Петрович",
-                PhoneNumber = "+79997654321",
-                PasswordHash = "100000.Jbu/lFzjTuCTS/Kral3AEg==.nr4Ap2lMMY4HifQ9+FZRpec3jQSXDbh3GrZsrll1Sm4=",
-                IsAdmin = false
-            };
-            await db.Users.AddAsync(clientUser);
-            await db.SaveChangesAsync(); // Сохраняем, чтобы сгенерировался числовой Id клиента
-        }
-
-        var address1 = await db.DeliveryAdresses.FirstOrDefaultAsync(a => a.UserId == clientUser.Id);
-        if (address1 == null)
-        {
-            address1 = new DeliveryAdress
-            {
-                Adress = "г. Москва, ул. Мотоциклетная, д. 42, кв. 10",
-                PostCode = "101000",
-                UserId = clientUser.Id
-            };
-            await db.DeliveryAdresses.AddAsync(address1);
-            await db.SaveChangesAsync(); // Сохраняем, чтобы сгенерировался числовой Id адреса
-        }
-
-        if (!await db.Orders.AnyAsync())
-        {
-            var orderId = Guid.NewGuid();
-            var order = new Order
-            {
-                Id = orderId,
-                OrderNumber = "ORD-00001",
-                CountOrdered = 1,
-                NomenclatureId = zip1Id,
-                AdressId = address1.Id, // Используем явно ID сохраненного адреса
-                OrderDateTime = DateTimeOffset.UtcNow,
-                SellCost = decimal.Parse( "1000.23")
-            };
-            await db.Orders.AddAsync(order);
-
-            var payment = new Payment
-            {
-                Id = Guid.NewGuid(),
-                OrderId = orderId,
-                YooKassaPaymentId = "2412312-321321-41241-231321",
-                Status = "succeeded",
-                Amount = 1250m,
-                CreatedAt = DateTimeOffset.UtcNow
-            };
-            await db.Payments.AddAsync(payment);
-
-            var movement = new Movement
-            {
-                Id = Guid.NewGuid(),
-                OrderNumber = order.OrderNumber,
-                CountOrdered = order.CountOrdered,
-                NomenclatureId = order.NomenclatureId,
-                AddressId = address1.Id,
-                OrderDateTime = order.OrderDateTime.UtcDateTime,
-                OperationTypeId = 1, // Жестко ссылаемся на Id = 1 (opSale)
-                SellCost = 1250m,
-                Discount = 0
-            };
-            await db.Movements.AddAsync(movement);
-        }
-
+        zip1Id = zips[0].Id;
+        zip2Id = zips.Count > 1 ? zips[1].Id : zips[0].Id;
+        
+        // 4. СИДИРОВАНИЕ ОСТАТКОВ НА СКЛАДЕ (Stored)
         if (!await db.Stored.AnyAsync())
         {
             var storedItem1 = new Stored { ZipId = zip1Id, Count = 5 };
             var storedItem2 = new Stored { ZipId = zip2Id, Count = 2 };
             await db.Stored.AddRangeAsync(storedItem1, storedItem2);
+            await db.SaveChangesAsync();
         }
+
+        if (!await db.Orders.AnyAsync())
+        {
+            var clientAddress = await db.DeliveryAddressess.FirstOrDefaultAsync(a => a.UserId == clientUser!.Id);
+
+            if (clientAddress != null && clientUser != null)
+            {
+                var orderId = Guid.NewGuid();
+
+                // Создаем заказ (теперь включает в себя поля из старого Movement)
+                var order = new Order
+                {
+                    Id = orderId,
+                    OrderNumber = "ORD-00001",
+                    CountOrdered = 1,
+                    NomenclatureId = zip1Id,
+                    AddressId = clientAddress.Id,
+                    UserId = clientUser.Id,
+                    OrderDateTime = DateTimeOffset.UtcNow,
+                    SellCost = 1250m,
+                    Discount = 0,
+                    OperationTypeId = 1, // 1 - Продажа
+                    DeliveryStatusId = 1 // 1 - created (Создан)
+                };
+                await db.Orders.AddAsync(order);
+
+                // Оплата
+                //var payment = new Payment
+                //{
+                //    Id = Guid.NewGuid(),
+                //    OrderId = orderId,
+                //    YooKassaPaymentId = "2412312-321321-41241-231321",
+                //    Status = "succeeded",
+                //    Amount = 1250m,
+                //    CreatedAt = DateTimeOffset.UtcNow
+                //};
+                //await db.Payments.AddAsync(payment);
+
+                // Лог заказа (новая таблица Log)
+                var log = new Log
+                {
+                    OrderId = orderId,
+                    Description = "Заказ успешно создан и оплачен клиентом."
+                };
+                await db.Logs.AddAsync(log);
+
+                await db.SaveChangesAsync();
+            }
+        }
+
+        //if (!await db.Operations.AnyAsync())
+        //{
+        //    var opSale = new Operation { Id = 1, Type = 1, Description = "Продажа" };   // 1 - Продажа
+        //    var opRefund = new Operation { Id = 2, Type = 2, Description = "Возврат" }; // 2 - Возврат
+        //    var opSupply = new Operation { Id = 3, Type = 3, Description = "Приход на склад" }; // 3 - Приход на склад
+        //    await db.Operations.AddRangeAsync(opSale, opRefund, opSupply);
+        //    await db.SaveChangesAsync(); // Сразу сохраняем справочник
+        //}
+
+
 
         // Финальное сохранение всего, что могло остаться в памяти
         await db.SaveChangesAsync();
