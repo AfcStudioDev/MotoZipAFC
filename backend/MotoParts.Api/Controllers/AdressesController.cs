@@ -9,7 +9,7 @@ using MotoParts.Api.Models;
 namespace MotoParts.Api.Controllers;
 
 [ApiController]
-[Route("api/addresses")]
+[Route("api/addressess")]
 [Authorize]
 public class AddressesController(AppDbContext db) : ControllerBase
 {

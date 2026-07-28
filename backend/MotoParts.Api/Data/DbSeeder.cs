@@ -100,15 +100,14 @@ public static class DbSeeder
             });
             await db.SaveChangesAsync(); // Сохраняем адрес, чтобы получить его ID
         }
-
-        if (!await db.MotoMarks.AnyAsync())
+        if (!await db.Zips.AnyAsync())
         {
+            // 1. Создаем и привязываем справочники один раз
             var honda = new MotoMark { Mark = "Honda" };
             var yamaha = new MotoMark { Mark = "Yamaha" };
             var kawasaki = new MotoMark { Mark = "Kawasaki" };
             var suzuki = new MotoMark { Mark = "Suzuki" };
             var bmw = new MotoMark { Mark = "BMW" };
-            await db.MotoMarks.AddRangeAsync(honda, yamaha, kawasaki, suzuki, bmw);
 
             var cbr = new MotoModel { Mark = honda, Model = "CBR600RR" };
             var africa = new MotoModel { Mark = honda, Model = "Africa Twin" };
@@ -116,30 +115,29 @@ public static class DbSeeder
             var mt07 = new MotoModel { Mark = yamaha, Model = "MT-07" };
             var ninja = new MotoModel { Mark = kawasaki, Model = "Ninja ZX-10R" };
             var gsxr = new MotoModel { Mark = suzuki, Model = "GSX-R750" };
-            await db.MotoModels.AddRangeAsync(cbr, africa, r1, mt07, ninja, gsxr);
 
             var engine = new ZipGroup { GroupName = "Двигатель" };
             var brakes = new ZipGroup { GroupName = "Тормозная система" };
             var suspension = new ZipGroup { GroupName = "Подвеска" };
             var electrics = new ZipGroup { GroupName = "Электрика" };
             var body = new ZipGroup { GroupName = "Пластик и кузов" };
-            await db.ZipGroups.AddRangeAsync(engine, brakes, suspension, electrics, body);
 
             var pn1 = new PartNumber { PartNum = "15410-MFJ-D01" };
             var pn2 = new PartNumber { PartNum = "5VY-13440-30" };
             var pn3 = new PartNumber { PartNum = "43082-0155" };
             var pn4 = new PartNumber { PartNum = "59100-29G00" };
             var pn5 = new PartNumber { PartNum = "38770-MKR-D12" };
-            await db.PartNumbers.AddRangeAsync(pn1, pn2, pn3, pn4, pn5);
 
             var incomeHonda = new IncomeMoto { Id = Guid.NewGuid(), Description = "Поступление Honda 2024" };
             var incomeYamaha = new IncomeMoto { Id = Guid.NewGuid(), Description = "Поступление Yamaha 2024" };
             var incomeKawasaki = new IncomeMoto { Id = Guid.NewGuid(), Description = "Поступление Kawasaki 2024" };
             var incomeSuzuki = new IncomeMoto { Id = Guid.NewGuid(), Description = "Поступление Suzuki 2024" };
+
+            // 2. Добавляем сами запчасти
             await db.Zips.AddRangeAsync(
                 new Zip
                 {
-                    Id = zip1Id,
+                    Id = zip1Id, // Используем заготовленный GUID
                     Name = "Масляный фильтр Honda CBR600RR",
                     IncomeCost = 1250,
                     PartNumber = pn1,
@@ -147,11 +145,11 @@ public static class DbSeeder
                     Model = cbr,
                     Group = engine,
                     IncomeMoto = incomeHonda,
-                    Year = new DateOnly(2020, 1, 1),
+                    Year = new DateOnly(2020, 1, 1)
                 },
                 new Zip
                 {
-                    Id = zip2Id,
+                    Id = zip2Id, // Используем заготовленный GUID
                     Name = "Тормозные колодки Honda CBR600RR",
                     IncomeCost = 4200,
                     PartNumber = pn3,
@@ -159,7 +157,7 @@ public static class DbSeeder
                     Model = ninja,
                     Group = brakes,
                     IncomeMoto = incomeHonda,
-                    Year = new DateOnly(2019, 1, 1),
+                    Year = new DateOnly(2019, 1, 1)
                 },
                 new Zip
                 {
@@ -171,7 +169,7 @@ public static class DbSeeder
                     Model = r1,
                     Group = engine,
                     IncomeMoto = incomeYamaha,
-                    Year = new DateOnly(2021, 1, 1),
+                    Year = new DateOnly(2021, 1, 1)
                 },
                 new Zip
                 {
@@ -183,7 +181,7 @@ public static class DbSeeder
                     Model = ninja,
                     Group = brakes,
                     IncomeMoto = incomeKawasaki,
-                    Year = new DateOnly(2019, 1, 1),
+                    Year = new DateOnly(2019, 1, 1)
                 },
                 new Zip
                 {
@@ -195,7 +193,7 @@ public static class DbSeeder
                     Model = gsxr,
                     Group = suspension,
                     IncomeMoto = incomeSuzuki,
-                    Year = new DateOnly(2018, 1, 1),
+                    Year = new DateOnly(2018, 1, 1)
                 },
                 new Zip
                 {
@@ -207,12 +205,20 @@ public static class DbSeeder
                     Model = africa,
                     Group = electrics,
                     IncomeMoto = incomeHonda,
-                    Year = new DateOnly(2022, 1, 1),
-                });
+                    Year = new DateOnly(2022, 1, 1)
+                }
+            );
+
+            // КРИТИЧЕСКИ ВАЖНО: сохраняем всё это в БД!
+            // EF Core сам догадается сохранить справочники (MotoMarks и т.д.), 
+            // так как мы привязали их к Zips в конструкторах выше.
+            await db.SaveChangesAsync();
         }
 
+        // --- ДАЛЬШЕ ИДЕТ ВАШ КОД ---
+
         var zips = await db.Zips.Take(2).ToListAsync();
-        if (zips.Count < 1) return;
+        if (zips.Count < 1) return; // Теперь это не сработает вхолостую, так как мы сделали SaveChangesAsync()
 
         zip1Id = zips[0].Id;
         zip2Id = zips.Count > 1 ? zips[1].Id : zips[0].Id;
