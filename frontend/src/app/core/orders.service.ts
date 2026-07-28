@@ -19,12 +19,12 @@ export class OrdersService {
     return this.http.post<OrderDto>(`${this.api}/orders`, { zipId, count, addressId });
   }
 
-  adresses(): Observable<AddressDto[]> {
-    return this.http.get<AddressDto[]>(`${this.api}/adresses`);
+  addressess(): Observable<AddressDto[]> {
+    return this.http.get<AddressDto[]>(`${this.api}/addressess`);
   }
 
   addAddress(address: string, postCode?: string): Observable<AddressDto> {
-    return this.http.post<AddressDto>(`${this.api}/adresses`, { address, postCode });
+    return this.http.post<AddressDto>(`${this.api}/addressess`, { address, postCode });
   }
 
   createPayment(orderId: string, returnUrl: string): Observable<{ paymentId: string; confirmationUrl: string }> {
@@ -36,7 +36,11 @@ export class OrdersService {
     return this.http.get<{ orderId: string; status: string }>(`${this.api}/payments/status/${orderId}`);
   }
 
-  deleteSenderOrder(id: string): Observable<any> {
-  return this.http.delete(`${environment.apiUrl}/sender/orders/${id}`);
-}
+  createGuestOrder(data: any) {
+    return this.http.post<OrderDto>(`${this.api}/orders/guest-order`, data);
+  }
+
+  // Отключено по просьбе заказчика
+  // deleteSenderOrder(id: string): Observable<any> {
+  // return this.http.delete(`${environment.apiUrl}/sender/orders/${id}`);
 }

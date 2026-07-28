@@ -123,7 +123,7 @@ import { debounceTime, distinctUntilChanged, switchMap, catchError } from 'rxjs/
             <label>Адрес доставки</label>
             <select [(ngModel)]="buyAddressId">
               <option [ngValue]="undefined">— выберите адрес —</option>
-              @for (a of adresses(); track a.id) {
+              @for (a of addressess(); track a.id) {
                 <option [ngValue]="a.id">{{ a.address }}</option>
               }
             </select>
@@ -140,6 +140,60 @@ import { debounceTime, distinctUntilChanged, switchMap, catchError } from 'rxjs/
         </div>
       </div>
     }
+    @if (isGuestBuying(); as guestZip) {
+    <div class="modal-backdrop">
+      <div class="modal-content" style="max-width: 500px; padding: 20px;">
+        <h3>Оформление заказа</h3>
+        <p>Вы покупаете: <strong>{{ guestZip.name }}</strong></p>
+
+        @if (buyError()) {
+          <div class="alert alert-danger">{{ buyError() }}</div>
+        }
+
+        <div class="form-group mb-2">
+          <label>ФИО</label>
+          <input type="text" class="form-control" [(ngModel)]="guestForm.fio" placeholder="Иванов Иван Иванович">
+        </div>
+
+        <div class="form-group mb-2">
+          <label>Email</label>
+          <input type="email" class="form-control" [(ngModel)]="guestForm.email" placeholder="example@mail.ru">
+        </div>
+
+        <div class="form-group mb-2">
+          <label>Телефон</label>
+          <input type="text" class="form-control" [(ngModel)]="guestForm.phone" mask="+0 (000) 000-00-00" placeholder="+7 (999) 000-00-00">
+        </div>
+
+        <div class="form-group mb-2">
+          <label>Пароль для личного кабинета <small class="text-muted">(если заказываете в первый раз)</small></label>
+          <input type="password" class="form-control" [(ngModel)]="guestForm.password">
+        </div>
+
+        <div class="form-group mb-2">
+          <label>Адрес доставки</label>
+          <input type="text" class="form-control" [(ngModel)]="guestForm.address" placeholder="г. Москва, ул. Пушкина, д. 1">
+        </div>
+
+        <div class="form-group mb-2">
+          <label>Почтовый индекс</label>
+          <input type="text" class="form-control" [(ngModel)]="guestForm.postCode" placeholder="123456">
+        </div>
+
+        <div class="form-group mb-3">
+          <label>Количество</label>
+          <input type="number" class="form-control" [(ngModel)]="guestForm.count" min="1">
+        </div>
+
+        <div class="d-flex gap-2 justify-content-end">
+          <button class="btn btn-secondary" (click)="closeBuy()" [disabled]="busy()">Отмена</button>
+          <button class="btn btn-primary" (click)="confirmGuestBuy(guestZip)" [disabled]="busy() || !guestForm.fio || !guestForm.phone || !guestForm.address">
+            @if (busy()) { Загрузка... } @else { Подтвердить и перейти к оплате }
+          </button>
+        </div>
+      </div>
+    </div>
+  }
   `,
   changeDetection: ChangeDetectionStrategy.Eager,
   styles: [`
@@ -208,7 +262,7 @@ import { debounceTime, distinctUntilChanged, switchMap, catchError } from 'rxjs/
 })
 export class HomeComponent implements OnInit {
   // ДОБАВЛЕНО: Сигнал и сабжект для автопредложений
-  suggestions = signal<ZipDto[]>([]); 
+  suggestions = signal<ZipDto[]>([]);
   private searchSubject = new Subject<string>();
 
   private catalog = inject(CatalogService);
@@ -227,9 +281,21 @@ export class HomeComponent implements OnInit {
   buyCount = 1;
   buyAddressId?: number;
   newAddress = '';
-  adresses = signal<AddressDto[]>([]);
+  addressess = signal<AddressDto[]>([]);
   buyError = signal('');
   busy = signal(false);
+
+  // Для заказа без регистрации
+  guestForm = {
+  fio: '',
+  email: '',
+  phone: '',
+  password: '',
+  address: '',
+  postCode: '',
+  count: 1
+};
+isGuestBuying = signal<ZipDto | null>(null);
 
   ngOnInit(): void {
     // ДОБАВЛЕНО: Логика обработки ввода для автопредложений
@@ -292,24 +358,84 @@ export class HomeComponent implements OnInit {
     return Array.from({ length: to - from + 1 }, (_, i) => from + i);
   }
 
-  openBuy(zip: ZipDto): void {
+  // openBuy(zip: ZipDto): void {
+  //   if (!this.auth.isLoggedIn) {
+  //     this.router.navigate(['/login']);
+  //     return;
+  //   }
+  //   this.buyError.set('');
+  //   this.buyCount = 1;
+  //   this.newAddress = '';
+  //   this.buying.set(zip);
+  //   this.orders.addressess().subscribe(a => {
+  //     this.addressess.set(a);
+  //     this.buyAddressId = a[0]?.id;
+  //   });
+  // }
+
+  openBuy(zip: ZipDto): void { 
     if (!this.auth.isLoggedIn) {
-      this.router.navigate(['/login']);
-      return;
-    }
-    this.buyError.set('');
-    this.buyCount = 1;
-    this.newAddress = '';
+      // Если не авторизован - открываем окно гостевой покупки
+      this.buyError.set('');
+      this.guestForm = { fio: '', email: '', phone: '', password: '', address: '', postCode: '', count: 1 };
+      this.isGuestBuying.set(zip);
+      return; 
+    } 
+    
+    // Существующая логика для авторизованного пользователя
+    this.buyError.set(''); 
+    this.buyCount = 1; 
+    this.newAddress = ''; 
     this.buying.set(zip);
-    this.orders.adresses().subscribe(a => {
-      this.adresses.set(a);
-      this.buyAddressId = a[0]?.id;
+    
+    this.orders.addressess().subscribe(a => { 
+      this.addressess.set(a);
+      this.buyAddressId = a[0]?.id; 
+    }); 
+  }
+
+  closeBuy(): void { 
+    this.buying.set(null); 
+    this.isGuestBuying.set(null);
+  }
+
+  confirmGuestBuy(zip: ZipDto): void {
+    this.buyError.set(''); 
+    this.busy.set(true);
+
+    const requestData = {
+      zipId: zip.id,
+      count: this.guestForm.count,
+      fio: this.guestForm.fio,
+      email: this.guestForm.email,
+      phone: this.guestForm.phone,
+      password: this.guestForm.password,
+      address: this.guestForm.address,
+      postCode: this.guestForm.postCode
+    };
+
+    this.orders.createGuestOrder(requestData).subscribe({
+      next: order => {
+        // Существующая логика запуска оплаты
+        const returnUrl = `${location.origin}/payment-result/${order.id}`;
+        this.orders.createPayment(order.id, returnUrl).subscribe({ 
+          next: p => { location.href = p.confirmationUrl; }, 
+          error: err => {
+            this.busy.set(false); 
+            this.buyError.set(err.error?.message ?? 'Заказ создан, но оплату запустить не удалось.'); 
+          } 
+        }); 
+      },
+      error: err => {
+        this.busy.set(false); 
+        this.buyError.set(err.error?.message ?? 'Не удалось создать заказ');
+      }
     });
   }
 
-  closeBuy(): void {
-    this.buying.set(null);
-  }
+  // closeBuy(): void {
+  //   this.buying.set(null);
+  // }
 
   confirmBuy(zip: ZipDto): void {
     this.buyError.set('');

@@ -87,7 +87,7 @@ import { AddressDto, OrderDto, PagedResult } from '../core/models';
 
     <section class="card" style="margin-top:20px">
       <h2>Адреса доставки</h2>
-      @for (a of adresses(); track a.id) {
+      @for (a of addressess(); track a.id) {
         <p>{{ a.address }}@if (a.postCode) { , {{ a.postCode }} }</p>
       } @empty {
         <p class="muted">Адресов пока нет.</p>
@@ -113,14 +113,14 @@ export class CabinetComponent implements OnInit {
   private ordersService = inject(OrdersService);
 
   orders = signal<PagedResult<OrderDto> | null>(null);
-  adresses = signal<AddressDto[]>([]);
+  addressess = signal<AddressDto[]>([]);
   error = signal('');
   newAddress = '';
   newPostCode = '';
 
   ngOnInit(): void {
     this.load(1);
-    this.ordersService.adresses().subscribe(a => this.adresses.set(a));
+    this.ordersService.addressess().subscribe(a => this.addressess.set(a));
   }
 
   load(page: number): void {
@@ -145,7 +145,7 @@ export class CabinetComponent implements OnInit {
   addAddress(): void {
     if (!this.newAddress.trim()) return;
     this.ordersService.addAddress(this.newAddress.trim(), this.newPostCode || undefined).subscribe(a => {
-      this.adresses.update(list => [...list, a]);
+      this.addressess.update(list => [...list, a]);
       this.newAddress = '';
       this.newPostCode = '';
     });
