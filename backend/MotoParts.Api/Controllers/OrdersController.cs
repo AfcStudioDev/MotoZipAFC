@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using MotoParts.Api.Data;
 using MotoParts.Api.DTOs;
 using MotoParts.Api.Models;
+using MotoParts.Api.Services;
 
 using System.Linq;
 using System.Security.Claims;
@@ -89,5 +90,94 @@ public class OrdersController(AppDbContext db) : ControllerBase
         await db.SaveChangesAsync();
 
         return Ok(new { message = "Заказ успешно удален" });
+    }
+
+    [HttpPost("guest-order")]
+    public async Task<ActionResult<OrderDto>> CreateGuestOrder([FromBody] GuestCreateOrderRequest req)
+    {
+        // 1. Ищем запчасть
+        var zip = await db.Zips.FindAsync(req.ZipId);
+        if (zip == null) return NotFound(new { message = "Запчасть не найдена" });
+
+        // 2. Проверяем пользователя по номеру телефона
+        var user = await db.Users
+            .Include(u => u.DeliveryAddresses)
+            .FirstOrDefaultAsync(u => u.PhoneNumber == req.Phone);
+
+        if (user == null)
+        {
+            // Пользователь не найден -> создаем нового
+            user = new User
+            {
+                Email = req.Email,
+                PhoneNumber = req.Phone,
+                FIO = req.Fio,
+                PasswordHash = !string.IsNullOrEmpty(req.Password)
+                    ? PasswordHasher.Hash(req.Password) // Используйте ваш сервис хэширования
+                    : "", // Или сгенерируйте случайный пароль
+                DeliveryAddresses = new List<DeliveryAddress>()
+            };
+            db.Users.Add(user);
+        }
+
+        // 3. Проверяем адрес пользователя
+        var address = user.DeliveryAddresses?
+            .FirstOrDefault(a => a.Address == req.Address && a.PostCode == req.PostCode);
+
+        if (address == null)
+        {
+            // Если адреса нет, создаем его
+            address = new DeliveryAddress
+            {
+                Address = req.Address,
+                PostCode = req.PostCode,
+                User = user
+            };
+            db.DeliveryAddressess.Add(address);
+        }
+
+        // Сохраняем изменения, чтобы получить сгенерированные ID для пользователя и адреса
+        await db.SaveChangesAsync();
+        user = await db.Users
+            .FirstOrDefaultAsync(u => u.PhoneNumber == req.Phone);
+        // 4. Создаем заказ с операцией расхода
+        var order = new Order
+        {
+            Id = Guid.NewGuid(),
+            OrderNumber = $"ORD-{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}",
+            CountOrdered = req.Count,
+            NomenclatureId = zip.Id,
+            AddressId = address.Id,
+            OrderDateTime = DateTimeOffset.UtcNow,
+            SellCost = zip.SellCost,
+            Discount = req.Promo,
+            UserId = user.Id
+        };
+        db.Orders.Add(order);
+
+        // 5. Добавляем запись в таблицу Log
+        var logEntry = new Log
+        {
+            Description = $"В {DateTimeOffset.UtcNow} был создан заказ {order.OrderNumber} для пользователя {user.PhoneNumber} по цене {zip.SellCost}.",
+            OrderId = order.Id
+        };
+        db.Logs.Add(logEntry);
+
+        await db.SaveChangesAsync();
+
+        // Формируем ответ (аналогичный существующему методу создания)
+        var dto = new OrderDto(
+            order.Id,
+            order.OrderNumber,
+            order.CountOrdered,
+            order.OrderDateTime,
+            zip.Name,
+            zip.IncomeCost,
+            address.Address,
+            zip.SellCost,
+            order.Discount
+        );
+
+        return Ok(dto);
     }
 }
