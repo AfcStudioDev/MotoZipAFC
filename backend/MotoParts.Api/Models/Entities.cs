@@ -14,7 +14,7 @@ public class Order
     public int CountOrdered { get; set; } = 0;
 
     public Guid NomenclatureId { get; set; }
-    public int AdressId { get; set; }
+    public int AddressId { get; set; }
     public DateTimeOffset OrderDateTime { get; set; }
 
     // Новые поля из DBML
@@ -26,7 +26,7 @@ public class Order
 
     // Навигационные свойства
     public Zip Nomenclature { get; set; } = null!;
-    public DeliveryAdress Adress { get; set; } = null!;
+    public DeliveryAddress Address { get; set; } = null!;
     public Operation? OperationType { get; set; }
     public User User { get; set; } = null!;
     public DeliveryStatus? DeliveryStatus { get; set; }
@@ -167,7 +167,7 @@ public class User
 
     public string? PhoneNumber { get; set; }
 
-    public ICollection<DeliveryAdress> DeliveryAddresses { get; set; } = new HashSet<DeliveryAdress>();
+    public ICollection<DeliveryAddress> DeliveryAddresses { get; set; } = new HashSet<DeliveryAddress>();
 
     public string? OAuthProvider { get; set; }       // "google" | "vk" | null
 
@@ -175,13 +175,13 @@ public class User
     public ICollection<Order> Orders { get; set; } = new HashSet<Order>();
 }
 
-public class DeliveryAdress
+public class DeliveryAddress
 {
     [Key]
     public int Id { get; set; }
 
     [Required]
-    public string Adress { get; set; }
+    public string Address { get; set; }
 
     public string PostCode { get; set; }
 

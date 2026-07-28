@@ -9,37 +9,37 @@ using MotoParts.Api.Models;
 namespace MotoParts.Api.Controllers;
 
 [ApiController]
-[Route("api/adresses")]
+[Route("api/addresses")]
 [Authorize]
-public class AdressesController(AppDbContext db) : ControllerBase
+public class AddressesController(AppDbContext db) : ControllerBase
 {
     private int CurrentUserId => int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
 
     [HttpGet]
-    public async Task<ActionResult<List<AdressDto>>> List()
+    public async Task<ActionResult<List<AddressDto>>> List()
     {
         var userId = CurrentUserId;
-        return Ok(await db.DeliveryAdressess
+        return Ok(await db.DeliveryAddressess
             .Where(a => a.UserId == userId)
-            .Select(a => new AdressDto(a.Id, a.Adress, a.PostCode))
+            .Select(a => new AddressDto(a.Id, a.Address, a.PostCode))
             .ToListAsync());
     }
 
     [HttpPost]
-    public async Task<ActionResult<AdressDto>> Create(CreateAdressRequest request)
+    public async Task<ActionResult<AddressDto>> Create(CreateAddressRequest request)
     {
-        if (string.IsNullOrWhiteSpace(request.Adress))
+        if (string.IsNullOrWhiteSpace(request.Address))
             return BadRequest(new { message = "Адрес обязателен" });
 
-        var adress = new DeliveryAdress
+        var address = new DeliveryAddress
         {
-            Adress = request.Adress.Trim(),
+            Address = request.Address.Trim(),
             PostCode = request.PostCode,
             UserId = CurrentUserId,
         };
-        db.DeliveryAdressess.Add(adress);
+        db.DeliveryAddressess.Add(address);
         await db.SaveChangesAsync();
 
-        return Ok(new AdressDto(adress.Id, adress.Adress, adress.PostCode));
+        return Ok(new AddressDto(address.Id, address.Address, address.PostCode));
     }
 }

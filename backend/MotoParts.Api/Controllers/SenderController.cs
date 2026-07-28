@@ -17,7 +17,7 @@ namespace MotoParts.Api.Controllers
         {
             var orders = await db.Orders
                 .Include(o => o.Nomenclature)
-                .Include(o => o.Adress) // Исправлено с Adress на Address
+                .Include(o => o.Address) // Исправлено с Address на Address
                 .Include(o => o.DeliveryStatus) // Подтягиваем новый справочник статусов
                 .OrderByDescending(o => o.OrderDateTime)
                 .Select(o => new
@@ -29,7 +29,7 @@ namespace MotoParts.Api.Controllers
                     DeliveryStatus = o.DeliveryStatus != null ? o.DeliveryStatus.Description : "unknown",
                     o.OrderDateTime,
                     ZipName = o.Nomenclature.Name,
-                    Address = o.Adress.Adress // Исправлено с Adress.Adress на Address.Address
+                    Address = o.Address.Address // Исправлено с Address.Address на Address.Address
                 })
                 .ToListAsync();
 

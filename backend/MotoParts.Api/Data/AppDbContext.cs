@@ -12,7 +12,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<MotoModel> MotoModels { get; set; }
     public DbSet<Zip> Zips { get; set; }
     public DbSet<User> Users { get; set; }
-    public DbSet<DeliveryAdress> DeliveryAdressess { get; set; } // Имя таблицы по DBML
+    public DbSet<DeliveryAddress> DeliveryAddressess { get; set; } // Имя таблицы по DBML
     public DbSet<Operation> Operations { get; set; }
     public DbSet<Stored> Stored { get; set; }
     public DbSet<IncomeMoto> IncomeMotos { get; set; }
@@ -72,7 +72,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             .OnDelete(DeleteBehavior.Restrict);
 
         // fk_Users_id_DeliveryAdressess [ delete: no action ]
-        modelBuilder.Entity<DeliveryAdress>()
+        modelBuilder.Entity<DeliveryAddress>()
             .HasOne(d => d.User)
             .WithMany(u => u.DeliveryAddresses)
             .HasForeignKey(d => d.UserId)
@@ -80,9 +80,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
 
         // fk_DeliveryAdressess_id_Orders [ delete: no action ]
         modelBuilder.Entity<Order>()
-            .HasOne(o => o.Adress)
+            .HasOne(o => o.Address)
             .WithMany(d => d.Orders)
-            .HasForeignKey(o => o.AdressId)
+            .HasForeignKey(o => o.AddressId)
             .OnDelete(DeleteBehavior.Restrict);
 
         // fk_Operations_id_Orders [ delete: no action ]

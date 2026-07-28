@@ -25,7 +25,7 @@ public class PaymentsController(AppDbContext db, YooKassaService yooKassa, ILogg
     //    var order = await db.Orders
     //        .Include(o => o.Nomenclature)
     //        .Include(o => o.Payment)
-    //        .FirstOrDefaultAsync(o => o.Id == request.OrderId && o.Adress.UserId == userId);
+    //        .FirstOrDefaultAsync(o => o.Id == request.OrderId && o.Address.UserId == userId);
     //    if (order is null)
     //        return NotFound(new { message = "Заказ не найден" });
     //    if (order.Payment?.Status == "succeeded")

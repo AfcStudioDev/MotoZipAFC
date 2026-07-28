@@ -27,7 +27,7 @@ public class OrdersController(AppDbContext db) : ControllerBase
         var userId = CurrentUserId;
 
         var orders = db.Orders
-            .Where(o => o.Adress.UserId == userId)
+            .Where(o => o.Address.UserId == userId)
             .OrderByDescending(o => o.OrderDateTime);
 
         var total = await orders.CountAsync();
@@ -38,7 +38,7 @@ public class OrdersController(AppDbContext db) : ControllerBase
                 o.Id, o.OrderNumber, o.CountOrdered, o.OrderDateTime,
                 o.Nomenclature != null ? o.Nomenclature.Name : null,
                 o.Nomenclature != null ? o.Nomenclature.IncomeCost : null,
-                o.Adress.Adress,
+                o.Address.Address,
                 //o.Payment != null ? o.Payment.Status : null,
                 o.SellCost))
             .ToListAsync();
@@ -64,7 +64,7 @@ public class OrdersController(AppDbContext db) : ControllerBase
             OrderNumber = "ORD-" + DateTimeOffset.Now.ToUnixTimeSeconds(),
             CountOrdered = request.Count,
             NomenclatureId = request.ZipId,
-            AdressId = request.AdressId,
+            AddressId = request.AddressId,
             OrderDateTime = DateTimeOffset.UtcNow,
             DeliveryStatusId = (short)DeliveryStatusEnum.created
         };

@@ -90,11 +90,11 @@ public static class DbSeeder
         }
 
         // Добавляем адрес для клиента
-        if (clientUser != null && !await db.DeliveryAdressess.AnyAsync(a => a.UserId == clientUser.Id))
+        if (clientUser != null && !await db.DeliveryAddressess.AnyAsync(a => a.UserId == clientUser.Id))
         {
-            await db.DeliveryAdressess.AddAsync(new DeliveryAdress
+            await db.DeliveryAddressess.AddAsync(new DeliveryAddress
             {
-                Adress = "г. Москва, ул. Мотоциклетная, д. 42, кв. 10",
+                Address = "г. Москва, ул. Мотоциклетная, д. 42, кв. 10",
                 PostCode = "101000",
                 UserId = clientUser.Id
             });
@@ -228,7 +228,7 @@ public static class DbSeeder
 
         if (!await db.Orders.AnyAsync())
         {
-            var clientAddress = await db.DeliveryAdressess.FirstOrDefaultAsync(a => a.UserId == clientUser!.Id);
+            var clientAddress = await db.DeliveryAddressess.FirstOrDefaultAsync(a => a.UserId == clientUser!.Id);
 
             if (clientAddress != null && clientUser != null)
             {
@@ -241,7 +241,7 @@ public static class DbSeeder
                     OrderNumber = "ORD-00001",
                     CountOrdered = 1,
                     NomenclatureId = zip1Id,
-                    AdressId = clientAddress.Id,
+                    AddressId = clientAddress.Id,
                     UserId = clientUser.Id,
                     OrderDateTime = DateTimeOffset.UtcNow,
                     SellCost = 1250m,

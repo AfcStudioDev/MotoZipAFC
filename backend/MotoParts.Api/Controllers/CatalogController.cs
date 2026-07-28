@@ -56,13 +56,19 @@ public class CatalogController(AppDbContext db) : ControllerBase
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .Select(z => new ZipDto(
-                z.Id, z.Name, z.IncomeCost,
+                z.Id,
+                z.Name,
+                z.IncomeCost,
                 z.PartNumber != null ? z.PartNumber.PartNum : null,
                 z.Mark != null ? z.Mark.Mark : null,
                 z.Model != null ? z.Model.Model : null,
                 z.Group != null ? z.Group.GroupName : null,
-                z.Year != null ? z.Year.Value.Year : null))
-            .ToListAsync(); 
+                z.Year != null ? z.Year.Value.Year : null,
+                z.IncomeMotoId,
+                // Суммируем остатки на складе (если записей нет, вернет 0)
+                db.Stored.Where(s => s.ZipId == z.Id).Sum(s => (int?)s.Count) ?? 0
+            ))
+            .ToListAsync();
 
         return Ok(new PagedResult<ZipDto>(items, total, page, pageSize));
     }

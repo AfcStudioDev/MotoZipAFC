@@ -22,7 +22,7 @@ public record ZipDto(
     string? Group,
     int? Year,
     Guid IncomeMotoId,
-    int countStored);
+    int CountStored);
 
 public record PagedResult<T>(IReadOnlyList<T> Items, int Total, int Page, int PageSize)
 {
@@ -30,7 +30,7 @@ public record PagedResult<T>(IReadOnlyList<T> Items, int Total, int Page, int Pa
 }
 
 // ---------- Orders ----------
-public record CreateOrderRequest(Guid ZipId, int Count, decimal SellCost, int AdressId);
+public record CreateOrderRequest(Guid ZipId, int Count, decimal SellCost, int AddressId);
 public record OrderDto(
     Guid Id,
     string OrderNumber,
@@ -43,8 +43,8 @@ public record OrderDto(
     decimal? SellCost);
 
 // ---------- Adresses ----------
-public record CreateAdressRequest(string Adress, string? PostCode);
-public record AdressDto(int Id, string Adress, string? PostCode);
+public record CreateAddressRequest(string Address, string? PostCode);
+public record AddressDto(int Id, string Address, string? PostCode);
 
 // ---------- Payments ----------
 public record CreatePaymentRequest(Guid OrderId, string ReturnUrl);
@@ -57,8 +57,19 @@ public record AdminGroupRequest(string GroupName);
 public record AdminPartNumberRequest(string PartNum);
 public record AdminZipRequest(string Name, decimal IncomeCost, int? PartNumId, int? MarkId, int? ModelId, int? GroupId, int CountStored, int? Year, Guid IncomeMotoId);
 public record AdminUserRequest(string Email, string FIO, string? PhoneNumber, bool IsAdmin, bool IsRegistrar, bool IsSender, string? Password);
-public record AdminAdressRequest(string Adress, string? PostCode, int? UserId);
-public record AdminOrderRequest(string OrderNumber, int CountOrdered, Guid NomenclatureId, int AdressId, DateTimeOffset? OrderDateTime);
+public record AdminAddressRequest(string Address, string? PostCode, int? UserId);
+public record AdminOrderRequest(
+    string OrderNumber,
+    int CountOrdered,
+    Guid NomenclatureId,
+    int AddressId, // Исправлено на AddressId
+    DateTimeOffset? OrderDateTime,
+    decimal SellCost,
+    short? OperationTypeId,
+    decimal? Discount,
+    int UserId,
+    short? DeliveryStatusId
+);
 
 public class UpdateUserRolesRequest
 {
