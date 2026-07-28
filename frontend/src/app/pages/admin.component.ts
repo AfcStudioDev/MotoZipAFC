@@ -1,17 +1,15 @@
 import { Component, OnInit, inject, signal, ChangeDetectionStrategy } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { JsonPipe } from '@angular/common';
+import { CommonModule, JsonPipe } from '@angular/common';
 import { AdminService } from '../core/admin.service';
 
 interface FieldDef {
   key: string;
   label: string;
-  // Добавлен тип 'select' для выпадающих списков
-  type: 'text' | 'number' | 'checkbox' | 'select';
+  type: 'text' | 'number' | 'checkbox' | 'select' | 'date';
   required?: boolean;
-  // Настройки для связи внешних ключей
-  refTable?: string;     // Эндпоинт таблицы-справочника (например, 'marks')
-  refLabelKey?: string;  // Поле, которое нужно показывать (например, 'mark' или 'name')
+  refTable?: string;
+  refLabelKey?: string;
 }
 
 interface TableDef {
@@ -20,131 +18,215 @@ interface TableDef {
   fields: FieldDef[];
 }
 
+// Решает проблему TS4111 (noPropertyAccessFromIndexSignature)
+interface DynamicRow {
+  id: any;
+  [key: string]: any;
+}
+
 @Component({
   selector: 'app-admin',
-  imports: [FormsModule, JsonPipe],
+  standalone: true,
+  imports: [FormsModule, CommonModule, JsonPipe],
+  changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="admin-container">
-      <h2>Админ-панель</h2>
-      
+      <h2>Панель администратора</h2>
+
+      @if (message()) {
+        <div class="success">
+          {{ message() }}
+          <button style="float: right; cursor: pointer; background: none; border: none;" (click)="message.set('')">✖</button>
+        </div>
+      }
+      @if (error()) {
+        <div class="error">
+          {{ error() }}
+          <button style="float: right; cursor: pointer; background: none; border: none;" (click)="error.set('')">✖</button>
+        </div>
+      }
+
       <div class="tabs">
         @for (t of tables; track t.endpoint) {
-          <button [class.active]="t === current()" (click)="select(t)">{{ t.title }}</button>
+          <button 
+            [class.active]="current()?.endpoint === t.endpoint" 
+            (click)="select(t)"
+          >
+            {{ t.title }}
+          </button>
         }
       </div>
 
       @if (current(); as table) {
-        <div class="add-form card">
-          <h3>{{ selectedId() ? 'Редактировать запись (ID: ' + selectedId() + ')' : 'Добавить новую запись' }}</h3>
+        
+        <!-- КАРТОЧКА ФОРМЫ (Оригинальный дизайн) -->
+        <div class="card">
+          <h3 style="margin-top: 0;">{{ selectedId() ? 'Редактировать запись' : 'Добавить запись' }}</h3>
           
-          <div class="form-grid">
-            @for (f of table.fields; track f.key) {
-              <div class="form-group" style="position: relative;">
-                <label>{{ f.label }}</label>
-                
-                @if (f.type === 'checkbox') {
-                  <input type="checkbox" [(ngModel)]="form[f.key]">
-                } 
-                @else if (f.type === 'number') {
-                  <input type="number" [(ngModel)]="form[f.key]" class="form-control">
-                } 
-                @else if (f.type === 'select') {
-                  <select [(ngModel)]="form[f.key]" class="form-control">
-                    <option [ngValue]="undefined" [selected]="!form[f.key]">— Выберите —</option>
-                    @for (opt of references()[f.refTable!] || []; track opt.id) {
-                      <option [ngValue]="opt.id">{{ opt[f.refLabelKey!] }}</option>
-                    }
-                  </select>
-                }
-                @else {
-                  <input type="text" 
-                         [ngModel]="form[f.key]" 
-                         (ngModelChange)="onFieldInput(f.key, $event)"
-                         (blur)="hideSuggestions()"
-                         autocomplete="off"
-                         class="form-control">
-                         
-                  @if (activeField() === f.key && fieldSuggestions().length > 0) {
-                    <ul class="suggestions-dropdown">
-                      @for (s of fieldSuggestions(); track s) {
-                        <li (mousedown)="$event.preventDefault()" (click)="selectSuggestion(f.key, s)">
-                          {{ s }}
-                        </li>
+          <form (ngSubmit)="save(table)">
+            <div class="form-grid">
+              @for (f of table.fields; track f.key) {
+                <div class="form-group" style="position: relative;">
+                  <label>
+                    {{ f.label }}
+                    @if (f.required) { <span style="color: red;">*</span> }
+                  </label>
+
+                  @if (f.type === 'checkbox') {
+                    <input 
+                      type="checkbox" 
+                      [(ngModel)]="form[f.key]" 
+                      [name]="f.key"
+                      style="width: 20px; height: 20px; margin-top: 5px;"
+                    >
+                  } 
+                  @else if (f.type === 'number') {
+                    <input 
+                      type="number" 
+                      step="any"
+                      class="form-control" 
+                      [(ngModel)]="form[f.key]" 
+                      [name]="f.key"
+                      [required]="!!f.required"
+                    >
+                  } 
+                  @else if (f.type === 'select') {
+                    <!-- Новый функционал: Выпадающий список для связей -->
+                    <select 
+                      class="form-control" 
+                      [(ngModel)]="form[f.key]" 
+                      [name]="f.key"
+                      [required]="!!f.required"
+                    >
+                      <option [ngValue]="null">— Выберите —</option>
+                      @for (opt of references()[f.refTable!] || []; track opt.id) {
+                        <option [ngValue]="opt.id">
+                          {{ opt[f.refLabelKey!] || opt.name || opt.id }}
+                        </option>
                       }
-                    </ul>
+                    </select>
+                  } 
+                  @else {
+                    <input 
+                      type="text" 
+                      class="form-control" 
+                      [(ngModel)]="form[f.key]" 
+                      [name]="f.key"
+                      (input)="onFieldInput(f.key, form[f.key])"
+                      (focus)="onFieldInput(f.key, form[f.key])"
+                      [required]="!!f.required"
+                      autocomplete="off"
+                    >
+                    <!-- Выпадающие подсказки -->
+                    @if (activeField() === f.key && fieldSuggestions().length > 0) {
+                      <ul class="suggestions-dropdown">
+                        @for (sug of fieldSuggestions(); track sug) {
+                          <li (click)="applySuggestion(f.key, sug)">{{ sug }}</li>
+                        }
+                      </ul>
+                    }
                   }
-                }
-              </div>
-            }
-          </div>
-          
-          <div class="actions">
-            <button class="btn btn-primary" (click)="save(table)" [disabled]="busy()">
-              {{ selectedId() ? 'Обновить' : 'Добавить' }}
-            </button>
-            @if (selectedId() && isAdmin()) {
-              <button class="btn btn-danger" (click)="deleteRow(table, selectedId())" [disabled]="busy()" style="background: #dc3545; color: #fff; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer;">
-                Удалить
+                </div>
+              }
+            </div>
+
+            <div class="actions">
+              <button type="submit" [disabled]="busy()" style="padding: 8px 16px; cursor: pointer;">
+                {{ selectedId() ? 'Обновить' : 'Добавить' }}
               </button>
-            }
-            @if (selectedId()) {
-              <button class="btn btn-secondary" (click)="cancelEdit()">Отмена</button>
-            }
-          </div>
-          
-          @if (error()) { <p class="error">{{ error() }}</p> }
-          @if (message()) { <p class="success">{{ message() }}</p> }
+              @if (selectedId()) {
+                <button type="button" (click)="cancelEdit()" style="padding: 8px 16px; cursor: pointer;">
+                  Отмена
+                </button>
+              }
+            </div>
+          </form>
         </div>
 
-        <div class="table-container">
-          <table class="data-table">
-            <thead>
-              <tr>
-                @for (col of columns(); track col) {
-                  <th>{{ getColLabel(col) }}</th>
-                }
-              </tr>
-            </thead>
-            <tbody>
-              @for (row of rows(); track row['id']) {
-                <tr (click)="editRow(row)" [class.active-row]="row['id'] === selectedId()">
-                  @for (col of columns(); track col) {
-                    <td>{{ getDisplayValue(col, row[col]) }}</td>
+        <!-- КАРТОЧКА ТАБЛИЦЫ (Оригинальный дизайн) -->
+        <div class="card">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+            <h3 style="margin: 0;">{{ table.title }} (Всего: {{ rows().length }})</h3>
+            <button (click)="reload(table)" [disabled]="busy()" style="padding: 6px 12px; cursor: pointer;">
+              Обновить таблицу
+            </button>
+          </div>
+          
+          <div class="table-container">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th style="width: 80px;">ID</th>
+                  @for (f of table.fields; track f.key) {
+                    <th>{{ f.label }}</th>
                   }
+                  <th style="text-align: right; width: 100px;">Действия</th>
                 </tr>
-              }
-              @if (rows().length === 0) {
-                <tr><td [colSpan]="columns().length">Нет данных</td></tr>
-              }
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                @for (r of rows(); track r.id) {
+                  <!-- Использование r.id теперь работает благодаря интерфейсу DynamicRow -->
+                  <tr [class.active-row]="selectedId() === r.id" (click)="editRow(r)">
+                    <td style="color: #888; font-size: 12px;">{{ r.id }}</td>
+                    @for (f of table.fields; track f.key) {
+                      <td>
+                        @if (f.type === 'select') {
+                          <span style="background: #e0f7fa; padding: 2px 6px; border-radius: 4px; font-size: 13px;">
+                            {{ getRefDisplay(f, r[f.key]) }}
+                          </span>
+                        } @else if (f.type === 'checkbox') {
+                          <strong [style.color]="r[f.key] ? '#28a745' : '#aaa'">
+                            {{ r[f.key] ? 'Да' : 'Нет' }}
+                          </strong>
+                        } @else {
+                          {{ r[f.key] }}
+                        }
+                      </td>
+                    }
+                    <td style="text-align: right;" (click)="$event.stopPropagation()">
+                      <button (click)="remove(table, r.id)" style="color: red; cursor: pointer; padding: 4px 8px;">
+                        Удалить
+                      </button>
+                    </td>
+                  </tr>
+                } @empty {
+                  <tr>
+                    <td [attr.colspan]="table.fields.length + 2" style="text-align: center; padding: 20px; color: #777;">
+                      Нет данных в этой таблице
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
         </div>
+
       }
     </div>
   `,
-  changeDetection: ChangeDetectionStrategy.Eager,
+  // ТЕ САМЫЕ СТИЛИ, КОТОРЫЕ БЫЛИ У ВАС ИЗНАЧАЛЬНО
   styles: [`
-    .admin-container { padding-bottom: 40px; }
+    .admin-container { padding: 20px; padding-bottom: 40px; font-family: sans-serif; }
     .tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; } 
-    .tabs button { padding: 8px 16px; border: 1px solid var(--border); border-radius: 20px; background: #fff; cursor: pointer; transition: 0.2s; } 
-    .tabs button.active { background: var(--accent); border-color: var(--accent); color: #fff; } 
-    .card { background: #fff; padding: 20px; border-radius: 8px; border: 1px solid var(--border); margin-bottom: 20px; }
+    .tabs button { padding: 8px 16px; border: 1px solid var(--border, #ccc); border-radius: 20px; background: #fff; cursor: pointer; transition: 0.2s; font-weight: 500;} 
+    .tabs button.active { background: var(--accent, #007bff); border-color: var(--accent, #007bff); color: #fff; } 
+    .card { background: #fff; padding: 20px; border-radius: 8px; border: 1px solid var(--border, #eee); margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);}
     
     .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; align-items: end; margin-bottom: 15px; } 
     .form-group label { display: block; margin-bottom: 6px; font-weight: 500; font-size: 13px; color: #555; }
-    .form-control { width: 100%; padding: 8px 12px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
+    .form-control { width: 100%; padding: 8px 12px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; font-size: 14px;}
     
-    .error { color: #dc3545; margin-top: 10px; font-weight: 500; }
-    .success { color: #28a745; margin-top: 10px; font-weight: 500; }
+    .error { color: #721c24; background-color: #f8d7da; border: 1px solid #f5c6cb; padding: 10px; margin-bottom: 15px; border-radius: 4px; }
+    .success { color: #155724; background-color: #d4edda; border: 1px solid #c3e6cb; padding: 10px; margin-bottom: 15px; border-radius: 4px; }
     .actions { display: flex; gap: 10px; margin-top: 10px; }
     
     .table-container { overflow-x: auto; }
-    .data-table { width: 100%; border-collapse: collapse; background: #fff; }
+    .data-table { width: 100%; border-collapse: collapse; background: #fff; font-size: 14px; }
     .data-table th, .data-table td { padding: 12px; border: 1px solid #eee; text-align: left; }
-    .data-table th { background: #f8f9fa; font-weight: 600; }
+    .data-table th { background: #f8f9fa; font-weight: 600; color: #333; }
     .data-table tr { cursor: pointer; transition: background 0.15s; }
     .data-table tr:hover { background: #f1f1f1; }
-    .data-table tr.active-row { background: #e3f2fd; border-left: 3px solid var(--accent); }
+    .data-table tr.active-row { background: #e3f2fd; border-left: 3px solid var(--accent, #007bff); }
     
     .suggestions-dropdown {
       position: absolute; top: 100%; left: 0; right: 0; background: white;
@@ -158,236 +240,170 @@ interface TableDef {
 })
 export class AdminComponent implements OnInit {
   private admin = inject(AdminService);
-  isAdmin = signal<boolean>(true);
-  // Таблицы с настройками связей (type: 'select', refTable, refLabelKey)
+  
+  // Конфигурация справочников (Синхронизирована с новой БД и DTO)
   tables: TableDef[] = [
     {
-      endpoint: 'marks', title: 'Марки (MotoMarks)', fields: [
-        { key: 'mark', label: 'Марка (Название)', type: 'text', required: true }
+      endpoint: 'marks',
+      title: 'Марки мотоциклов',
+      fields: [
+        { key: 'mark', label: 'Марка', type: 'text', required: true }
       ]
     },
     {
-      endpoint: 'models', title: 'Модели (MotoModels)', fields: [
+      endpoint: 'models',
+      title: 'Модели',
+      fields: [
         { key: 'markId', label: 'Марка', type: 'select', refTable: 'marks', refLabelKey: 'mark', required: true },
-        { key: 'model', label: 'Модель (Название)', type: 'text', required: true }
+        { key: 'model', label: 'Модель', type: 'text', required: true }
       ]
     },
     {
-      endpoint: 'groups', title: 'Группы (ZipGroups)', fields: [
+      endpoint: 'groups',
+      title: 'Группы запчастей',
+      fields: [
         { key: 'groupName', label: 'Название группы', type: 'text', required: true }
       ]
     },
     {
-      endpoint: 'partnumbers', title: 'Парт-номера (PartNumbers)', fields: [
-        { key: 'partNumber', label: 'Парт-номер', type: 'text', required: true }
+      endpoint: 'part-numbers',
+      title: 'Парт-номера',
+      fields: [
+        { key: 'partNum', label: 'Парт-номер', type: 'text', required: true }
       ]
     },
     {
-      endpoint: 'zip', title: 'Запчасти (Zip)', fields: [
-        { key: 'name', label: 'Название запчасти', type: 'text', required: true },
-        { key: 'cost', label: 'Стоимость', type: 'number', required: true },
-        { key: 'countStored', label: 'Кол-во на складе', type: 'number', required: true },
-        { key: 'partNumberId', label: 'Парт-номер', type: 'select', refTable: 'partnumbers', refLabelKey: 'partNumber' },
+      endpoint: 'zip',
+      title: 'Запчасти (Номенклатура)',
+      fields: [
+        { key: 'name', label: 'Наименование', type: 'text', required: true },
+        { key: 'incomeCost', label: 'Закупочная цена', type: 'number', required: true },
+        { key: 'partNumId', label: 'Парт-номер', type: 'select', refTable: 'part-numbers', refLabelKey: 'partNum' },
         { key: 'markId', label: 'Марка', type: 'select', refTable: 'marks', refLabelKey: 'mark' },
         { key: 'modelId', label: 'Модель', type: 'select', refTable: 'models', refLabelKey: 'model' },
-        { key: 'groupId', label: 'Группа', type: 'select', refTable: 'groups', refLabelKey: 'groupName' },
-        { key: 'year', label: 'Год (числом)', type: 'number' },
-        { key: 'incomeMotoId', label: 'Мотоцикл-донор', type: 'select', refTable: 'incomemotos', refLabelKey: 'description', required: true }
+        { key: 'groupId', label: 'Группа запчастей', type: 'select', refTable: 'groups', refLabelKey: 'groupName' },
+        { key: 'countStored', label: 'Остаток на складе', type: 'number', required: true },
+        { key: 'year', label: 'Год выпуска (YYYY)', type: 'text' },
+        { key: 'incomeMotoId', label: 'ID Донора (IncomeMoto)', type: 'text', required: true }
       ]
     },
     {
-      endpoint: 'users', title: 'Пользователи (Users)', fields: [
+      endpoint: 'users',
+      title: 'Пользователи',
+      fields: [
         { key: 'email', label: 'Email', type: 'text', required: true },
         { key: 'fio', label: 'ФИО', type: 'text', required: true },
-        { key: 'phoneNumber', label: 'Номер телефона', type: 'text' },
+        { key: 'phoneNumber', label: 'Телефон', type: 'text' },
         { key: 'isAdmin', label: 'Администратор', type: 'checkbox' },
         { key: 'isRegistrar', label: 'Регистратор', type: 'checkbox' },
-        { key: 'isSender', label: 'Отправитель', type: 'checkbox' }
+        { key: 'isSender', label: 'Отправитель', type: 'checkbox' },
+        { key: 'password', label: 'Новый пароль', type: 'text' }
       ]
     },
     {
-      endpoint: 'addresses', title: 'Адреса (DeliveryAdressess)', fields: [
+      endpoint: 'addressess',
+      title: 'Адреса доставки',
+      fields: [
         { key: 'address', label: 'Адрес', type: 'text', required: true },
-        { key: 'postCode', label: 'Индекс', type: 'text' },
-        { key: 'userId', label: 'Пользователь (Email)', type: 'select', refTable: 'users', refLabelKey: 'email' }
+        { key: 'postCode', label: 'Почтовый индекс', type: 'text' },
+        { key: 'userId', label: 'Покупатель', type: 'select', refTable: 'users', refLabelKey: 'fio' }
       ]
     },
     {
-      endpoint: 'orders', title: 'Заказы (Orders)', fields: [
+      endpoint: 'orders',
+      title: 'Заказы',
+      fields: [
         { key: 'orderNumber', label: 'Номер заказа', type: 'text', required: true },
-        { key: 'countOrdered', label: 'Количество', type: 'number', required: true },
-        { key: 'nomenclatureId', label: 'Запчасть', type: 'select', refTable: 'zip', refLabelKey: 'name' },
-        { key: 'addressId', label: 'Адрес доставки', type: 'select', refTable: 'addresses', refLabelKey: 'address', required: true }
-      ]
-    },
-    {
-      endpoint: 'incomemotos', title: 'Мото-доноры (IncomeMoto)', fields: [
-        { key: 'description', label: 'Описание (Description)', type: 'text', required: true }
+        { key: 'countOrdered', label: 'Кол-во', type: 'number', required: true },
+        { key: 'nomenclatureId', label: 'Запчасть', type: 'select', refTable: 'zip', refLabelKey: 'name', required: true },
+        { key: 'addressId', label: 'Адрес доставки', type: 'select', refTable: 'addressess', refLabelKey: 'address', required: true },
+        { key: 'sellCost', label: 'Цена продажи', type: 'number', required: true },
+        { key: 'userId', label: 'Покупатель', type: 'select', refTable: 'users', refLabelKey: 'fio', required: true },
+        { key: 'discount', label: 'Скидка', type: 'number' },
+        { key: 'orderDateTime', label: 'Дата заказа', type: 'text' }
       ]
     }
   ];
 
   current = signal<TableDef | null>(null);
-  rows = signal<Record<string, any>[]>([]);
-  columns = signal<string[]>([]);
-  form: Record<string, any> = {};
-  error = signal('');
-  message = signal('');
-  busy = signal(false);
+  rows = signal<DynamicRow[]>([]); // Использование DynamicRow позволяет обращаться к r.id
+  references = signal<Record<string, any[]>>({});
 
-  // Для редактирования
-  selectedId = signal<number | string | null>(null);
+  selectedId = signal<any | null>(null);
+  form: Record<string, any> = {};
+
   activeField = signal<string | null>(null);
   fieldSuggestions = signal<string[]>([]);
 
-  // Хранилище справочников для подстановки имен вместо ID
-  references = signal<Record<string, any[]>>({});
+  busy = signal<boolean>(false);
+  message = signal<string>('');
+  error = signal<string>('');
 
-  isUserRoleMode = signal(false);
-  userSearchQuery = signal('');
-  foundUsers = signal<any[]>([]);
-
-  deleteRow(table: TableDef, id: any, $event?: Event) {
-    if ($event) {
-      $event.stopPropagation(); // Предотвращаем клик по всей строке таблицы
+  ngOnInit() {
+    this.loadAllReferences();
+    if (this.tables.length > 0) {
+      this.select(this.tables[0]);
     }
-
-    if (!this.isAdmin()) {
-      this.error.set('У вас нет прав для удаления записей');
-      return;
-    }
-
-    if (!confirm('Вы уверены, что хотите удалить эту запись?')) {
-      return;
-    }
-
-    this.busy.set(true);
-    this.error.set('');
-    this.message.set('');
-
-    this.admin.delete(table.endpoint, id).subscribe({
-      next: () => {
-        this.message.set('Запись успешно удалена');
-        this.busy.set(false);
-        if (this.selectedId() === id) {
-          this.cancelEdit();
-        }
-        this.reload(table);
-      },
-      error: (err) => {
-        this.error.set('Ошибка при удалении: ' + (err.error?.message || err.message));
-        this.busy.set(false);
-      }
-    });
   }
 
-  // Метод включения режима управления ролями
-  enableUserRoleMode() {
-    this.current.set(null); // Скрываем стандартные таблицы из текущего функционала
-    this.isUserRoleMode.set(true);
-    this.foundUsers.set([]);
-    this.userSearchQuery.set('');
-  }
+  loadAllReferences() {
+    const refEndpoints = ['marks', 'models', 'groups', 'part-numbers', 'users', 'addressess', 'zip'];
+    const loadedRefs: Record<string, any[]> = {};
 
-  // Обработка ввода в поиск
-  onSearchUsers(query: string) {
-    this.userSearchQuery.set(query);
-    if (query.length < 2) {
-      this.foundUsers.set([]);
-      return;
-    }
-    this.admin.searchUsers(query).subscribe(users => {
-      this.foundUsers.set(users);
-    });
-  }
-
-  // Сохранение ролей
-  saveUserRoles(user: any) {
-    this.busy.set(true);
-    this.admin.updateUserRoles(user.id, user.isSender, user.isRegistrar).subscribe({
-      next: () => {
-        this.busy.set(false);
-        this.message.set(`Права для ${user.email} успешно обновлены!`);
-        setTimeout(() => this.message.set(''), 3000);
-      },
-      error: (err) => {
-        this.busy.set(false);
-        this.error.set(err.error?.message || 'Ошибка при обновлении прав');
-      }
-    });
-  }
-
-  ngOnInit(): void {
-    // При запуске загружаем все основные таблицы, чтобы резолвить ID-шники
-    const endpointsToLoad = ['marks', 'models', 'groups', 'partnumbers', 'zip', 'users', 'addresses', 'incomemotos'];
-    endpointsToLoad.forEach(ep => {
-      this.admin.list(ep).subscribe(data => {
-        this.references.update(r => ({ ...r, [ep]: data }));
+    refEndpoints.forEach(endpoint => {
+      this.admin.list(endpoint).subscribe({
+        next: (data: any) => {
+          loadedRefs[endpoint] = Array.isArray(data) ? data : (data.items || []);
+          this.references.set({ ...this.references(), ...loadedRefs });
+        },
+        error: () => console.warn(`Не удалось загрузить справочник ${endpoint}`)
       });
     });
-
-    this.select(this.tables[0]);
   }
 
-  select(table: TableDef): void {
-    // this.current.set(table);
-    // this.cancelEdit();
-    // this.reload(table);
-    this.isUserRoleMode.set(false); // <--- Добавьте эту строку
-    this.current.set(table);
-    this.form = {};
+  getRefDisplay(field: FieldDef, val: any): string {
+    if (val === null || val === undefined || !field.refTable) return '—';
+    const list = this.references()[field.refTable];
+    if (!list || list.length === 0) return String(val);
+
+    const item = list.find(x => String(x.id) === String(val));
+    if (!item) return String(val);
+
+    return item[field.refLabelKey!] || item.name || item.mark || item.model || item.address || String(val);
+  }
+
+  select(t: TableDef) {
+    this.current.set(t);
+    this.cancelEdit();
+    this.reload(t);
+  }
+
+  reload(t: TableDef) {
+    this.busy.set(true);
     this.error.set('');
-    this.message.set('');
-    this.reload(table);
-  }
-
-  reload(table: TableDef): void {
-    this.admin.list(table.endpoint).subscribe({
-      next: (rows: any[]) => {
-        this.rows.set(rows);
-        this.columns.set(rows.length ? Object.keys(rows[0]) : []);
+    this.admin.list(t.endpoint).subscribe({
+      next: (data: any) => {
+        const items = Array.isArray(data) ? data : (data.items || []);
+        this.rows.set(items);
+        this.busy.set(false);
       },
-      error: (err) => this.error.set('Ошибка загрузки данных: ' + err.message)
+      error: (err) => {
+        this.error.set('Ошибка загрузки данных: ' + (err.error?.message || err.message));
+        this.busy.set(false);
+      }
     });
   }
 
-  // === ЛОГИКА ОТОБРАЖЕНИЯ ЧЕЛОВЕКОЧИТАЕМЫХ ДАННЫХ ===
-  getColLabel(col: string): string {
-    if (col === 'id') return 'ID';
-    const field = this.current()?.fields.find(f => f.key === col);
-    return field ? field.label : col;
-  }
-
-  getDisplayValue(col: string, val: any): any {
-    if (val == null) return '';
-    const field = this.current()?.fields.find(f => f.key === col);
-    // Если это поле со связью (select), заменяем ID на имя из загруженного справочника
-    if (field?.type === 'select' && field.refTable) {
-      const refData = this.references()[field.refTable];
-      if (refData) {
-        // Используем нестрогое равенство == на случай если ID пришел строкой (UUID), а в базе Guid
-        const item = refData.find((x: any) => x.id == val);
-        if (item) return item[field.refLabelKey!];
-      }
-    }
-    // Красивый вывод для булевых значений (isAdmin)
-    if (typeof val === 'boolean') return val ? 'Да' : 'Нет';
-    return val;
-  }
-
-  // === ЛОГИКА РЕДАКТИРОВАНИЯ ===
-  editRow(row: Record<string, any>) {
-    this.selectedId.set(row['id']);
+  editRow(row: any) {
+    this.selectedId.set(row.id);
     this.form = { ...row };
-    this.error.set('');
-    this.message.set('');
   }
 
   cancelEdit() {
     this.selectedId.set(null);
     this.form = {};
-    this.error.set('');
-    this.message.set('');
+    this.activeField.set(null);
+    this.fieldSuggestions.set([]);
   }
 
   save(table: TableDef) {
@@ -397,62 +413,59 @@ export class AdminComponent implements OnInit {
 
     const id = this.selectedId();
 
-    if (id) {
-      // Обновление (вызывает созданный вами PUT метод)
-      this.admin.update(table.endpoint, id, this.form).subscribe({
-        next: () => {
-          this.message.set('Запись успешно обновлена!');
-          this.busy.set(false);
-          this.cancelEdit();
-          this.reload(table);
-        },
-        error: (err) => {
-          this.error.set('Ошибка при обновлении: ' + (err.error?.message || err.message));
-          this.busy.set(false);
-        }
-      });
-    } else {
-      // Добавление
-      this.admin.add(table.endpoint, this.form).subscribe({
-        next: () => {
-          this.message.set('Запись успешно добавлена!');
-          this.busy.set(false);
-          this.cancelEdit();
-          this.reload(table);
-        },
-        error: (err) => {
-          this.error.set('Ошибка при добавлении: ' + (err.error?.message || err.message));
-          this.busy.set(false);
-        }
-      });
-    }
+    const request = id 
+      ? this.admin.update(table.endpoint, id, this.form)
+      : this.admin.add(table.endpoint, this.form);
+
+    request.subscribe({
+      next: () => {
+        this.message.set(id ? 'Запись успешно обновлена!' : 'Запись успешно добавлена!');
+        this.busy.set(false);
+        this.cancelEdit();
+        this.reload(table);
+        this.loadAllReferences();
+      },
+      error: (err) => {
+        this.error.set('Ошибка сохранения: ' + (err.error?.message || err.message));
+        this.busy.set(false);
+      }
+    });
   }
 
-  // === ЛОГИКА АВТОПОДСКАЗОК ПО ЯЧЕЙКАМ (Для текста) ===
+  remove(table: TableDef, id: any) {
+    if (!confirm('Вы уверены, что хотите удалить эту запись?')) return;
+
+    this.busy.set(true);
+    this.admin.delete(table.endpoint, id).subscribe({
+      next: () => {
+        this.message.set('Запись удалена');
+        this.reload(table);
+        this.loadAllReferences();
+      },
+      error: (err) => {
+        this.error.set('Ошибка при удалении: ' + (err.error?.message || err.message));
+        this.busy.set(false);
+      }
+    });
+  }
+
   onFieldInput(key: string, value: string) {
     this.form[key] = value;
-
-    if (value && value.trim().length > 0) {
+    if (value && typeof value === 'string' && value.trim().length > 0) {
       this.activeField.set(key);
       const allValues = this.rows()
         .map(row => row[key])
         .filter(val => typeof val === 'string' && val.toLowerCase().includes(value.toLowerCase()));
 
-      const uniqueValues = [...new Set(allValues)].slice(0, 8);
+      const uniqueValues = Array.from(new Set(allValues)).slice(0, 5);
       this.fieldSuggestions.set(uniqueValues);
     } else {
-      this.activeField.set(null);
       this.fieldSuggestions.set([]);
     }
   }
 
-  selectSuggestion(key: string, suggestion: string) {
-    this.form[key] = suggestion;
-    this.activeField.set(null);
-    this.fieldSuggestions.set([]);
-  }
-
-  hideSuggestions() {
+  applySuggestion(key: string, value: string) {
+    this.form[key] = value;
     this.activeField.set(null);
     this.fieldSuggestions.set([]);
   }
