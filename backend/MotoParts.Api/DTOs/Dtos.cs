@@ -9,7 +9,7 @@ public record ForgotPasswordRequest(string Email);
 public record ResetPasswordRequest(string Email, string Token, string NewPassword);
 public record AuthResponse(string Token, UserDto User);
 
-public record UserDto(int Id, string Email, string FIO, string? PhoneNumber, bool IsAdmin, bool IsRegistrar , bool IsSender);
+public record UserDto(int Id, string Email, string FIO, string? PhoneNumber, bool IsAdmin, bool IsRegistrar, bool IsSender);
 
 // ---------- Catalog ----------
 public record ZipDto(
@@ -40,7 +40,20 @@ public record OrderDto(
     decimal? ZipCost,
     string Address,
     //string? PaymentStatus,
-    decimal? SellCost);
+    decimal? SellCost,
+    string? Discount);
+
+public record GuestCreateOrderRequest(
+    Guid ZipId,
+    int Count,
+    string Fio,
+    string Email,
+    string Phone,
+    string? Password,
+    string Address,
+    string? PostCode,
+    string? Promo
+    );
 
 // ---------- Adresses ----------
 public record CreateAddressRequest(string Address, string? PostCode);

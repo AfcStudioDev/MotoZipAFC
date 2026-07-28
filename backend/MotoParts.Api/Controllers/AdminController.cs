@@ -72,11 +72,11 @@ public class AdminController(AppDbContext db) : ControllerBase
     }
 
     // ---------- PartNumbers ----------
-    [HttpGet("partnumbers")]
+    [HttpGet("part-numbers")]
     public async Task<IActionResult> PartNumbers() =>
         Ok(await db.PartNumbers.OrderBy(p => p.Id).Select(p => new { p.Id, p.PartNum }).ToListAsync());
 
-    [HttpPost("partnumbers")]
+    [HttpPost("part-numbers")]
     public async Task<IActionResult> AddPartNumber(AdminPartNumberRequest request)
     {
         if (string.IsNullOrWhiteSpace(request.PartNum))
@@ -167,8 +167,8 @@ public class AdminController(AppDbContext db) : ControllerBase
     }
 
     // ---------- DeliveryAdresses ----------
-    [HttpGet("addresses")]
-    public async Task<IActionResult> Addresses() =>
+    [HttpGet("addressess")]
+    public async Task<IActionResult> Addressess() =>
         Ok(await db.DeliveryAddressess.OrderBy(a => a.Id) // Исправлено на DeliveryAddressess
             .Select(a => new
             {
@@ -180,7 +180,7 @@ public class AdminController(AppDbContext db) : ControllerBase
             })
             .ToListAsync());
 
-    [HttpPost("addresses")]
+    [HttpPost("addressess")]
     public async Task<IActionResult> AddAddress(AdminAddressRequest request)
     {
         if (string.IsNullOrWhiteSpace(request.Address))
@@ -239,6 +239,7 @@ public class AdminController(AppDbContext db) : ControllerBase
             NomenclatureId = request.NomenclatureId,
             AddressId = request.AddressId,
             OrderDateTime = request.OrderDateTime ?? DateTimeOffset.UtcNow,
+            Discount = request.Discount
         };
         db.Orders.Add(order);
         await db.SaveChangesAsync();
@@ -489,7 +490,7 @@ public class AdminController(AppDbContext db) : ControllerBase
                 db.Users.Remove(user);
                 break;
 
-            case "adresses":
+            case "addressess":
                 var address = await db.DeliveryAddressess.FindAsync(int.Parse(id)); // Исправлено на DeliveryAddressess
                 if (address == null) return NotFound();
                 db.DeliveryAddressess.Remove(address);
