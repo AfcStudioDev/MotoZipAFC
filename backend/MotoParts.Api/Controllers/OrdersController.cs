@@ -154,11 +154,14 @@ public class OrdersController(AppDbContext db) : ControllerBase
             UserId = user.Id
         };
         db.Orders.Add(order);
-
+        var incomeMoto = await db.IncomeMotos.FirstOrDefaultAsync(x=>x.Id == zip.IncomeMotoId);
         // 5. Добавляем запись в таблицу Log
         var logEntry = new Log
         {
-            Description = $"В {DateTimeOffset.UtcNow} был создан заказ {order.OrderNumber} для пользователя {user.PhoneNumber} по цене {zip.SellCost}.",
+            Description = $"{DateTimeOffset.UtcNow} был создан заказ {order.OrderNumber} " +
+                            $"для пользователя {user.PhoneNumber}:{user.FIO} " +
+                            $"по цене {zip.SellCost} в количстве {order.CountOrdered}шт." +
+                            $"Деталь {zip.Name} взята с мотоцикла {incomeMoto.Description}",
             OrderId = order.Id
         };
         db.Logs.Add(logEntry);
