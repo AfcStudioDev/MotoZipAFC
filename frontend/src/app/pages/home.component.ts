@@ -6,13 +6,14 @@ import { CatalogService, SearchFilters } from '../core/catalog.service';
 import { OrdersService } from '../core/orders.service';
 import { AuthService } from '../core/auth.service';
 import { AddressDto, GroupDto, MarkDto, ModelDto, PagedResult, ZipDto } from '../core/models';
-import { NgxMaskDirective } from 'ngx-mask'; // Импорт маски
+import { NgxMaskDirective } from 'ngx-mask';
 import { Subject, of } from 'rxjs';
 import { debounceTime, distinctUntilChanged, switchMap, catchError } from 'rxjs/operators';
 
+
 @Component({
   selector: 'app-home',
-  // ДОБАВЛЕНО: NgxMaskDirective в массив imports
+  styleUrls: ['../styles/home.component.css'],
   imports: [FormsModule, CurrencyPipe, NgxMaskDirective],
   template: `
     <section class="search-panel card">
@@ -76,7 +77,7 @@ import { debounceTime, distinctUntilChanged, switchMap, catchError } from 'rxjs/
         <p class="muted">Найдено: {{ r.total }}</p>
         <div class="grid">
           @for (zip of r.items; track zip.id) {
-            <div class="card zip-card">
+            <div class="card zip-card" (click)="openDetails(zip)">
               <h3>{{ zip.name }}</h3>
               <p class="muted">
                 @if (zip.mark) { <span>{{ zip.mark }}</span> }
@@ -88,7 +89,7 @@ import { debounceTime, distinctUntilChanged, switchMap, catchError } from 'rxjs/
               <div class="zip-footer">
                 <span class="price">{{ zip.incomeCost | currency:'RUB':'symbol-narrow':'1.0-0' }}</span>
                 @if (zip.countStored > 0) {
-                  <button class="btn" (click)="openBuy(zip)">Купить</button>
+                  <button class="btn" (click)="$event.stopPropagation(); openBuy(zip)">Купить</button>
                 } @else {
                   <span class="muted">Нет в наличии</span>
                 }
@@ -140,126 +141,102 @@ import { debounceTime, distinctUntilChanged, switchMap, catchError } from 'rxjs/
         </div>
       </div>
     }
+
     @if (isGuestBuying(); as guestZip) {
-    <div class="modal-backdrop">
-      <div class="modal-content" style="max-width: 500px; padding: 20px;">
-        <h3>Оформление заказа</h3>
-        <p>Вы покупаете: <strong>{{ guestZip.name }}</strong></p>
+      <div class="modal-backdrop">
+        <div class="modal-content">
+          <h3>Оформление заказа</h3>
+          <p>Вы покупаете: <strong>{{ guestZip.name }}</strong></p>
 
-        @if (buyError()) {
-          <div class="alert alert-danger">{{ buyError() }}</div>
-        }
+          @if (buyError()) {
+            <div class="alert alert-danger">{{ buyError() }}</div>
+          }
 
-        <div class="form-group mb-2">
-          <label>ФИО</label>
-          <input type="text" class="form-control" [(ngModel)]="guestForm.fio" placeholder="Иванов Иван Иванович">
-        </div>
+          <div class="form-group mb-2">
+            <label>ФИО</label>
+            <input type="text" class="form-control" [(ngModel)]="guestForm.fio" placeholder="Иванов Иван Иванович">
+          </div>
 
-        <div class="form-group mb-2">
-          <label>Email</label>
-          <input type="email" class="form-control" [(ngModel)]="guestForm.email" placeholder="example@mail.ru">
-        </div>
+          <div class="form-group mb-2">
+            <label>Email</label>
+            <input type="email" class="form-control" [(ngModel)]="guestForm.email" placeholder="example@mail.ru">
+          </div>
 
-        <div class="form-group mb-2">
-          <label>Телефон</label>
-          <input type="text" class="form-control" [(ngModel)]="guestForm.phone" mask="+0 (000) 000-00-00" placeholder="+7 (999) 000-00-00">
-        </div>
+          <div class="form-group mb-2">
+            <label>Телефон</label>
+            <input type="text" class="form-control" [(ngModel)]="guestForm.phone" mask="+0 (000) 000-00-00" placeholder="+7 (999) 000-00-00">
+          </div>
 
-        <div class="form-group mb-2">
-          <label>Пароль для личного кабинета <small class="text-muted">(если заказываете в первый раз)</small></label>
-          <input type="password" class="form-control" [(ngModel)]="guestForm.password">
-        </div>
+          <div class="form-group mb-2">
+            <label>Пароль для личного кабинета <small class="text-muted">(если заказываете в первый раз)</small></label>
+            <input type="password" class="form-control" [(ngModel)]="guestForm.password">
+          </div>
 
-        <div class="form-group mb-2">
-          <label>Адрес доставки</label>
-          <input type="text" class="form-control" [(ngModel)]="guestForm.address" placeholder="г. Москва, ул. Пушкина, д. 1">
-        </div>
+          <div class="form-group mb-2">
+            <label>Адрес доставки</label>
+            <input type="text" class="form-control" [(ngModel)]="guestForm.address" placeholder="г. Москва, ул. Пушкина, д. 1">
+          </div>
 
-        <div class="form-group mb-2">
-          <label>Почтовый индекс</label>
-          <input type="text" class="form-control" [(ngModel)]="guestForm.postCode" placeholder="123456">
-        </div>
+          <div class="form-group mb-2">
+            <label>Почтовый индекс</label>
+            <input type="text" class="form-control" [(ngModel)]="guestForm.postCode" placeholder="123456">
+          </div>
 
-        <div class="form-group mb-3">
-          <label>Количество</label>
-          <input type="number" class="form-control" [(ngModel)]="guestForm.count" min="1">
-        </div>
+          <div class="form-group mb-3">
+            <label>Количество</label>
+            <input type="number" class="form-control" [(ngModel)]="guestForm.count" min="1">
+          </div>
 
-        <div class="d-flex gap-2 justify-content-end">
-          <button class="btn btn-secondary" (click)="closeBuy()" [disabled]="busy()">Отмена</button>
-          <button class="btn btn-primary" (click)="confirmGuestBuy(guestZip)" [disabled]="busy() || !guestForm.fio || !guestForm.phone || !guestForm.address">
-            @if (busy()) { Загрузка... } @else { Подтвердить и перейти к оплате }
-          </button>
+          <div class="d-flex gap-2 justify-content-end">
+            <button class="btn btn-secondary" (click)="closeBuy()" [disabled]="busy()">Отмена</button>
+            <button class="btn btn-primary" (click)="confirmGuestBuy(guestZip)" [disabled]="busy() || !guestForm.fio || !guestForm.phone || !guestForm.address">
+              @if (busy()) { Загрузка... } @else { Подтвердить и перейти к оплате }
+            </button>
+          </div>
         </div>
       </div>
-    </div>
-  }
-  `,
-  changeDetection: ChangeDetectionStrategy.Eager,
-  styles: [`
-    .search-panel { margin-bottom: 24px; }
-    .search-row { display: flex; gap: 10px; margin-bottom: 14px; }
-    .search-row input { flex: 1; }
-    .filters {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
-      gap: 10px;
     }
-    .grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-      gap: 16px;
-    }
-    .zip-card h3 { font-size: 16px; margin-bottom: 8px; }
-    .pn { font-family: monospace; font-size: 13px; }
-    .zip-footer {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-top: 12px;
-    }
-    .price { font-size: 18px; font-weight: 700; }
-    .modal-backdrop {
-      position: fixed; inset: 0;
-      background: rgba(0,0,0,.4);
-      display: flex; align-items: center; justify-content: center;
-      z-index: 100;
-    }
-    .modal { width: 420px; max-width: 92vw; }
-    .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; }
 
-    /* ДОБАВЛЕНО: Стили для выпадающего списка предложений */
-    .suggestions-dropdown {
-      position: absolute;
-      top: 100%;
-      left: 0;
-      right: 90px; /* Оставляем место под кнопку Найти */
-      background: white;
-      border: 1px solid #ccc;
-      border-radius: 4px;
-      list-style: none;
-      padding: 0;
-      margin: 4px 0 0 0;
-      z-index: 1000;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-      max-height: 250px;
-      overflow-y: auto;
+    @if (selectedZip(); as zip) {
+      <div class="modal-backdrop" (click)="onBackdropClick($event)">
+        <div class="modal-content item-details-modal">
+          <button class="close-btn" (click)="closeDetails()">&times;</button>
+          
+          <h3 class="mb-3">{{ zip.name }}</h3>
+          
+          <div class="details-info">
+            <p><strong>Марка:</strong> {{ zip.mark || 'Не указана' }}</p>
+            <p><strong>Модель:</strong> {{ zip.model || 'Не указана' }}</p>
+            <p><strong>Группа:</strong> {{ zip.group || 'Не указана' }}</p>
+            <p><strong>Год:</strong> {{ zip.year || 'Не указан' }}</p>
+            <p><strong>Парт-номер:</strong> {{ zip.partNumber || 'Не указан' }}</p>
+            <h4 class="mt-3 text-primary">Цена: {{ zip.incomeCost | currency:'RUB':'symbol':'1.0-0':'ru' }}</h4>
+          </div>
+
+          <div class="gallery mt-4">
+            <p class="text-muted mb-2">Фотографии:</p>
+            <div class="d-flex gap-2" style="overflow-x: auto;">
+              @for (photo of getZipPhotos(zip.id); track photo) {
+                <img 
+                  [src]="photo" 
+                  alt="Фото запчасти {{ zip.name }}" 
+                  class="gallery-img" 
+                  (error)="onImageError($event)">
+              }
+            </div>
+          </div>
+
+          <div class="d-flex justify-content-end mt-4">
+            <button class="btn btn-secondary me-2" (click)="closeDetails()">Закрыть</button>
+            <button class="btn btn-success" (click)="openBuy(zip); closeDetails()">Купить</button>
+          </div>
+        </div>
+      </div>    
     }
-    .suggestions-dropdown li {
-      padding: 10px 14px;
-      cursor: pointer;
-      border-bottom: 1px solid #f0f0f0;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-    .suggestions-dropdown li:hover {
-      background: #f8f9fa;
-    }
-    .suggestion-name { font-weight: 500; }
-    .suggestion-pn { font-size: 0.85em; }
-  `]
+  `,
+  changeDetection: ChangeDetectionStrategy.Eager
 })
+
 export class HomeComponent implements OnInit {
   // ДОБАВЛЕНО: Сигнал и сабжект для автопредложений
   suggestions = signal<ZipDto[]>([]);
@@ -296,6 +273,45 @@ export class HomeComponent implements OnInit {
   count: 1
 };
 isGuestBuying = signal<ZipDto | null>(null);
+
+selectedZip = signal<ZipDto | null>(null);
+
+// Открыть информацию о товаре
+openDetails(zip: ZipDto): void {
+  this.selectedZip.set(zip);
+}
+
+// Закрыть информацию о товаре
+closeDetails(): void {
+  this.selectedZip.set(null);
+}
+
+// Закрытие при клике на затемненный фон (вне окна)
+onBackdropClick(event: MouseEvent): void {
+  // Проверяем, что клик был именно по фону, а не по самому окну внутри
+  if ((event.target as HTMLElement).classList.contains('modal-backdrop')) {
+    this.closeDetails();
+  }
+}
+
+// Метод для получения путей к 3 фотографиям
+getZipPhotos(zipId: string): string[] {
+  // Укажите здесь базовый URL вашего бэкенда, который раздает статику.
+  // Например, если бэкенд работает на порту 5000:
+  const baseUrl = 'http://localhost:5000/ZipPhotos'; 
+  
+  return [
+    `${baseUrl}/${zipId}_1.jpg`,
+    `${baseUrl}/${zipId}_2.jpg`,
+    `${baseUrl}/${zipId}_3.jpg`
+  ];
+}
+
+// Если фото не найдено (например, их только 1 или 2), скрываем сломанную картинку
+onImageError(event: Event): void {
+  (event.target as HTMLImageElement).style.display = 'none';
+}
+
 
   ngOnInit(): void {
     // ДОБАВЛЕНО: Логика обработки ввода для автопредложений
