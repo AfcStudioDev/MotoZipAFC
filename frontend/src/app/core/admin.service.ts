@@ -89,6 +89,10 @@ export class AdminService {
     return this.http.delete(`${this.api}/${endpoint}/${id}`);
   }
 
+  deleteZipPhoto(photoId: number) {
+    return this.http.delete(`${this.api}/zip-photos/${photoId}`);
+  }
+
   // Sender
   getSenderOrders(): Observable<any[]> {
     return this.http.get<any[]>(`${environment.apiUrl}/sender/orders`);

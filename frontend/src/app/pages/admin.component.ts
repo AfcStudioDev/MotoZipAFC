@@ -2,6 +2,13 @@ import { Component, OnInit, inject, signal, ChangeDetectionStrategy } from '@ang
 import { FormsModule } from '@angular/forms';
 import { CommonModule, JsonPipe } from '@angular/common';
 import { AdminService } from '../core/admin.service';
+import { environment } from '../../environments/environment';
+
+interface ZipPhotoRow {
+  id: number;
+  fileName: string;
+  isMain: boolean;
+}
 
 interface FieldDef {
   key: string;
@@ -130,7 +137,24 @@ interface DynamicRow {
                 </div>
               }
                 @if (table.endpoint === 'zip') {
-                  <div style="margin-top: 15px;">
+                  <div class="photo-section">
+                    @if (selectedId() && existingPhotos().length > 0) {
+                      <label>Загруженные фотографии:</label>
+                      <div class="photo-preview-list">
+                        @for (photo of existingPhotos(); track photo.id) {
+                          <div class="photo-preview-item">
+                            <img
+                              [src]="photoBaseUrl + photo.fileName"
+                              [alt]="photo.fileName"
+                            >
+                            <button type="button" (click)="deleteExistingPhoto(photo)">
+                              Удалить
+                            </button>
+                          </div>
+                        }
+                      </div>
+                    }
+
                     <label>Фотографии (Максимум 3):</label>
                     <input type="file" multiple accept="image/jpeg, image/png" (change)="onFileSelected($event)" [disabled]="selectedFiles().length >= 3">
 
@@ -235,6 +259,9 @@ export class AdminComponent implements OnInit {
   private admin = inject(AdminService);
   // Сигнал или обычный массив для хранения выбранных файлов
   selectedFiles = signal<File[]>([]);
+  // Уже загруженные фотографии выбранной запчасти
+  existingPhotos = signal<ZipPhotoRow[]>([]);
+  photoBaseUrl = `${environment.apiUrl.replace('/api', '')}/ZipPhotos/`;
 
 
 
@@ -394,6 +421,8 @@ export class AdminComponent implements OnInit {
   editRow(row: any) {
     this.selectedId.set(row.id);
     this.form = { ...row };
+    this.selectedFiles.set([]);
+    this.existingPhotos.set(Array.isArray(row.photos) ? row.photos : []);
   }
 
   cancelEdit() {
@@ -402,6 +431,7 @@ export class AdminComponent implements OnInit {
     this.activeField.set(null);
     this.fieldSuggestions.set([]);
     this.selectedFiles.set([]);
+    this.existingPhotos.set([]);
   }
 
   save(table: TableDef) {
@@ -498,6 +528,20 @@ export class AdminComponent implements OnInit {
     const currentFiles = this.selectedFiles();
     currentFiles.splice(index, 1);
     this.selectedFiles.set([...currentFiles]);
+  }
+
+  deleteExistingPhoto(photo: ZipPhotoRow) {
+    if (!confirm('Удалить эту фотографию?')) return;
+
+    this.admin.deleteZipPhoto(photo.id).subscribe({
+      next: () => {
+        this.existingPhotos.set(this.existingPhotos().filter(p => p.id !== photo.id));
+        this.message.set('Фотография удалена');
+      },
+      error: (err) => {
+        this.error.set('Ошибка при удалении фотографии: ' + (err.error?.message || err.message));
+      }
+    });
   }
   //#endregion
 }
