@@ -217,7 +217,7 @@
 }
 
 .lightbox-img.zoomed {
-  transform: scale(1.5);
+  transform: scale(2);
 
   cursor: zoom-out;
 }

@@ -79,6 +79,48 @@
     border-radius: 4px;
 }
 
+.photo-section {
+    grid-column: 1 / -1;
+    margin-top: 15px;
+}
+
+.photo-preview-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin: 10px 0 15px;
+}
+
+.photo-preview-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 84px;
+}
+
+.photo-preview-item img {
+    width: 80px;
+    height: 80px;
+    object-fit: cover;
+    border-radius: 4px;
+    border: 1px solid #ddd;
+    display: block;
+}
+
+.photo-preview-item button {
+    margin-top: 4px;
+    color: #dc3545;
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 12px;
+    padding: 2px 4px;
+}
+
+.photo-preview-item button:hover {
+    text-decoration: underline;
+}
+
 .actions {
     display: flex;
     gap: 10px;
