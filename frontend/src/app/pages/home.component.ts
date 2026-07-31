@@ -9,7 +9,8 @@ import { AddressDto, GroupDto, MarkDto, ModelDto, PagedResult, ZipDto } from '..
 import { NgxMaskDirective } from 'ngx-mask';
 import { Subject, of } from 'rxjs';
 import { debounceTime, distinctUntilChanged, switchMap, catchError } from 'rxjs/operators';
-
+import { environment } from '../../environments/environment';
+import { ChangeDetectorRef } from '@angular/core';
 
 @Component({
   selector: 'app-home',
@@ -78,6 +79,12 @@ import { debounceTime, distinctUntilChanged, switchMap, catchError } from 'rxjs/
         <div class="grid">
           @for (zip of r.items; track zip.id) {
             <div class="card zip-card" (click)="openDetails(zip)">
+              <img
+                [src]="'http://localhost:5000/ZipPhotos/' + zip.id + '_0.jpg'"
+                alt="{{ zip.name }}"
+                class="product-image"
+              >
+
               <h3>{{ zip.name }}</h3>
               <p class="muted">
                 @if (zip.mark) { <span>{{ zip.mark }}</span> }
@@ -197,6 +204,7 @@ import { debounceTime, distinctUntilChanged, switchMap, catchError } from 'rxjs/
       </div>
     }
 
+    <!--Модальное окно товара-->
     @if (selectedZip(); as zip) {
       <div class="modal-backdrop" (click)="onBackdropClick($event)">
         <div class="modal-content item-details-modal">
@@ -221,7 +229,10 @@ import { debounceTime, distinctUntilChanged, switchMap, catchError } from 'rxjs/
                   [src]="photo" 
                   alt="Фото запчасти {{ zip.name }}" 
                   class="gallery-img" 
-                  (error)="onImageError($event)">
+                  (error)="onImageError($event)"
+                  (click)="openImage(photo)"
+                  style="cursor: pointer;"
+                  title="Нажмите для увеличения">
               }
             </div>
           </div>
@@ -231,21 +242,36 @@ import { debounceTime, distinctUntilChanged, switchMap, catchError } from 'rxjs/
             <button class="btn btn-success" (click)="openBuy(zip); closeDetails()">Купить</button>
           </div>
         </div>
-      </div>    
-    }
+      </div>
+
+      <!--Открытие изображения крупным планом при клике-->
+      @if (expandedImage(); as imgUrl) {
+        <div class="image-lightbox-backdrop" (click)="closeImage()" (mousemove)="onMouseMove($event)">
+          <button class="lightbox-close-btn" (click)="closeImage()">&times;</button>
+          <img [src]="imgUrl" class="lightbox-img" [class.zoomed]="isZoomed()" [style.transform-origin]="zoomOrigin()" (click)="toggleZoom($event)" alt="Крупное фото">
+        </div>
+      }
+}
   `,
   changeDetection: ChangeDetectionStrategy.Eager
 })
 
 export class HomeComponent implements OnInit {
+  public photoBaseUrl = `${environment.apiUrl.replace('/api', '')}/ZipPhotos/`;
   // ДОБАВЛЕНО: Сигнал и сабжект для автопредложений
   suggestions = signal<ZipDto[]>([]);
+  expandedImage = signal<string | null>(null);
+
   private searchSubject = new Subject<string>();
 
   private catalog = inject(CatalogService);
   private orders = inject(OrdersService);
   private auth = inject(AuthService);
-  private router = inject(Router);
+  private cdr = inject(ChangeDetectorRef);
+
+  // Добавляем новые сигналы в класс компонента
+  isZoomed = signal(false);
+  zoomOrigin = signal('50% 50%'); // По умолчанию центр
 
   filters: SearchFilters = {};
   marks = signal<MarkDto[]>([]);
@@ -264,53 +290,54 @@ export class HomeComponent implements OnInit {
 
   // Для заказа без регистрации
   guestForm = {
-  fio: '',
-  email: '',
-  phone: '',
-  password: '',
-  address: '',
-  postCode: '',
-  count: 1
-};
-isGuestBuying = signal<ZipDto | null>(null);
+    fio: '',
+    email: '',
+    phone: '',
+    password: '',
+    address: '',
+    postCode: '',
+    count: 1
+  };
+  isGuestBuying = signal<ZipDto | null>(null);
 
-selectedZip = signal<ZipDto | null>(null);
+  selectedZip = signal<ZipDto | null>(null);
 
-// Открыть информацию о товаре
-openDetails(zip: ZipDto): void {
-  this.selectedZip.set(zip);
-}
-
-// Закрыть информацию о товаре
-closeDetails(): void {
-  this.selectedZip.set(null);
-}
-
-// Закрытие при клике на затемненный фон (вне окна)
-onBackdropClick(event: MouseEvent): void {
-  // Проверяем, что клик был именно по фону, а не по самому окну внутри
-  if ((event.target as HTMLElement).classList.contains('modal-backdrop')) {
-    this.closeDetails();
+  // Открыть информацию о товаре
+  openDetails(zip: ZipDto): void {
+    this.selectedZip.set(zip);
+    this.cdr.detectChanges();
   }
-}
 
-// Метод для получения путей к 3 фотографиям
-getZipPhotos(zipId: string): string[] {
-  // Укажите здесь базовый URL вашего бэкенда, который раздает статику.
-  // Например, если бэкенд работает на порту 5000:
-  const baseUrl = 'http://localhost:5000/ZipPhotos'; 
-  
-  return [
-    `${baseUrl}/${zipId}_1.jpg`,
-    `${baseUrl}/${zipId}_2.jpg`,
-    `${baseUrl}/${zipId}_3.jpg`
-  ];
-}
+  // Закрыть информацию о товаре
+  closeDetails(): void {
+    this.selectedZip.set(null);
+  }
 
-// Если фото не найдено (например, их только 1 или 2), скрываем сломанную картинку
-onImageError(event: Event): void {
-  (event.target as HTMLImageElement).style.display = 'none';
-}
+  // Закрытие при клике на затемненный фон (вне окна)
+  onBackdropClick(event: MouseEvent): void {
+    // Проверяем, что клик был именно по фону, а не по самому окну внутри
+    if ((event.target as HTMLElement).classList.contains('modal-backdrop')) {
+      this.closeDetails();
+    }
+  }
+
+  // Метод для получения путей к 3 фотографиям
+  getZipPhotos(zipId: string): string[] {
+    // Укажите здесь базовый URL вашего бэкенда, который раздает статику.
+    // Например, если бэкенд работает на порту 5000:
+    const baseUrl = 'http://localhost:5000/ZipPhotos';
+
+    return [
+      `${baseUrl}/${zipId}_0.jpg`,
+      `${baseUrl}/${zipId}_1.jpg`,
+      `${baseUrl}/${zipId}_2.jpg`
+    ];
+  }
+
+  // Если фото не найдено (например, их только 1 или 2), скрываем сломанную картинку
+  onImageError(event: Event): void {
+    (event.target as HTMLImageElement).style.display = 'none';
+  }
 
 
   ngOnInit(): void {
@@ -389,34 +416,34 @@ onImageError(event: Event): void {
   //   });
   // }
 
-  openBuy(zip: ZipDto): void { 
+  openBuy(zip: ZipDto): void {
     if (!this.auth.isLoggedIn) {
       // Если не авторизован - открываем окно гостевой покупки
       this.buyError.set('');
       this.guestForm = { fio: '', email: '', phone: '', password: '', address: '', postCode: '', count: 1 };
       this.isGuestBuying.set(zip);
-      return; 
-    } 
-    
+      return;
+    }
+
     // Существующая логика для авторизованного пользователя
-    this.buyError.set(''); 
-    this.buyCount = 1; 
-    this.newAddress = ''; 
+    this.buyError.set('');
+    this.buyCount = 1;
+    this.newAddress = '';
     this.buying.set(zip);
-    
-    this.orders.addressess().subscribe(a => { 
+
+    this.orders.addressess().subscribe(a => {
       this.addressess.set(a);
-      this.buyAddressId = a[0]?.id; 
-    }); 
+      this.buyAddressId = a[0]?.id;
+    });
   }
 
-  closeBuy(): void { 
-    this.buying.set(null); 
+  closeBuy(): void {
+    this.buying.set(null);
     this.isGuestBuying.set(null);
   }
 
   confirmGuestBuy(zip: ZipDto): void {
-    this.buyError.set(''); 
+    this.buyError.set('');
     this.busy.set(true);
 
     const requestData = {
@@ -434,16 +461,16 @@ onImageError(event: Event): void {
       next: order => {
         // Существующая логика запуска оплаты
         const returnUrl = `${location.origin}/payment-result/${order.id}`;
-        this.orders.createPayment(order.id, returnUrl).subscribe({ 
-          next: p => { location.href = p.confirmationUrl; }, 
+        this.orders.createPayment(order.id, returnUrl).subscribe({
+          next: p => { location.href = p.confirmationUrl; },
           error: err => {
-            this.busy.set(false); 
-            this.buyError.set(err.error?.message ?? 'Заказ создан, но оплату запустить не удалось.'); 
-          } 
-        }); 
+            this.busy.set(false);
+            this.buyError.set(err.error?.message ?? 'Заказ создан, но оплату запустить не удалось.');
+          }
+        });
       },
       error: err => {
-        this.busy.set(false); 
+        this.busy.set(false);
         this.buyError.set(err.error?.message ?? 'Не удалось создать заказ');
       }
     });
@@ -490,5 +517,47 @@ onImageError(event: Event): void {
       this.busy.set(false);
       this.buyError.set('Укажите адрес доставки');
     }
+  }
+
+  openImage(photoUrl: string) {
+    this.expandedImage.set(photoUrl);
+  }
+
+  // closeImage() {
+  //   this.expandedImage.set(null);
+  // }
+
+  // Дополнительное приближение открытой картинки на 50%
+  // Метод для клика по самой картинке
+  toggleZoom(event: MouseEvent) {
+    event.stopPropagation(); // Чтобы клик не передался оверлею и не закрыл окно
+    this.isZoomed.update(z => !z);
+
+    if (this.isZoomed()) {
+      this.calculateZoomOrigin(event);
+    } else {
+      this.zoomOrigin.set('50% 50%'); // Сбрасываем позицию при отдалении
+    }
+  }
+
+  // Метод для отслеживания движения мыши
+  onMouseMove(event: MouseEvent) {
+    if (this.isZoomed()) {
+      this.calculateZoomOrigin(event);
+    }
+  }
+
+  // Вычисление координат в процентах относительно экрана
+  private calculateZoomOrigin(event: MouseEvent) {
+    const x = (event.clientX / window.innerWidth) * 100;
+    const y = (event.clientY / window.innerHeight) * 100;
+    this.zoomOrigin.set(`${x}% ${y}%`);
+  }
+
+  // Обновите ваш метод закрытия картинки, чтобы сбрасывать зум
+  closeImage() {
+    this.expandedImage.set(null); // У вас может называться иначе
+    this.isZoomed.set(false);
+    this.zoomOrigin.set('50% 50%');
   }
 }

@@ -29,6 +29,7 @@ interface DynamicRow {
   standalone: true,
   imports: [FormsModule, CommonModule, JsonPipe],
   changeDetection: ChangeDetectionStrategy.OnPush,
+    styleUrls: ['../styles/admin.component.css'],
   template: `
     <div class="admin-container">
       <h2>Панель администратора</h2>
@@ -105,12 +106,12 @@ interface DynamicRow {
                         </option>
                       }
                     </select>
-                  } 
+                  }
                   @else {
-                    <input 
-                      type="text" 
-                      class="form-control" 
-                      [(ngModel)]="form[f.key]" 
+                    <input
+                      type="text"
+                      class="form-control"
+                      [(ngModel)]="form[f.key]"
                       [name]="f.key"
                       (input)="onFieldInput(f.key, form[f.key])"
                       (focus)="onFieldInput(f.key, form[f.key])"
@@ -128,6 +129,27 @@ interface DynamicRow {
                   }
                 </div>
               }
+                @if (table.endpoint === 'zip') {
+                  <div style="margin-top: 15px;">
+                    <label>Фотографии (Максимум 3):</label>
+                    <input type="file" multiple accept="image/jpeg, image/png" (change)="onFileSelected($event)" [disabled]="selectedFiles().length >= 3">
+
+                    @if (selectedFiles().length > 0) {
+                      <ul style="list-style: none; padding-left: 0; margin-top: 10px;">
+                        @for (file of selectedFiles(); track file.name; let i = $index) {
+                          <li style="display: flex; align-items: center; margin-bottom: 5px;">
+                            <span>{{ file.name }}</span>
+                            <button type="button" (click)="removeFile(i)" style="margin-left: 10px; color: red;">Удалить</button>
+                          </li>
+                        }
+                      </ul>
+                    }
+
+                    @if (selectedFiles().length >= 3) {
+                      <small style="color: orange;">Достигнут лимит в 3 фотографии.</small>
+                    }
+                  </div>
+                }
             </div>
 
             <div class="actions">
@@ -206,42 +228,16 @@ interface DynamicRow {
   `,
   // ТЕ САМЫЕ СТИЛИ, КОТОРЫЕ БЫЛИ У ВАС ИЗНАЧАЛЬНО
   styles: [`
-    .admin-container { padding: 20px; padding-bottom: 40px; font-family: sans-serif; }
-    .tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; } 
-    .tabs button { padding: 8px 16px; border: 1px solid var(--border, #ccc); border-radius: 20px; background: #fff; cursor: pointer; transition: 0.2s; font-weight: 500;} 
-    .tabs button.active { background: var(--accent, #007bff); border-color: var(--accent, #007bff); color: #fff; } 
-    .card { background: #fff; padding: 20px; border-radius: 8px; border: 1px solid var(--border, #eee); margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);}
-    
-    .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; align-items: end; margin-bottom: 15px; } 
-    .form-group label { display: block; margin-bottom: 6px; font-weight: 500; font-size: 13px; color: #555; }
-    .form-control { width: 100%; padding: 8px 12px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; font-size: 14px;}
-    
-    .error { color: #721c24; background-color: #f8d7da; border: 1px solid #f5c6cb; padding: 10px; margin-bottom: 15px; border-radius: 4px; }
-    .success { color: #155724; background-color: #d4edda; border: 1px solid #c3e6cb; padding: 10px; margin-bottom: 15px; border-radius: 4px; }
-    .actions { display: flex; gap: 10px; margin-top: 10px; }
-    
-    .table-container { overflow-x: auto; }
-    .data-table { width: 100%; border-collapse: collapse; background: #fff; font-size: 14px; }
-    .data-table th, .data-table td { padding: 12px; border: 1px solid #eee; text-align: left; }
-    .data-table th { background: #f8f9fa; font-weight: 600; color: #333; }
-    .data-table tr { cursor: pointer; transition: background 0.15s; }
-    .data-table tr:hover { background: #f1f1f1; }
-    .data-table tr.active-row { background: #e3f2fd; border-left: 3px solid var(--accent, #007bff); }
-    
-    .suggestions-dropdown {
-      position: absolute; top: 100%; left: 0; right: 0; background: white;
-      border: 1px solid #ccc; border-radius: 4px; list-style: none; padding: 0;
-      margin: 4px 0 0 0; z-index: 1000; box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-      max-height: 200px; overflow-y: auto;
-    }
-    .suggestions-dropdown li { padding: 8px 12px; cursor: pointer; border-bottom: 1px solid #f0f0f0; font-size: 14px; }
-    .suggestions-dropdown li:hover { background: #f8f9fa; }
+
   `]
 })
 export class AdminComponent implements OnInit {
   private admin = inject(AdminService);
-  
-  // Конфигурация справочников (Синхронизирована с новой БД и DTO)
+  // Сигнал или обычный массив для хранения выбранных файлов
+  selectedFiles = signal<File[]>([]);
+
+
+
   tables: TableDef[] = [
     {
       endpoint: 'marks',
@@ -394,6 +390,7 @@ export class AdminComponent implements OnInit {
     });
   }
 
+  //#region [Line actions]
   editRow(row: any) {
     this.selectedId.set(row.id);
     this.form = { ...row };
@@ -404,6 +401,7 @@ export class AdminComponent implements OnInit {
     this.form = {};
     this.activeField.set(null);
     this.fieldSuggestions.set([]);
+    this.selectedFiles.set([]);
   }
 
   save(table: TableDef) {
@@ -413,9 +411,9 @@ export class AdminComponent implements OnInit {
 
     const id = this.selectedId();
 
-    const request = id 
-      ? this.admin.update(table.endpoint, id, this.form)
-      : this.admin.add(table.endpoint, this.form);
+    const request = id
+      ? this.admin.update(table.endpoint, id, this.form, this.selectedFiles())
+      : this.admin.add(table.endpoint, this.form, this.selectedFiles());
 
     request.subscribe({
       next: () => {
@@ -448,7 +446,9 @@ export class AdminComponent implements OnInit {
       }
     });
   }
+  //#endregion
 
+  //#region [Sugestions]
   onFieldInput(key: string, value: string) {
     this.form[key] = value;
     if (value && typeof value === 'string' && value.trim().length > 0) {
@@ -469,4 +469,35 @@ export class AdminComponent implements OnInit {
     this.activeField.set(null);
     this.fieldSuggestions.set([]);
   }
+  //#endregion
+
+  //#region [Photo]
+  onFileSelected(event: any) {
+    const files: FileList = event.target.files;
+    if (!files) return;
+
+    const currentFiles = this.selectedFiles();
+    const newFiles = Array.from(files);
+    const totalFilesCount = currentFiles.length + newFiles.length;
+
+    if (totalFilesCount > 3) {
+      // Выводим уведомление пользователю
+      alert('Превышен лимит! Можно загрузить не более 3-х фотографий.');
+      // Или если используете сигнал error: this.error.set('Можно загрузить не более 3-х фотографий.');
+      return;
+    }
+
+    // Добавляем новые файлы к уже выбранным
+    this.selectedFiles.set([...currentFiles, ...newFiles]);
+
+    // Очищаем input, чтобы можно было выбрать тот же файл снова при необходимости
+    event.target.value = '';
+  }
+
+  removeFile(index: number) {
+    const currentFiles = this.selectedFiles();
+    currentFiles.splice(index, 1);
+    this.selectedFiles.set([...currentFiles]);
+  }
+  //#endregion
 }
