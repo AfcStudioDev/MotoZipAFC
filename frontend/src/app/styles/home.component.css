@@ -188,3 +188,68 @@
   border: 1px solid #dee2e6;
   background-color: #f8f9fa;
 }
+
+/* Стили для полноэкранного просмотра фото (Lightbox) */
+.image-lightbox-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background-color: rgba(0, 0, 0, 0.85); /* Полупрозрачный черный фон */
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 9999; /* Должно быть больше, чем у обычного модального окна */
+  cursor: zoom-out; /* Курсор-лупа с минусом */
+  overflow: hidden;
+}
+
+.lightbox-img {
+  max-width: 90vw;
+  max-height: 90vh;
+  object-fit: contain; /* Сохраняет пропорции */
+  border-radius: 8px;
+  box-shadow: 0 5px 25px rgba(0,0,0,0.5);
+  cursor: default;
+  transition: transform 0.2s ease-out;
+  cursor: zoom-in;
+}
+
+.lightbox-img.zoomed {
+  transform: scale(1.5);
+
+  cursor: zoom-out;
+}
+
+.lightbox-close-btn {
+  position: absolute;
+  top: 20px;
+  right: 40px;
+  font-size: 45px;
+  color: white;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  z-index: 10000;
+  transition: color 0.2s;
+}
+
+.lightbox-close-btn:hover {
+  color: #ff4d4d;
+}
+
+/* Небольшой эффект при наведении на миниатюру */
+.gallery-img:hover {
+  opacity: 0.85;
+  transform: scale(1.02);
+  transition: all 0.2s ease-in-out;
+}
+
+.product-image {
+    width: 100%;
+    height: 150px; /* или любая другая желаемая высота */
+    object-fit: cover; /* чтобы картинка обрезалась красиво и не сплющивалась */
+    border-radius: 4px;
+    margin-bottom: 10px;
+}
