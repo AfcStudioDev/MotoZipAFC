@@ -107,7 +107,8 @@ public class AdminController(AppDbContext db) : ControllerBase
                 Group = z.Group != null ? z.Group.GroupName : null,
                 z.Year,
                 z.IncomeMotoId,
-                IncomeMoto = z.IncomeMoto != null ? z.IncomeMoto.Description : null
+                IncomeMoto = z.IncomeMoto != null ? z.IncomeMoto.Description : null,
+                Photos = z.Photos.Select(p => new { p.Id, p.FileName, p.IsMain }).ToList()
             })
             .ToListAsync());
 
@@ -281,6 +282,23 @@ public class AdminController(AppDbContext db) : ControllerBase
 
         await db.SaveChangesAsync();
         return Ok(new { message = "Запись успешно обновлена", id = zip.Id });
+    }
+
+    [HttpDelete("zip-photos/{photoId:int}")]
+    public async Task<IActionResult> DeleteZipPhoto(int photoId)
+    {
+        var photo = await db.ZipPhotos.FindAsync(photoId);
+        if (photo == null) return NotFound(new { message = "Фотография не найдена" });
+
+        string uploadFolder = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "ZipPhotos");
+        string filePath = Path.Combine(uploadFolder, photo.FileName);
+        if (System.IO.File.Exists(filePath))
+            System.IO.File.Delete(filePath);
+
+        db.ZipPhotos.Remove(photo);
+        await db.SaveChangesAsync();
+
+        return Ok(new { message = "Фотография удалена" });
     }
 
     // ---------- Users ----------
