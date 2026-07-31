@@ -20,9 +20,10 @@ public record ZipDto(
     string? Mark,
     string? Model,
     string? Group,
-    int? Year,
+    uint? Year,
     Guid IncomeMotoId,
-    int CountStored);
+    int CountStored,
+    List<string> Photos);
 
 public record PagedResult<T>(IReadOnlyList<T> Items, int Total, int Page, int PageSize)
 {
@@ -75,11 +76,11 @@ public record AdminOrderRequest(
     string OrderNumber,
     int CountOrdered,
     Guid NomenclatureId,
-    int AddressId, // Исправлено на AddressId
+    int AddressId,
     DateTimeOffset? OrderDateTime,
     decimal SellCost,
     short? OperationTypeId,
-    decimal? Discount,
+    string Discount,
     int UserId,
     short? DeliveryStatusId
 );
@@ -88,4 +89,10 @@ public class UpdateUserRolesRequest
 {
     public bool IsSender { get; set; }
     public bool IsRegistrar { get; set; }
+}
+
+public class ZipPhotoDto
+{ 
+    public long Id { get; set; }
+    public string Name { get; set; } = null!;
 }

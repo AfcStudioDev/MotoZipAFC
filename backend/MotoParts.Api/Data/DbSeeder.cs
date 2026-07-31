@@ -145,7 +145,7 @@ public static class DbSeeder
                     Model = cbr,
                     Group = engine,
                     IncomeMoto = incomeHonda,
-                    Year = new DateOnly(2020, 1, 1)
+                    Year = 2020
                 },
                 new Zip
                 {
@@ -157,7 +157,7 @@ public static class DbSeeder
                     Model = ninja,
                     Group = brakes,
                     IncomeMoto = incomeHonda,
-                    Year = new DateOnly(2019, 1, 1)
+                    Year = 2019
                 },
                 new Zip
                 {
@@ -169,7 +169,7 @@ public static class DbSeeder
                     Model = r1,
                     Group = engine,
                     IncomeMoto = incomeYamaha,
-                    Year = new DateOnly(2021, 1, 1)
+                    Year = 2021
                 },
                 new Zip
                 {
@@ -181,7 +181,7 @@ public static class DbSeeder
                     Model = ninja,
                     Group = brakes,
                     IncomeMoto = incomeKawasaki,
-                    Year = new DateOnly(2019, 1, 1)
+                    Year = 2019
                 },
                 new Zip
                 {
@@ -193,7 +193,7 @@ public static class DbSeeder
                     Model = gsxr,
                     Group = suspension,
                     IncomeMoto = incomeSuzuki,
-                    Year = new DateOnly(2018, 1, 1)
+                    Year = 2018
                 },
                 new Zip
                 {
@@ -205,7 +205,7 @@ public static class DbSeeder
                     Model = africa,
                     Group = electrics,
                     IncomeMoto = incomeHonda,
-                    Year = new DateOnly(2022, 1, 1)
+                    Year = 2022
                 }
             );
 
@@ -251,7 +251,7 @@ public static class DbSeeder
                     UserId = clientUser.Id,
                     OrderDateTime = DateTimeOffset.UtcNow,
                     SellCost = 1250m,
-                    Discount = 0,
+                    Discount = "0",
                     OperationTypeId = 1, // 1 - Продажа
                     DeliveryStatusId = 1 // 1 - created (Создан)
                 };

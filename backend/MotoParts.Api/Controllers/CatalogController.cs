@@ -31,6 +31,7 @@ public class CatalogController(AppDbContext db) : ControllerBase
             .Include(z => z.Model)
             .Include(z => z.Group)
             .Include(z => z.PartNumber)
+            .Include(z => z.Photos)
             .AsQueryable();
 
         if (!string.IsNullOrWhiteSpace(query))
@@ -46,7 +47,7 @@ public class CatalogController(AppDbContext db) : ControllerBase
         if (markId.HasValue) zips = zips.Where(z => z.MarkId == markId);
         if (modelId.HasValue) zips = zips.Where(z => z.ModelId == modelId);
         if (groupId.HasValue) zips = zips.Where(z => z.GroupId == groupId);
-        if (year.HasValue) zips = zips.Where(z => z.Year != null && z.Year.Value.Year == year);
+        if (year.HasValue) zips = zips.Where(z => z.Year != null && z.Year.Value== year);
         if (!string.IsNullOrWhiteSpace(partNumber))
             zips = zips.Where(z => z.PartNumber != null && EF.Functions.ILike(z.PartNumber.PartNum, $"%{partNumber.Trim()}%"));
 
@@ -63,10 +64,11 @@ public class CatalogController(AppDbContext db) : ControllerBase
                 z.Mark != null ? z.Mark.Mark : null,
                 z.Model != null ? z.Model.Model : null,
                 z.Group != null ? z.Group.GroupName : null,
-                z.Year != null ? z.Year.Value.Year : null,
+                z.Year != null ? z.Year : null,
                 z.IncomeMotoId,
                 // Суммируем остатки на складе (если записей нет, вернет 0)
-                db.Stored.Where(s => s.ZipId == z.Id).Sum(s => (int?)s.Count) ?? 0
+                db.Stored.Where(s => s.ZipId == z.Id).Sum(s => (int?)s.Count) ?? 0,
+                z.Photos.Select(p => p.FileName).ToList()
             ))
             .ToListAsync();
 
@@ -92,5 +94,5 @@ public class CatalogController(AppDbContext db) : ControllerBase
     [HttpGet("years")]
     public async Task<IActionResult> Years() =>
         Ok(await db.Zips.Where(z => z.Year != null)
-            .Select(z => z.Year!.Value.Year).Distinct().OrderByDescending(y => y).ToListAsync());
+            .Select(z => z.Year!.Value).Distinct().OrderByDescending(y => y).ToListAsync());
 }

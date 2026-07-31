@@ -41,7 +41,7 @@ public class OrdersController(AppDbContext db) : ControllerBase
                 o.Nomenclature != null ? o.Nomenclature.IncomeCost : null,
                 o.Address.Address,
                 //o.Payment != null ? o.Payment.Status : null,
-                o.SellCost))
+                o.SellCost,o.Discount))
             .ToListAsync();
 
         return Ok(new PagedResult<OrderDto>(items, total, page, pageSize));
