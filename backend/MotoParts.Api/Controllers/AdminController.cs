@@ -13,7 +13,7 @@ namespace MotoParts.Api.Controllers;
 /// <summary>Админ-панель: ручное добавление записей в каждую таблицу и просмотр содержимого.</summary>
 [ApiController]
 [Route("api/admin")]
-[Authorize(Roles = "Admin,Sender,Registrar")]
+[Authorize(Roles = "Admin   ,Registrar")]
 public class AdminController(AppDbContext db) : ControllerBase
 {
     // ---------- MotoMarks ----------
@@ -112,11 +112,8 @@ public class AdminController(AppDbContext db) : ControllerBase
             .ToListAsync());
 
     [HttpPost("zip")]
-    public async Task<IActionResult> AddZip(AdminZipRequest request)
+    public async Task<IActionResult> AddZip([FromForm] AdminZipRequest request)
     {
-        if (string.IsNullOrWhiteSpace(request.Name))
-            return BadRequest(new { message = "Название запчасти обязательно" });
-
         var zip = new Zip
         {
             Id = Guid.NewGuid(),
@@ -126,13 +123,164 @@ public class AdminController(AppDbContext db) : ControllerBase
             MarkId = request.MarkId,
             ModelId = request.ModelId,
             GroupId = request.GroupId,
-            Year = request.Year.HasValue ? new DateOnly(request.Year.Value, 1, 1) : null,
+            Year = request.Year.HasValue ? (uint)request.Year.Value : null,
             IncomeMotoId = request.IncomeMotoId
         };
 
         db.Zips.Add(zip);
         await db.SaveChangesAsync();
+        var photos = Request.Form.Files;
+        // 2. Обработка фотографий
+        if (photos != null && photos.Count > 0)
+        {
+            if (photos.Count > 3)
+            {
+                return BadRequest(new { message = "Разрешено загружать не более 3-х фотографий." });
+            }
+
+            // Указываем путь к папке ZipPhotos (например, в wwwroot)
+            string uploadFolder = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "ZipPhotos");
+
+            if (!Directory.Exists(uploadFolder))
+            {
+                Directory.CreateDirectory(uploadFolder);
+            }
+
+            for (int i = 0; i < photos.Count; i++)
+            {
+                var photo = photos[i];
+                if (photo.Length > 0)
+                {
+                    // Генерируем уникальное имя файла: {ID запчасти}_{Индекс}.jpg
+                    // Например, 12345678-1234-1234-1234-123456789012_0.jpg
+                    string fileExtension = Path.GetExtension(photo.FileName);
+                    string uniqueFileName = $"{zip.Id}_{i}{fileExtension}";
+                    string filePath = Path.Combine(uploadFolder, uniqueFileName);
+
+                    using (var fileStream = new FileStream(filePath, FileMode.Create))
+                    {
+                        await photo.CopyToAsync(fileStream);
+                    }
+                }
+            }
+
+            for (int i = 0; i < photos.Count; i++)
+            {
+                var photo = photos[i];
+                if (photo.Length > 0)
+                {
+                    string fileExtension = Path.GetExtension(photo.FileName);
+                    string uniqueFileName = $"{zip.Id}_{i}{fileExtension}"; // Имя файла
+                    string filePath = Path.Combine(uploadFolder, uniqueFileName);
+
+                    using (var fileStream = new FileStream(filePath, FileMode.Create))
+                    {
+                        await photo.CopyToAsync(fileStream);
+                    }
+
+                    // ДОБАВЛЯЕМ В БД:
+                    var zipPhoto = new ZipPhoto
+                    {
+                        ZipId = zip.Id,
+                        FileName = uniqueFileName,
+                        IsMain = (i == 0) // Первое фото делаем главным
+                    };
+                    db.ZipPhotos.Add(zipPhoto);
+                }
+            }
+            await db.SaveChangesAsync();
+        }
+
         return Ok(new { zip.Id, zip.Name });
+    }
+
+    [HttpPut("zip/{id}")]
+    public async Task<IActionResult> UpdateZip(Guid id, [FromForm] AdminZipRequest request)
+    {
+        // 1. Ищем существующую запись
+        var zip = await db.Zips.FindAsync(id);
+        if (zip == null)
+        {
+            return NotFound(new { message = "Запчасть не найдена" });
+        }
+
+        // 2. Обновляем текстовые и числовые поля
+        zip.Name = request.Name?.Trim() ?? zip.Name;
+        zip.IncomeCost = request.IncomeCost;
+        zip.PartNumId = request.PartNumId;
+        zip.MarkId = request.MarkId;
+        zip.ModelId = request.ModelId;
+        zip.GroupId = request.GroupId;
+        zip.Year = request.Year.HasValue ? (uint)request.Year.Value : null;
+        zip.IncomeMotoId = request.IncomeMotoId; // Убедитесь, что фронтенд передает правильный Guid
+
+        // 3. Обработка новых фотографий (если они были загружены)
+        var photos = Request.Form.Files;
+        if (photos.Count > 0)
+        {
+            if (photos.Count > 3)
+            {
+                return BadRequest(new { message = "Разрешено загружать не более 3-х фотографий." });
+            }
+
+            string uploadFolder = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "ZipPhotos");
+            if (!Directory.Exists(uploadFolder))
+            {
+                Directory.CreateDirectory(uploadFolder);
+            }
+
+            // Опционально: можно удалить старые фото перед сохранением новых
+            var oldFiles = Directory.GetFiles(uploadFolder, $"{zip.Id}_*.jpg");
+            foreach (var oldFile in oldFiles) System.IO.File.Delete(oldFile);
+            
+            await db.ZipPhotos.Where(photo => photo.ZipId == zip.Id).ExecuteDeleteAsync();
+
+
+            for (int i = 0; i < photos.Count; i++)
+            {
+                var photo = photos[i];
+                if (photo.Length > 0)
+                {
+                    string fileExtension = Path.GetExtension(photo.FileName);
+                    string uniqueFileName = $"{zip.Id}_{i}{fileExtension}";
+                    string filePath = Path.Combine(uploadFolder, uniqueFileName);
+
+                    using (var fileStream = new FileStream(filePath, FileMode.Create))
+                    {
+                        await photo.CopyToAsync(fileStream);
+                    }
+                }
+            }
+
+            for (int i = 0; i < photos.Count; i++)
+            {
+                var photo = photos[i];
+                if (photo.Length > 0)
+                {
+                    string fileExtension = Path.GetExtension(photo.FileName);
+                    string uniqueFileName = $"{zip.Id}_{i}{fileExtension}"; // Имя файла
+                    string filePath = Path.Combine(uploadFolder, uniqueFileName);
+
+                    using (var fileStream = new FileStream(filePath, FileMode.Create))
+                    {
+                        await photo.CopyToAsync(fileStream);
+                    }
+
+                    // ДОБАВЛЯЕМ В БД:
+                    var zipPhoto = new ZipPhoto
+                    {
+                        ZipId = zip.Id,
+                        FileName = uniqueFileName,
+                        IsMain = (i == 0) // Первое фото делаем главным
+                    };
+                    db.ZipPhotos.Add(zipPhoto);
+                }
+            }
+            await db.SaveChangesAsync();
+        }
+
+        await db.SaveChangesAsync();
+        return Ok(new { message = "Запись успешно обновлена", id = zip.Id });
     }
 
     // ---------- Users ----------
