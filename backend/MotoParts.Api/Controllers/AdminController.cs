@@ -5,6 +5,8 @@ using MotoParts.Api.Data;
 using MotoParts.Api.DTOs;
 using MotoParts.Api.Models;
 using MotoParts.Api.Services;
+using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.Formats.Webp;
 
 using static System.Runtime.InteropServices.JavaScript.JSType;
 
@@ -150,44 +152,16 @@ public class AdminController(AppDbContext db) : ControllerBase
             for (int i = 0; i < photos.Count; i++)
             {
                 var photo = photos[i];
-                if (photo.Length > 0)
+                if (photo.Length == 0) continue;
+
+                string uniqueFileName = await SavePhotoAsWebpAsync(photo, uploadFolder, zip.Id, i);
+
+                db.ZipPhotos.Add(new ZipPhoto
                 {
-                    // Генерируем уникальное имя файла: {ID запчасти}_{Индекс}.jpg
-                    // Например, 12345678-1234-1234-1234-123456789012_0.jpg
-                    string fileExtension = Path.GetExtension(photo.FileName);
-                    string uniqueFileName = $"{zip.Id}_{i}{fileExtension}";
-                    string filePath = Path.Combine(uploadFolder, uniqueFileName);
-
-                    using (var fileStream = new FileStream(filePath, FileMode.Create))
-                    {
-                        await photo.CopyToAsync(fileStream);
-                    }
-                }
-            }
-
-            for (int i = 0; i < photos.Count; i++)
-            {
-                var photo = photos[i];
-                if (photo.Length > 0)
-                {
-                    string fileExtension = Path.GetExtension(photo.FileName);
-                    string uniqueFileName = $"{zip.Id}_{i}{fileExtension}"; // Имя файла
-                    string filePath = Path.Combine(uploadFolder, uniqueFileName);
-
-                    using (var fileStream = new FileStream(filePath, FileMode.Create))
-                    {
-                        await photo.CopyToAsync(fileStream);
-                    }
-
-                    // ДОБАВЛЯЕМ В БД:
-                    var zipPhoto = new ZipPhoto
-                    {
-                        ZipId = zip.Id,
-                        FileName = uniqueFileName,
-                        IsMain = (i == 0) // Первое фото делаем главным
-                    };
-                    db.ZipPhotos.Add(zipPhoto);
-                }
+                    ZipId = zip.Id,
+                    FileName = uniqueFileName,
+                    IsMain = (i == 0) // Первое фото делаем главным
+                });
             }
             await db.SaveChangesAsync();
         }
@@ -231,57 +205,43 @@ public class AdminController(AppDbContext db) : ControllerBase
             }
 
             // Опционально: можно удалить старые фото перед сохранением новых
-            var oldFiles = Directory.GetFiles(uploadFolder, $"{zip.Id}_*.jpg");
+            var oldFiles = Directory.GetFiles(uploadFolder, $"{zip.Id}_*.*");
             foreach (var oldFile in oldFiles) System.IO.File.Delete(oldFile);
-            
+
             await db.ZipPhotos.Where(photo => photo.ZipId == zip.Id).ExecuteDeleteAsync();
 
-
             for (int i = 0; i < photos.Count; i++)
             {
                 var photo = photos[i];
-                if (photo.Length > 0)
+                if (photo.Length == 0) continue;
+
+                string uniqueFileName = await SavePhotoAsWebpAsync(photo, uploadFolder, zip.Id, i);
+
+                db.ZipPhotos.Add(new ZipPhoto
                 {
-                    string fileExtension = Path.GetExtension(photo.FileName);
-                    string uniqueFileName = $"{zip.Id}_{i}{fileExtension}";
-                    string filePath = Path.Combine(uploadFolder, uniqueFileName);
-
-                    using (var fileStream = new FileStream(filePath, FileMode.Create))
-                    {
-                        await photo.CopyToAsync(fileStream);
-                    }
-                }
-            }
-
-            for (int i = 0; i < photos.Count; i++)
-            {
-                var photo = photos[i];
-                if (photo.Length > 0)
-                {
-                    string fileExtension = Path.GetExtension(photo.FileName);
-                    string uniqueFileName = $"{zip.Id}_{i}{fileExtension}"; // Имя файла
-                    string filePath = Path.Combine(uploadFolder, uniqueFileName);
-
-                    using (var fileStream = new FileStream(filePath, FileMode.Create))
-                    {
-                        await photo.CopyToAsync(fileStream);
-                    }
-
-                    // ДОБАВЛЯЕМ В БД:
-                    var zipPhoto = new ZipPhoto
-                    {
-                        ZipId = zip.Id,
-                        FileName = uniqueFileName,
-                        IsMain = (i == 0) // Первое фото делаем главным
-                    };
-                    db.ZipPhotos.Add(zipPhoto);
-                }
+                    ZipId = zip.Id,
+                    FileName = uniqueFileName,
+                    IsMain = (i == 0) // Первое фото делаем главным
+                });
             }
             await db.SaveChangesAsync();
         }
 
         await db.SaveChangesAsync();
         return Ok(new { message = "Запись успешно обновлена", id = zip.Id });
+    }
+
+    /// <summary>Перекодирует загруженное изображение в WebP и сохраняет на диск, возвращая итоговое имя файла.</summary>
+    private static async Task<string> SavePhotoAsWebpAsync(IFormFile photo, string uploadFolder, Guid zipId, int index)
+    {
+        string uniqueFileName = $"{zipId}_{index}.webp";
+        string filePath = Path.Combine(uploadFolder, uniqueFileName);
+
+        await using var stream = photo.OpenReadStream();
+        using var image = await Image.LoadAsync(stream);
+        await image.SaveAsync(filePath, new WebpEncoder { Quality = 80 });
+
+        return uniqueFileName;
     }
 
     [HttpDelete("zip-photos/{photoId:int}")]
