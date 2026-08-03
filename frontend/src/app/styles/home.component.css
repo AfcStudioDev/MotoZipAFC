@@ -253,3 +253,13 @@
     border-radius: 4px;
     margin-bottom: 10px;
 }
+
+.product-image-placeholder {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #f1f1f1;
+    color: #999;
+    font-size: 13px;
+    box-sizing: border-box;
+}

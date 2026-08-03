@@ -79,11 +79,16 @@ import { ChangeDetectorRef } from '@angular/core';
         <div class="grid">
           @for (zip of r.items; track zip.id) {
             <div class="card zip-card" (click)="openDetails(zip)">
-              <img
-                [src]="'http://localhost:5000/ZipPhotos/' + zip.id + '_0.jpg'"
-                alt="{{ zip.name }}"
-                class="product-image"
-              >
+              @if (zip.photos && zip.photos.length > 0) {
+                <img
+                  [src]="photoBaseUrl + zip.photos[0]"
+                  alt="{{ zip.name }}"
+                  class="product-image"
+                  (error)="onImageError($event)"
+                >
+              } @else {
+                <div class="product-image product-image-placeholder">Нет фото</div>
+              }
 
               <h3>{{ zip.name }}</h3>
               <p class="muted">
@@ -224,7 +229,7 @@ import { ChangeDetectorRef } from '@angular/core';
           <div class="gallery mt-4">
             <p class="text-muted mb-2">Фотографии:</p>
             <div class="d-flex gap-2" style="overflow-x: auto;">
-              @for (photo of getZipPhotos(zip.id); track photo) {
+              @for (photo of getZipPhotos(zip); track photo) {
                 <img 
                   [src]="photo" 
                   alt="Фото запчасти {{ zip.name }}" 
@@ -321,17 +326,9 @@ export class HomeComponent implements OnInit {
     }
   }
 
-  // Метод для получения путей к 3 фотографиям
-  getZipPhotos(zipId: string): string[] {
-    // Укажите здесь базовый URL вашего бэкенда, который раздает статику.
-    // Например, если бэкенд работает на порту 5000:
-    const baseUrl = 'http://localhost:5000/ZipPhotos';
-
-    return [
-      `${baseUrl}/${zipId}_0.jpg`,
-      `${baseUrl}/${zipId}_1.jpg`,
-      `${baseUrl}/${zipId}_2.jpg`
-    ];
+  // Метод для получения путей к реально загруженным фотографиям запчасти
+  getZipPhotos(zip: ZipDto): string[] {
+    return (zip.photos || []).map(fileName => this.photoBaseUrl + fileName);
   }
 
   // Если фото не найдено (например, их только 1 или 2), скрываем сломанную картинку
