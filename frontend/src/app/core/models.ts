@@ -24,6 +24,7 @@ export interface ZipDto {
   year?: number;
   incomeMotoId: string;
   countStored: number;
+  photos: string[];
 }
 
 export interface PagedResult<T> {
