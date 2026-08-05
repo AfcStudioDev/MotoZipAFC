@@ -37,11 +37,11 @@ public class OrdersController(AppDbContext db) : ControllerBase
             .Take(pageSize)
             .Select(o => new OrderDto(
                 o.Id, o.OrderNumber, o.CountOrdered, o.OrderDateTime,
-                o.Nomenclature != null ? o.Nomenclature.Name : null,
-                o.Nomenclature != null ? o.Nomenclature.IncomeCost : null,
+                o.Zip.PartNumber.Name,
+                o.Zip.IncomeCost,
                 o.Address.Address,
                 //o.Payment != null ? o.Payment.Status : null,
-                o.SellCost,o.Discount))
+                o.SellCost, o.Discount))
             .ToListAsync();
 
         return Ok(new PagedResult<OrderDto>(items, total, page, pageSize));
@@ -50,12 +50,18 @@ public class OrdersController(AppDbContext db) : ControllerBase
     [HttpPost]
     public async Task<ActionResult<OrderDto>> Create(CreateOrderRequest request)
     {
+        var zip = await db.Zips.Include(z => z.PartNumber).FirstOrDefaultAsync(z => z.Id == request.ZipId);
+        if (zip == null) return NotFound(new { message = "Запчасть не найдена" });
+
         var storedItem = await db.Stored.FirstOrDefaultAsync(s => s.ZipId == request.ZipId);
 
         if (storedItem == null || storedItem.Count < request.Count)
         {
             return BadRequest(new { message = "Недостаточно товара на складе. Доступно: " + (storedItem?.Count ?? 0) });
         }
+
+        // Списание остатка и запись движения должны быть атомарны.
+        await using var tx = await db.Database.BeginTransactionAsync();
 
         storedItem.Count -= request.Count;
 
@@ -64,14 +70,32 @@ public class OrdersController(AppDbContext db) : ControllerBase
             Id = Guid.NewGuid(),
             OrderNumber = "ORD-" + DateTimeOffset.Now.ToUnixTimeSeconds(),
             CountOrdered = request.Count,
-            NomenclatureId = request.ZipId,
+            ZipId = request.ZipId,
             AddressId = request.AddressId,
             OrderDateTime = DateTimeOffset.UtcNow,
+            SellCost = request.SellCost,
+            UserId = CurrentUserId,
+            OperationId = (short)OperationEnum.Sale,
             DeliveryStatusId = (short)DeliveryStatusEnum.created
         };
 
         db.Orders.Add(order);
+
+        db.Logs.Add(new Log
+        {
+            CreatedAt = DateTimeOffset.UtcNow,
+            OperationId = (short)OperationEnum.Sale,
+            OrderId = order.Id,
+            ZipId = zip.Id,
+            UserId = order.UserId,
+            Qty = -request.Count,
+            UnitCost = zip.IncomeCost,
+            SellCost = request.SellCost,
+            Description = $"Заказ {order.OrderNumber}: {zip.PartNumber.Name} × {request.Count}"
+        });
+
         await db.SaveChangesAsync();
+        await tx.CommitAsync();
 
         return Ok(order);
     }
@@ -92,12 +116,19 @@ public class OrdersController(AppDbContext db) : ControllerBase
         return Ok(new { message = "Заказ успешно удален" });
     }
 
+    // Оформление без регистрации: на контроллере висит [Authorize], поэтому
+    // анонимный доступ открывается точечно, иначе гостевой заказ отдаёт 401.
+    [AllowAnonymous]
     [HttpPost("guest-order")]
     public async Task<ActionResult<OrderDto>> CreateGuestOrder([FromBody] GuestCreateOrderRequest req)
     {
         // 1. Ищем запчасть
-        var zip = await db.Zips.FindAsync(req.ZipId);
+        var zip = await db.Zips.Include(z => z.PartNumber).FirstOrDefaultAsync(z => z.Id == req.ZipId);
         if (zip == null) return NotFound(new { message = "Запчасть не найдена" });
+
+        var storedItem = await db.Stored.FirstOrDefaultAsync(s => s.ZipId == req.ZipId);
+        if (storedItem == null || storedItem.Count < req.Count)
+            return BadRequest(new { message = "Недостаточно товара на складе. Доступно: " + (storedItem?.Count ?? 0) });
 
         // 2. Проверяем пользователя по номеру телефона
         var user = await db.Users
@@ -141,32 +172,44 @@ public class OrdersController(AppDbContext db) : ControllerBase
         user = await db.Users
             .FirstOrDefaultAsync(u => u.PhoneNumber == req.Phone);
         // 4. Создаем заказ с операцией расхода
+        await using var tx = await db.Database.BeginTransactionAsync();
+
+        storedItem.Count -= req.Count;
+
         var order = new Order
         {
             Id = Guid.NewGuid(),
             OrderNumber = $"ORD-{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}",
             CountOrdered = req.Count,
-            NomenclatureId = zip.Id,
+            ZipId = zip.Id,
             AddressId = address.Id,
             OrderDateTime = DateTimeOffset.UtcNow,
-            SellCost = zip.SellCost,
+            SellCost = zip.SellCost ?? 0m,
             Discount = req.Promo,
-            UserId = user.Id
+            UserId = user.Id,
+            OperationId = (short)OperationEnum.Sale
         };
         db.Orders.Add(order);
-        var incomeMoto = await db.IncomeMotos.FirstOrDefaultAsync(x=>x.Id == zip.IncomeMotoId);
+
+        var incomeMoto = await db.IncomeMotos.FirstOrDefaultAsync(x => x.Id == zip.IncomeMotoId);
+
         // 5. Добавляем запись в таблицу Log
-        var logEntry = new Log
+        db.Logs.Add(new Log
         {
-            Description = $"{DateTimeOffset.UtcNow} был создан заказ {order.OrderNumber} " +
-                            $"для пользователя {user.PhoneNumber}:{user.FIO} " +
-                            $"по цене {zip.SellCost} в количстве {order.CountOrdered}шт." +
-                            $"Деталь {zip.Name} взята с мотоцикла {incomeMoto.Description}",
-            OrderId = order.Id
-        };
-        db.Logs.Add(logEntry);
+            CreatedAt = DateTimeOffset.UtcNow,
+            OperationId = (short)OperationEnum.Sale,
+            OrderId = order.Id,
+            ZipId = zip.Id,
+            UserId = user.Id,
+            Qty = -req.Count,
+            UnitCost = zip.IncomeCost,
+            SellCost = order.SellCost,
+            Description = $"Заказ {order.OrderNumber} для {user.PhoneNumber}:{user.FIO}. " +
+                          $"Деталь {zip.PartNumber.Name} взята с мотоцикла {incomeMoto?.Description ?? "—"}"
+        });
 
         await db.SaveChangesAsync();
+        await tx.CommitAsync();
 
         // Формируем ответ (аналогичный существующему методу создания)
         var dto = new OrderDto(
@@ -174,10 +217,10 @@ public class OrdersController(AppDbContext db) : ControllerBase
             order.OrderNumber,
             order.CountOrdered,
             order.OrderDateTime,
-            zip.Name,
+            zip.PartNumber.Name,
             zip.IncomeCost,
             address.Address,
-            zip.SellCost,
+            order.SellCost,
             order.Discount
         );
 

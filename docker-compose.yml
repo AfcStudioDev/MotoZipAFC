@@ -2,36 +2,125 @@ services:
   postgres:
     image: postgres:16
     container_name: motoparts-postgres
+    restart: unless-stopped
     environment:
-      POSTGRES_DB: motoparts
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: gc2gKosdYI2i8OCsyYUn
-    ports:
-      - "5432:5432"
+      POSTGRES_DB: ${POSTGRES_DB:-motoparts}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Задайте POSTGRES_PASSWORD в .env}
     volumes:
       - pgdata:/var/lib/postgresql/data
+    networks:
+      - motoparts
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-motoparts}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    # Порт наружу по умолчанию не публикуем — доступ только из сети контейнеров.
+    # Нужен снаружи (pgAdmin и т.п.) — раскомментируйте:
+    # ports:
+    #   - "${POSTGRES_PORT:-5432}:5432"
 
   api:
     build:
-      context: ./backend/MotoParts.Api
-      dockerfile: Dockerfile
+      # Контекст — корень репозитория: Dockerfile лежит в backend/MotoParts.Api,
+      # но копирует файлы путями relative-to-root (см. сам Dockerfile).
+      context: .
+      dockerfile: backend/MotoParts.Api/Dockerfile
     container_name: motoparts-api
-    # ports:
-    #   - "8080:8080"
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ConnectionStrings__Default: Host=postgres;Port=5432;Database=${POSTGRES_DB:-motoparts};Username=${POSTGRES_USER:-postgres};Password=${POSTGRES_PASSWORD:?Задайте POSTGRES_PASSWORD в .env}
+
+      Jwt__Issuer: ${JWT_ISSUER:-MotoParts}
+      Jwt__Audience: ${JWT_AUDIENCE:-MotoPartsClient}
+      Jwt__Key: ${JWT_KEY:?Задайте JWT_KEY в .env (минимум 32 символа)}
+
+      # Публичный адрес сайта: используется для CORS и для ссылок в письмах сброса пароля.
+      Frontend__BaseUrl: ${PUBLIC_URL:-http://localhost}
+
+      OAuth__Google__ClientId: ${GOOGLE_CLIENT_ID:-}
+      OAuth__Vk__ClientId: ${VK_CLIENT_ID:-}
+      OAuth__Vk__ClientSecret: ${VK_CLIENT_SECRET:-}
+
+      YooKassa__ShopId: ${YOOKASSA_SHOP_ID:-}
+      YooKassa__SecretKey: ${YOOKASSA_SECRET_KEY:-}
+
+      SmtpSettings__Host: ${SMTP_HOST:-}
+      SmtpSettings__Port: ${SMTP_PORT:-465}
+      SmtpSettings__Username: ${SMTP_USERNAME:-}
+      SmtpSettings__Password: ${SMTP_PASSWORD:-}
+      SmtpSettings__FromEmail: ${SMTP_FROM_EMAIL:-}
+
+      Seed__AdminEmail: ${SEED_ADMIN_EMAIL:-admin@motoparts.local}
+      Seed__AdminPassword: ${SEED_ADMIN_PASSWORD:?Задайте SEED_ADMIN_PASSWORD в .env}
+      Seed__SenderEmail: ${SEED_SENDER_EMAIL:-sender@motoparts.local}
+      Seed__SenderPassword: ${SEED_SENDER_PASSWORD:?Задайте SEED_SENDER_PASSWORD в .env}
+      Seed__RegistrarEmail: ${SEED_REGISTRAR_EMAIL:-registrar@motoparts.local}
+      Seed__RegistrarPassword: ${SEED_REGISTRAR_PASSWORD:?Задайте SEED_REGISTRAR_PASSWORD в .env}
+    volumes:
+      # Загруженные фото переживают пересборку и пересоздание контейнера.
+      - zip-photos:/app/wwwroot/ZipPhotos
     expose:
       - "8080"
-    environment:
-      # Перезаписываем ConnectionString из appsettings.json.
-      # Хост теперь "postgres" (имя сервиса БД), а пароль берем из настроек выше.
-      - ConnectionStrings__Default=Host=postgres;Port=5432;Database=motoparts;Username=postgres;Password=postgres
-    depends_on:
-      - postgres
+    networks:
+      - motoparts
 
-# Сохраняем том для базы данных
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: motoparts-frontend
+    restart: unless-stopped
+    depends_on:
+      - api
+    environment:
+      # Подставляются в config.json entrypoint-скриптом nginx-образа при старте —
+      # см. frontend/docker/20-envsubst-config.sh и frontend/src/main.ts.
+      API_URL: ${API_URL:-/api}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      VK_CLIENT_ID: ${VK_CLIENT_ID:-}
+    # Наружу больше не публикуется напрямую — единственная точка входа теперь caddy.
+    expose:
+      - "80"
+    networks:
+      - motoparts
+
+  # Единственный сервис, публикующий 80/443 наружу. Для настоящего домена (DOMAIN
+  # в .env — не localhost/IP) сам получает и продлевает сертификат Let's Encrypt
+  # и держит редирект HTTP → HTTPS — без этого никакой ручной настройки не нужно.
+  # Подробности и порядок действий — в DEPLOY.md, раздел «HTTPS на реальном домене».
+  caddy:
+    image: caddy:2-alpine
+    container_name: motoparts-caddy
+    restart: unless-stopped
+    depends_on:
+      - frontend
+    environment:
+      DOMAIN: ${DOMAIN:-localhost}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # Здесь Caddy хранит выпущенные сертификаты — без volume каждый пересоздание
+      # контейнера означало бы новый запрос в Let's Encrypt и риск упереться
+      # в лимит (5 сертификатов на домен в неделю).
+      - caddy-data:/data
+      - caddy-config:/config
+    ports:
+      - "80:80"
+      - "443:443"
+    networks:
+      - motoparts
+
 volumes:
   pgdata:
+  zip-photos:
+  caddy-data:
+  caddy-config:
 
-# Объявляем внешнюю сеть
 networks:
-  shared-proxy-network:
-    external: true
+  motoparts:
+    driver: bridge

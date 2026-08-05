@@ -1,6 +1,6 @@
-import { Component, OnInit, inject, signal, ChangeDetectionStrategy } from '@angular/core';
+import { Component, OnInit, inject, signal, computed, ChangeDetectionStrategy } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { CommonModule, JsonPipe } from '@angular/common';
+import { CommonModule } from '@angular/common';
 import { AdminService } from '../core/admin.service';
 import { environment } from '../../environments/environment';
 
@@ -17,12 +17,21 @@ interface FieldDef {
   required?: boolean;
   refTable?: string;
   refLabelKey?: string;
+  /** Поле принадлежит каталожной позиции (PartNumbers), а не самой записи — сохраняется отдельным запросом. */
+  partNumberOwned?: boolean;
+}
+
+/** Поле строки поиска. Только содержательные колонки — без Id и внешних ключей. */
+interface SearchFieldDef {
+  key: string;
+  label: string;
 }
 
 interface TableDef {
   endpoint: string;
   title: string;
   fields: FieldDef[];
+  searchFields?: SearchFieldDef[];
 }
 
 // Решает проблему TS4111 (noPropertyAccessFromIndexSignature)
@@ -34,7 +43,7 @@ interface DynamicRow {
 @Component({
   selector: 'app-admin',
   standalone: true,
-  imports: [FormsModule, CommonModule, JsonPipe],
+  imports: [FormsModule, CommonModule],
   changeDetection: ChangeDetectionStrategy.OnPush,
     styleUrls: ['../styles/admin.component.css'],
   template: `
@@ -98,12 +107,24 @@ interface DynamicRow {
                       [required]="!!f.required"
                     >
                   } 
+                  @else if (f.type === 'date') {
+                    <!-- Бэкенд принимает и отдаёт DateOnly в формате YYYY-MM-DD —
+                         это же значение нативно использует input[type=date]. -->
+                    <input
+                      type="date"
+                      class="form-control"
+                      [(ngModel)]="form[f.key]"
+                      [name]="f.key"
+                      [required]="!!f.required"
+                    >
+                  }
                   @else if (f.type === 'select') {
                     <!-- Новый функционал: Выпадающий список для связей -->
-                    <select 
-                      class="form-control" 
-                      [(ngModel)]="form[f.key]" 
+                    <select
+                      class="form-control"
+                      [(ngModel)]="form[f.key]"
                       [name]="f.key"
+                      (ngModelChange)="onSelectChange(table, f.key, $event)"
                       [required]="!!f.required"
                     >
                       <option [ngValue]="null">— Выберите —</option>
@@ -113,6 +134,9 @@ interface DynamicRow {
                         </option>
                       }
                     </select>
+                    @if (f.partNumberOwned) {
+                      <small class="owned-hint">Поле парт-номера — изменение применится ко всем запчастям с ним</small>
+                    }
                   }
                   @else {
                     <input
@@ -132,6 +156,9 @@ interface DynamicRow {
                           <li (click)="applySuggestion(f.key, sug)">{{ sug }}</li>
                         }
                       </ul>
+                    }
+                    @if (f.partNumberOwned) {
+                      <small class="owned-hint">Поле парт-номера — изменение применится ко всем запчастям с ним</small>
                     }
                   }
                 </div>
@@ -192,12 +219,50 @@ interface DynamicRow {
         <!-- КАРТОЧКА ТАБЛИЦЫ (Оригинальный дизайн) -->
         <div class="card">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-            <h3 style="margin: 0;">{{ table.title }} (Всего: {{ rows().length }})</h3>
+            <h3 style="margin: 0;">
+              {{ table.title }} (Всего: {{ visibleRows().length }}@if (isFiltered()) { <span> из {{ rows().length }}</span> })
+            </h3>
             <button (click)="reload(table)" [disabled]="busy()" style="padding: 6px 12px; cursor: pointer;">
               Обновить таблицу
             </button>
           </div>
-          
+
+          <!-- СТРОКА ПОИСКА -->
+          @if (table.searchFields?.length) {
+            <div class="search-bar">
+              @for (sf of table.searchFields!; track sf.key) {
+                <div class="search-field">
+                  <label>{{ sf.label }}</label>
+                  <input
+                    type="text"
+                    class="form-control"
+                    [ngModel]="searchValues[sf.key] || ''"
+                    [name]="'search_' + sf.key"
+                    (ngModelChange)="onSearchInput(sf.key, $event)"
+                    (focus)="onSearchInput(sf.key, searchValues[sf.key] || '')"
+                    (keyup.enter)="applySearch(table)"
+                    autocomplete="off"
+                    placeholder="Введите значение…">
+
+                  @if (activeSearchField() === sf.key && searchSuggestions().length > 0) {
+                    <ul class="suggestions-dropdown">
+                      @for (sug of searchSuggestions(); track sug) {
+                        <li (click)="applySearchSuggestion(table, sf.key, sug)">{{ sug }}</li>
+                      }
+                    </ul>
+                  }
+                </div>
+              }
+
+              <div class="search-actions">
+                <button type="button" class="btn-search" (click)="applySearch(table)">Найти</button>
+                @if (isFiltered()) {
+                  <button type="button" class="btn-reset" (click)="resetSearch()">Сбросить</button>
+                }
+              </div>
+            </div>
+          }
+
           <div class="table-container">
             <table class="data-table">
               <thead>
@@ -210,7 +275,7 @@ interface DynamicRow {
                 </tr>
               </thead>
               <tbody>
-                @for (r of rows(); track r.id) {
+                @for (r of visibleRows(); track r.id) {
                   <!-- Использование r.id теперь работает благодаря интерфейсу DynamicRow -->
                   <tr [class.active-row]="selectedId() === r.id" (click)="editRow(r)">
                     <td style="color: #888; font-size: 12px;">{{ r.id }}</td>
@@ -238,7 +303,7 @@ interface DynamicRow {
                 } @empty {
                   <tr>
                     <td [attr.colspan]="table.fields.length + 2" style="text-align: center; padding: 20px; color: #777;">
-                      Нет данных в этой таблице
+                      {{ isFiltered() ? 'Ничего не найдено по заданным условиям' : 'Нет данных в этой таблице' }}
                     </td>
                   </tr>
                 }
@@ -271,7 +336,8 @@ export class AdminComponent implements OnInit {
       title: 'Марки мотоциклов',
       fields: [
         { key: 'mark', label: 'Марка', type: 'text', required: true }
-      ]
+      ],
+      searchFields: [{ key: 'mark', label: 'Марка' }]
     },
     {
       endpoint: 'models',
@@ -279,35 +345,63 @@ export class AdminComponent implements OnInit {
       fields: [
         { key: 'markId', label: 'Марка', type: 'select', refTable: 'marks', refLabelKey: 'mark', required: true },
         { key: 'model', label: 'Модель', type: 'text', required: true }
-      ]
+      ],
+      searchFields: [{ key: 'model', label: 'Модель' }]
     },
     {
       endpoint: 'groups',
       title: 'Группы запчастей',
       fields: [
         { key: 'groupName', label: 'Название группы', type: 'text', required: true }
-      ]
+      ],
+      searchFields: [{ key: 'groupName', label: 'Название группы' }]
     },
     {
       endpoint: 'part-numbers',
       title: 'Парт-номера',
       fields: [
-        { key: 'partNum', label: 'Парт-номер', type: 'text', required: true }
+        { key: 'partNum', label: 'Парт-номер', type: 'text', required: true },
+        { key: 'name', label: 'Наименование', type: 'text', required: true },
+        { key: 'groupId', label: 'Группа запчастей', type: 'select', refTable: 'groups', refLabelKey: 'groupName' }
+      ],
+      searchFields: [
+        { key: 'partNum', label: 'Парт-номер' },
+        { key: 'name', label: 'Наименование' }
+      ]
+    },
+    {
+      // Применимость: одна каталожная позиция подходит к нескольким моделям.
+      endpoint: 'applicability',
+      title: 'Применимость к моделям',
+      fields: [
+        { key: 'partNumId', label: 'Парт-номер', type: 'select', refTable: 'part-numbers', refLabelKey: 'partNum', required: true },
+        { key: 'modelId', label: 'Модель', type: 'select', refTable: 'models', refLabelKey: 'model', required: true }
+      ],
+      searchFields: [
+        { key: 'partNum', label: 'Парт-номер' },
+        { key: 'model', label: 'Модель' }
       ]
     },
     {
       endpoint: 'zip',
       title: 'Запчасти (Номенклатура)',
       fields: [
-        { key: 'name', label: 'Наименование', type: 'text', required: true },
+        // Наименование и группа принадлежат парт-номеру: подставляются при его выборе
+        // и сохраняются отдельным запросом в PartNumbers.
+        { key: 'partNumId', label: 'Парт-номер', type: 'select', refTable: 'part-numbers', refLabelKey: 'partNum', required: true },
+        { key: 'name', label: 'Наименование', type: 'text', required: true, partNumberOwned: true },
+        { key: 'groupId', label: 'Группа запчастей', type: 'select', refTable: 'groups', refLabelKey: 'groupName', partNumberOwned: true },
         { key: 'incomeCost', label: 'Закупочная цена', type: 'number', required: true },
-        { key: 'partNumId', label: 'Парт-номер', type: 'select', refTable: 'part-numbers', refLabelKey: 'partNum' },
-        { key: 'markId', label: 'Марка', type: 'select', refTable: 'marks', refLabelKey: 'mark' },
-        { key: 'modelId', label: 'Модель', type: 'select', refTable: 'models', refLabelKey: 'model' },
-        { key: 'groupId', label: 'Группа запчастей', type: 'select', refTable: 'groups', refLabelKey: 'groupName' },
+        { key: 'sellCost', label: 'Цена продажи', type: 'number' },
         { key: 'countStored', label: 'Остаток на складе', type: 'number', required: true },
-        { key: 'year', label: 'Год выпуска (YYYY)', type: 'text' },
-        { key: 'incomeMotoId', label: 'ID Донора (IncomeMoto)', type: 'text', required: true }
+        { key: 'year', label: 'Год выпуска (YYYY)', type: 'number' },
+        { key: 'incomeDate', label: 'Дата поступления', type: 'date' },
+        { key: 'incomeMotoId', label: 'Донор (IncomeMoto)', type: 'select', refTable: 'incomemotos', refLabelKey: 'description', required: true },
+        { key: 'comment', label: 'Комментарий', type: 'text' }
+      ],
+      searchFields: [
+        { key: 'partNum', label: 'Парт-номер' },
+        { key: 'name', label: 'Наименование' }
       ]
     },
     {
@@ -321,6 +415,11 @@ export class AdminComponent implements OnInit {
         { key: 'isRegistrar', label: 'Регистратор', type: 'checkbox' },
         { key: 'isSender', label: 'Отправитель', type: 'checkbox' },
         { key: 'password', label: 'Новый пароль', type: 'text' }
+      ],
+      searchFields: [
+        { key: 'fio', label: 'ФИО' },
+        { key: 'email', label: 'Email' },
+        { key: 'phoneNumber', label: 'Телефон' }
       ]
     },
     {
@@ -330,6 +429,10 @@ export class AdminComponent implements OnInit {
         { key: 'address', label: 'Адрес', type: 'text', required: true },
         { key: 'postCode', label: 'Почтовый индекс', type: 'text' },
         { key: 'userId', label: 'Покупатель', type: 'select', refTable: 'users', refLabelKey: 'fio' }
+      ],
+      searchFields: [
+        { key: 'address', label: 'Адрес' },
+        { key: 'postCode', label: 'Индекс' }
       ]
     },
     {
@@ -338,12 +441,16 @@ export class AdminComponent implements OnInit {
       fields: [
         { key: 'orderNumber', label: 'Номер заказа', type: 'text', required: true },
         { key: 'countOrdered', label: 'Кол-во', type: 'number', required: true },
-        { key: 'nomenclatureId', label: 'Запчасть', type: 'select', refTable: 'zip', refLabelKey: 'name', required: true },
+        { key: 'zipId', label: 'Запчасть', type: 'select', refTable: 'zip', refLabelKey: 'name', required: true },
         { key: 'addressId', label: 'Адрес доставки', type: 'select', refTable: 'addressess', refLabelKey: 'address', required: true },
         { key: 'sellCost', label: 'Цена продажи', type: 'number', required: true },
         { key: 'userId', label: 'Покупатель', type: 'select', refTable: 'users', refLabelKey: 'fio', required: true },
         { key: 'discount', label: 'Скидка', type: 'number' },
         { key: 'orderDateTime', label: 'Дата заказа', type: 'text' }
+      ],
+      searchFields: [
+        { key: 'orderNumber', label: 'Номер заказа' },
+        { key: 'nomenclatureName', label: 'Запчасть' }
       ]
     }
   ];
@@ -358,6 +465,14 @@ export class AdminComponent implements OnInit {
   activeField = signal<string | null>(null);
   fieldSuggestions = signal<string[]>([]);
 
+  // --- Поиск по таблице ---
+  /** Введённые значения по каждому поисковому полю. */
+  searchValues: Record<string, string> = {};
+  /** Применённые условия — обновляются только по кнопке «Найти». */
+  appliedSearch = signal<Record<string, string>>({});
+  activeSearchField = signal<string | null>(null);
+  searchSuggestions = signal<string[]>([]);
+
   busy = signal<boolean>(false);
   message = signal<string>('');
   error = signal<string>('');
@@ -370,7 +485,7 @@ export class AdminComponent implements OnInit {
   }
 
   loadAllReferences() {
-    const refEndpoints = ['marks', 'models', 'groups', 'part-numbers', 'users', 'addressess', 'zip'];
+    const refEndpoints = ['marks', 'models', 'groups', 'part-numbers', 'users', 'addressess', 'zip', 'incomemotos'];
     const loadedRefs: Record<string, any[]> = {};
 
     refEndpoints.forEach(endpoint => {
@@ -383,6 +498,68 @@ export class AdminComponent implements OnInit {
       });
     });
   }
+
+  //#region [Поиск по таблице]
+
+  /** Строки с учётом применённых условий поиска. */
+  visibleRows = computed<DynamicRow[]>(() => {
+    const conditions = Object.entries(this.appliedSearch())
+      .filter(([, v]) => v.trim().length > 0)
+      .map(([k, v]) => [k, v.trim().toLowerCase()] as const);
+
+    if (conditions.length === 0) return this.rows();
+
+    // Условия по разным полям объединяются по И.
+    return this.rows().filter(row =>
+      conditions.every(([key, needle]) => {
+        const val = row[key];
+        return val !== null && val !== undefined &&
+          String(val).toLowerCase().includes(needle);
+      })
+    );
+  });
+
+  isFiltered = computed(() =>
+    Object.values(this.appliedSearch()).some(v => v.trim().length > 0));
+
+  /** Подсказки берём из уже загруженных строк — по тому полю, в которое вводят. */
+  onSearchInput(key: string, value: string) {
+    this.searchValues[key] = value;
+    this.activeSearchField.set(key);
+
+    const needle = (value ?? '').trim().toLowerCase();
+    const values = this.rows()
+      .map(row => row[key])
+      .filter(v => v !== null && v !== undefined && String(v).trim().length > 0)
+      .map(v => String(v))
+      .filter(v => needle.length === 0 || v.toLowerCase().includes(needle));
+
+    this.searchSuggestions.set(Array.from(new Set(values)).slice(0, 8));
+  }
+
+  applySearchSuggestion(table: TableDef, key: string, value: string) {
+    this.searchValues[key] = value;
+    this.closeSearchSuggestions();
+    this.applySearch(table);
+  }
+
+  applySearch(_table: TableDef) {
+    this.closeSearchSuggestions();
+    this.appliedSearch.set({ ...this.searchValues });
+  }
+
+  resetSearch() {
+    this.searchValues = {};
+    this.appliedSearch.set({});
+    this.closeSearchSuggestions();
+  }
+
+  private closeSearchSuggestions() {
+    this.activeSearchField.set(null);
+    this.searchSuggestions.set([]);
+  }
+
+  //#endregion
 
   getRefDisplay(field: FieldDef, val: any): string {
     if (val === null || val === undefined || !field.refTable) return '—';
@@ -398,6 +575,8 @@ export class AdminComponent implements OnInit {
   select(t: TableDef) {
     this.current.set(t);
     this.cancelEdit();
+    // Условия поиска относятся к конкретной таблице — при смене вкладки они не имеют смысла.
+    this.resetSearch();
     this.reload(t);
   }
 
@@ -416,6 +595,45 @@ export class AdminComponent implements OnInit {
       }
     });
   }
+
+  //#region [Автозаполнение по парт-номеру]
+
+  onSelectChange(table: TableDef, key: string, value: any) {
+    this.form[key] = value;
+    if (table.endpoint === 'zip' && key === 'partNumId') {
+      this.fillFromPartNumber(value);
+    }
+  }
+
+  /**
+   * Подставляет данные выбранной каталожной позиции: наименование и группу — всегда,
+   * цены — только в пустые поля, чтобы не затирать введённое вручную.
+   */
+  private fillFromPartNumber(partNumId: any) {
+    if (partNumId === null || partNumId === undefined) return;
+
+    const pn = (this.references()['part-numbers'] || [])
+      .find(p => String(p.id) === String(partNumId));
+    if (!pn) return;
+
+    this.form['name'] = pn.name ?? '';
+    this.form['groupId'] = pn.groupId ?? null;
+
+    // Цены берём с последней заведённой запчасти с этим же парт-номером — как подсказку.
+    const sameZip = (this.references()['zip'] || [])
+      .filter(z => String(z.partNumId) === String(partNumId))
+      .pop();
+    if (sameZip) {
+      if (this.isEmpty(this.form['incomeCost'])) this.form['incomeCost'] = sameZip.incomeCost;
+      if (this.isEmpty(this.form['sellCost'])) this.form['sellCost'] = sameZip.sellCost;
+    }
+  }
+
+  private isEmpty(v: any): boolean {
+    return v === null || v === undefined || v === '';
+  }
+
+  //#endregion
 
   //#region [Line actions]
   editRow(row: any) {
@@ -439,6 +657,49 @@ export class AdminComponent implements OnInit {
     this.error.set('');
     this.message.set('');
 
+    // Поля, принадлежащие парт-номеру, живут в другой таблице — сохраняем их отдельно.
+    const ownedChanged = this.partNumberPatch(table);
+    if (ownedChanged) {
+      this.admin.updatePartNumber(this.form['partNumId'], ownedChanged).subscribe({
+        next: () => this.saveRow(table),
+        error: (err) => {
+          this.error.set('Не удалось сохранить данные парт-номера: ' + (err.error?.message || err.message));
+          this.busy.set(false);
+        }
+      });
+      return;
+    }
+
+    this.saveRow(table);
+  }
+
+  /**
+   * Возвращает данные для обновления PartNumbers, если поля парт-номера в форме
+   * отличаются от сохранённых. null — менять нечего.
+   */
+  private partNumberPatch(table: TableDef): { partNum: string; name: string; groupId: number | null } | null {
+    const owned = table.fields.filter(f => f.partNumberOwned);
+    if (owned.length === 0) return null;
+
+    const partNumId = this.form['partNumId'];
+    if (this.isEmpty(partNumId)) return null;
+
+    const pn = (this.references()['part-numbers'] || [])
+      .find(p => String(p.id) === String(partNumId));
+    if (!pn) return null;
+
+    const name = (this.form['name'] ?? '').toString().trim();
+    const groupId = this.isEmpty(this.form['groupId']) ? null : Number(this.form['groupId']);
+
+    const unchanged = name === (pn.name ?? '') &&
+      String(groupId ?? '') === String(pn.groupId ?? '');
+    if (unchanged || name.length === 0) return null;
+
+    return { partNum: pn.partNum, name, groupId };
+  }
+
+  /** Сохранение самой записи таблицы. */
+  private saveRow(table: TableDef) {
     const id = this.selectedId();
 
     const request = id

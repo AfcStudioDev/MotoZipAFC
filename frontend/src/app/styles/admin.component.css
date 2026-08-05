@@ -127,6 +127,68 @@
     margin-top: 10px;
 }
 
+.search-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 10px;
+    padding: 12px;
+    margin-bottom: 15px;
+    background: #f8f9fa;
+    border: 1px solid #e6e9ec;
+    border-radius: 6px;
+}
+
+.search-field {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    flex: 1 1 180px;
+    min-width: 160px;
+}
+
+.search-field label {
+    font-size: 12px;
+    font-weight: 500;
+    color: #555;
+}
+
+.search-actions {
+    display: flex;
+    gap: 8px;
+    margin-left: auto;
+}
+
+.btn-search,
+.btn-reset {
+    padding: 8px 18px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: 500;
+    font-size: 14px;
+    border: 1px solid transparent;
+    white-space: nowrap;
+}
+
+.btn-search {
+    background: var(--accent, #007bff);
+    color: #fff;
+}
+
+.btn-reset {
+    background: #fff;
+    border-color: #ccc;
+    color: #555;
+}
+
+.owned-hint {
+    display: block;
+    margin-top: 4px;
+    font-size: 11px;
+    color: #8a6d3b;
+}
+
 .table-container {
     overflow-x: auto;
 }

@@ -26,4 +26,11 @@ RUN dotnet publish "./MotoParts.Api.csproj" -c $BUILD_CONFIGURATION -o /app/publ
 FROM base AS final
 WORKDIR /app
 COPY --from=publish /app/publish .
+
+# Создаём папку под фото ДО монтирования volume: том с уже существующим
+# в образе каталогом при первом запуске наследует его владельца ($APP_UID,
+# см. USER выше) — без этого шага volume мог бы примонтироваться как root,
+# и AdminController не смог бы писать сюда файлы от непривилегированного пользователя.
+RUN mkdir -p wwwroot/ZipPhotos
+
 ENTRYPOINT ["dotnet", "MotoParts.Api.dll"]

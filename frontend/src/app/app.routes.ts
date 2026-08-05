@@ -1,5 +1,5 @@
 import { Routes } from '@angular/router';
-import { authGuard, allGuard, senderGuard } from './core/guards';
+import { authGuard, allGuard, senderGuard, adminGuard, adminOrRegistrarGuard } from './core/guards';
 
 export const routes: Routes = [
   { path: '', loadComponent: () => import('./pages/home.component').then(m => m.HomeComponent) },
@@ -10,7 +10,9 @@ export const routes: Routes = [
   { path: 'vk-callback', loadComponent: () => import('./pages/vk-callback.component').then(m => m.VkCallbackComponent) },
   { path: 'cabinet', canActivate: [authGuard], loadComponent: () => import('./pages/cabinet.component').then(m => m.CabinetComponent) },
   { path: 'payment-result/:orderId', canActivate: [authGuard], loadComponent: () => import('./pages/payment-result.component').then(m => m.PaymentResultComponent) },
-  { path: 'admin', canActivate: [allGuard], loadComponent: () => import('./pages/admin.component').then(m => m.AdminComponent) },
+  { path: 'admin', canActivate: [adminOrRegistrarGuard], loadComponent: () => import('./pages/admin.component').then(m => m.AdminComponent) },
+  { path: 'reports', canActivate: [allGuard], loadComponent: () => import('./pages/reports.component').then(m => m.ReportsComponent), title: 'Отчёты — Мото запчасти' },
+  { path: 'corrections', canActivate: [adminGuard], loadComponent: () => import('./pages/corrections.component').then(m => m.CorrectionsComponent), title: 'Коррекция — Мото запчасти' },
   { path: 'sender',canActivate: [senderGuard], loadComponent: () => import('./pages/sender-panel.component').then(m => m.SenderPanelComponent), title: 'Панель отправителя — Мото запчасти' },
   { path: '**', redirectTo: '' },
 ];

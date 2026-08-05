@@ -34,8 +34,8 @@ import { ChangeDetectorRef } from '@angular/core';
             @for (item of suggestions(); track item.id) {
               <li (click)="selectSuggestion(item)">
                 <span class="suggestion-name">{{ item.name }}</span>
-                @if (item.partNumber) {
-                  <span class="muted suggestion-pn">{{ item.partNumber }}</span>
+                @if (item.partNum) {
+                  <span class="muted suggestion-pn">{{ item.partNum }}</span>
                 }
               </li>
             }
@@ -92,14 +92,14 @@ import { ChangeDetectorRef } from '@angular/core';
 
               <h3>{{ zip.name }}</h3>
               <p class="muted">
-                @if (zip.mark) { <span>{{ zip.mark }}</span> }
-                @if (zip.model) { <span> · {{ zip.model }}</span> }
+                @if (zip.marks.length) { <span>{{ zip.marks.join(', ') }}</span> }
+                @if (zip.models.length) { <span> · {{ zip.models.join(', ') }}</span> }
                 @if (zip.year) { <span> · {{ zip.year }} г.</span> }
               </p>
-              @if (zip.partNumber) { <p class="pn">Part number: {{ zip.partNumber }}</p> }
+              @if (zip.partNum) { <p class="pn">Part number: {{ zip.partNum }}</p> }
               @if (zip.group) { <p class="muted">Группа: {{ zip.group }}</p> }
               <div class="zip-footer">
-                <span class="price">{{ zip.incomeCost | currency:'RUB':'symbol-narrow':'1.0-0' }}</span>
+                <span class="price">{{ zip.sellCost | currency:'RUB':'symbol-narrow':'1.0-0' }}</span>
                 @if (zip.countStored > 0) {
                   <button class="btn" (click)="$event.stopPropagation(); openBuy(zip)">Купить</button>
                 } @else {
@@ -127,7 +127,7 @@ import { ChangeDetectorRef } from '@angular/core';
       <div class="modal-backdrop" (click)="closeBuy()">
         <div class="card modal" (click)="$event.stopPropagation()">
           <h3>Оформление заказа</h3>
-          <p>{{ zip.name }} — <b>{{ zip.incomeCost | currency:'RUB':'symbol-narrow':'1.0-0' }}</b></p>
+          <p>{{ zip.name }} — <b>{{ zip.sellCost | currency:'RUB':'symbol-narrow':'1.0-0' }}</b></p>
           <div class="form-field">
             <label>Количество (в наличии {{ zip.countStored }})</label>
             <input type="number" min="1" [max]="zip.countStored" [(ngModel)]="buyCount" />
@@ -218,12 +218,15 @@ import { ChangeDetectorRef } from '@angular/core';
           <h3 class="mb-3">{{ zip.name }}</h3>
           
           <div class="details-info">
-            <p><strong>Марка:</strong> {{ zip.mark || 'Не указана' }}</p>
-            <p><strong>Модель:</strong> {{ zip.model || 'Не указана' }}</p>
+            <p><strong>Марка:</strong> {{ zip.marks.length ? zip.marks.join(', ') : 'Не указана' }}</p>
+            <p><strong>Модель:</strong> {{ zip.models.length ? zip.models.join(', ') : 'Не указана' }}</p>
             <p><strong>Группа:</strong> {{ zip.group || 'Не указана' }}</p>
             <p><strong>Год:</strong> {{ zip.year || 'Не указан' }}</p>
-            <p><strong>Парт-номер:</strong> {{ zip.partNumber || 'Не указан' }}</p>
-            <h4 class="mt-3 text-primary">Цена: {{ zip.incomeCost | currency:'RUB':'symbol':'1.0-0':'ru' }}</h4>
+            <p><strong>Парт-номер:</strong> {{ zip.partNum || 'Не указан' }}</p>
+            @if (zip.comment) {
+              <p class="zip-comment"><strong>Доп. инфо:</strong> {{ zip.comment }}</p>
+            }
+            <h4 class="mt-3 text-primary">Цена: {{ zip.sellCost | currency:'RUB':'symbol':'1.0-0':'ru' }}</h4>
           </div>
 
           <div class="gallery mt-4">

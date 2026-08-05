@@ -1,7 +1,8 @@
 import { Injectable, inject } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import { environment } from '../../environments/environment';
+import { IncomeReportRow, PriceHistoryRow, SalesReportRow, ZipHistoryRow } from './models';
 
 /**
  * Универсальный сервис админ-панели: у каждой таблицы есть
@@ -91,6 +92,60 @@ export class AdminService {
 
   deleteZipPhoto(photoId: number) {
     return this.http.delete(`${this.api}/zip-photos/${photoId}`);
+  }
+
+  /** Правка каталожной позиции: наименование и группа общие для всех запчастей с этим парт-номером. */
+  updatePartNumber(id: number, data: { partNum: string; name: string; groupId: number | null }) {
+    return this.http.put(`${this.api}/part-numbers/${id}`, data);
+  }
+
+  // ---------- Склад и цены ----------
+
+  /** Коррекция остатка. delta со знаком: отрицательная трактуется бэкендом как списание. */
+  addCorrection(zipId: string, delta: number, comment: string) {
+    return this.http.post(`${this.api}/corrections`, { zipId, delta, comment });
+  }
+
+  /** Изменение цены продажи. Наценка/уценка определяется бэкендом по знаку разницы. */
+  reprice(zipId: string, newCost: number, comment?: string) {
+    return this.http.post(`${this.api}/reprice`, { zipId, newCost, comment });
+  }
+
+  // ---------- Отчёты ----------
+
+  /**
+   * Минимальный список деталей для выпадающих списков на странице отчётов.
+   * Не list('zip') — тот эндпоинт закрыт для Sender и несёт лишние для этой формы данные
+   * (цены, остатки, фото).
+   */
+  zipLookup(): Observable<{ id: string; name: string; partNum?: string }[]> {
+    return this.http.get<{ id: string; name: string; partNum?: string }[]>(`${this.api}/reports/zip-lookup`);
+  }
+
+  salesReport(from?: string, to?: string): Observable<SalesReportRow[]> {
+    return this.http.get<SalesReportRow[]>(`${this.api}/reports/sales`, { params: this.period(from, to) });
+  }
+
+  incomeReport(from?: string, to?: string): Observable<IncomeReportRow[]> {
+    return this.http.get<IncomeReportRow[]>(`${this.api}/reports/income`, { params: this.period(from, to) });
+  }
+
+  priceHistoryReport(zipId?: string): Observable<PriceHistoryRow[]> {
+    let params = new HttpParams();
+    if (zipId) params = params.set('zipId', zipId);
+    return this.http.get<PriceHistoryRow[]>(`${this.api}/reports/price-history`, { params });
+  }
+
+  zipHistory(zipId: string): Observable<ZipHistoryRow[]> {
+    return this.http.get<ZipHistoryRow[]>(`${this.api}/reports/zip-history/${zipId}`);
+  }
+
+  /** Даты в формате YYYY-MM-DD. Обе границы включительно — доводит их бэкенд. */
+  private period(from?: string, to?: string): HttpParams {
+    let params = new HttpParams();
+    if (from) params = params.set('from', from);
+    if (to) params = params.set('to', to);
+    return params;
   }
 
   // Sender

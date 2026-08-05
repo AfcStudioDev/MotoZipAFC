@@ -1,28 +1,35 @@
 import { Component, inject, ChangeDetectionStrategy } from '@angular/core';
-import { Router, RouterLink, RouterOutlet } from '@angular/router';
+import { Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { AuthService } from './core/auth.service';
 
 @Component({
     selector: 'app-root',
-    imports: [RouterOutlet, RouterLink],
+    imports: [RouterOutlet, RouterLink, RouterLinkActive],
     template: `
     <header class="header">
       <div class="container header-inner">
         <a routerLink="/" class="logo">Moto<span>Parts</span></a>
         <nav class="nav">
-          <a routerLink="/">Каталог</a>
+          <!-- exact: true — иначе "/" подсвечивался бы на любой странице -->
+          <a routerLink="/" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }">Каталог</a>
           @if (auth.user(); as user) {
-            <a routerLink="/cabinet">Личный кабинет</a>
+            <a routerLink="/cabinet" routerLinkActive="active">Личный кабинет</a>
+            @if (user.isAdmin || user.isRegistrar) {
+              <a routerLink="/admin" routerLinkActive="active">Админ-панель</a>
+            }
             @if (user.isAdmin || user.isSender || user.isRegistrar) {
-              <a routerLink="/admin">Админ-панель</a>
+              <a routerLink="/reports" routerLinkActive="active">Отчёты</a>
+            }
+            @if (user.isAdmin) {
+              <a routerLink="/corrections" routerLinkActive="active">Коррекция</a>
             }
             @if (user.isAdmin || user.isSender) {
-              <a routerLink="/sender">Отправления</a>
+              <a routerLink="/sender" routerLinkActive="active">Отправления</a>
             }
             <span class="user-name">{{ user.fio }}</span>
             <button class="btn btn-secondary" (click)="logout()">Выйти</button>
           } @else {
-            <a routerLink="/login">Войти</a>
+            <a routerLink="/login" routerLinkActive="active">Войти</a>
             <a routerLink="/register" class="btn">Регистрация</a>
           }
         </nav>
@@ -55,7 +62,29 @@ import { AuthService } from './core/auth.service';
     }
     .logo span { color: var(--accent); }
     .nav { display: flex; align-items: center; gap: 18px; }
-    .nav a { color: var(--text); font-weight: 500; }
+    .nav a {
+      color: var(--text);
+      font-weight: 500;
+      position: relative;
+      padding: 4px 0;
+      transition: color 0.15s;
+    }
+    /* Подсветка вкладки текущей страницы. Кнопка «Регистрация» исключена —
+       у неё собственный стиль .btn, подчёркивание его ломает. */
+    .nav a.active:not(.btn) {
+      color: var(--accent, #007bff);
+      font-weight: 600;
+    }
+    .nav a.active:not(.btn)::after {
+      content: '';
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: -2px;
+      height: 2px;
+      background: var(--accent, #007bff);
+      border-radius: 2px;
+    }
     .user-name { color: var(--muted); font-size: 14px; }
     .main { padding: 24px 16px 48px; }
   `]

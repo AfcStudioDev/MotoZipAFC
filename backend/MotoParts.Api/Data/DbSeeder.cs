@@ -1,21 +1,27 @@
 using Microsoft.EntityFrameworkCore;
 
+using MotoParts.Api.Extensions;
 using MotoParts.Api.Models;
 using MotoParts.Api.Services;
 
 namespace MotoParts.Api.Data;
 
-/// <summary>Начальные данные: администратор и демо-каталог.</summary>
+/// <summary>Начальные данные: справочники, администратор и демо-каталог.</summary>
 public static class DbSeeder
 {
     public static async Task SeedAsync(AppDbContext db, IConfiguration config)
     {
-        // Администратор по умолчанию (email/пароль настраиваются в appsettings)
-        var adminEmail = (config["Seed:AdminEmail"] ?? "Admin").ToLowerInvariant();
-        var senderEmail = (config["Seed:SenderEmail"] ?? "Sender").ToLowerInvariant();
-        var registrarEmail = (config["Seed:RegistrarEmail"] ?? "Registrar").ToLowerInvariant();
+        await SeedDictionariesAsync(db);
+        var users = await SeedUsersAsync(db, config);
+        await SeedCatalogAsync(db, users);
+    }
 
-        // СИДИРОВАНИЕ СПРАВОЧНИКОВ (Статусы и Операции)
+    /// <summary>
+    /// Справочники операций обязаны существовать до первой записи в журнал:
+    /// Log.OperationId объявлен NOT NULL с внешним ключом на Operations.
+    /// </summary>
+    private static async Task SeedDictionariesAsync(AppDbContext db)
+    {
         if (!await db.DeliveryStatuses.AnyAsync())
         {
             await db.DeliveryStatuses.AddRangeAsync(
@@ -27,19 +33,41 @@ public static class DbSeeder
             await db.SaveChangesAsync();
         }
 
-        if (!await db.Operations.AnyAsync())
+        if (!await db.OperationTypes.AnyAsync())
         {
-            await db.Operations.AddRangeAsync(
-                new Operation { Id = 1, Type = 1, Description = "Продажа" },
-                new Operation { Id = 2, Type = 2, Description = "Возврат" },
-                new Operation { Id = 3, Type = 3, Description = "Приход на склад" }
+            await db.OperationTypes.AddRangeAsync(
+                // GetDescription(this Enum) — второй перегрузки принимает int и падает
+                // на перечислениях с базовым типом short.
+                Enum.GetValues<OperationTypeEnum>().Select(t => new OperationType
+                {
+                    Id = (short)t,
+                    Description = t.GetDescription()
+                })
             );
             await db.SaveChangesAsync();
         }
 
-        // ID запчастей в переменные, чтобы могли на них сослаться в заказах
-        var zip1Id = Guid.NewGuid();
-        var zip2Id = Guid.NewGuid();
+        if (!await db.Operations.AnyAsync())
+        {
+            await db.Operations.AddRangeAsync(
+                new Operation { Id = (short)OperationEnum.Income, TypeId = (short)OperationTypeEnum.StockMovement, Description = "Приход" },
+                new Operation { Id = (short)OperationEnum.Sale, TypeId = (short)OperationTypeEnum.StockMovement, Description = "Продажа" },
+                new Operation { Id = (short)OperationEnum.Refund, TypeId = (short)OperationTypeEnum.StockMovement, Description = "Возврат" },
+                new Operation { Id = (short)OperationEnum.WriteOff, TypeId = (short)OperationTypeEnum.StockMovement, Description = "Списание" },
+                new Operation { Id = (short)OperationEnum.Correction, TypeId = (short)OperationTypeEnum.StockMovement, Description = "Коррекция остатка" },
+                new Operation { Id = (short)OperationEnum.Markup, TypeId = (short)OperationTypeEnum.Repricing, Description = "Наценка" },
+                new Operation { Id = (short)OperationEnum.Markdown, TypeId = (short)OperationTypeEnum.Repricing, Description = "Уценка" },
+                new Operation { Id = (short)OperationEnum.Other, TypeId = (short)OperationTypeEnum.Audit, Description = "Прочее" }
+            );
+            await db.SaveChangesAsync();
+        }
+    }
+
+    private static async Task<User> SeedUsersAsync(AppDbContext db, IConfiguration config)
+    {
+        var adminEmail = (config["Seed:AdminEmail"] ?? "Admin").ToLowerInvariant();
+        var senderEmail = (config["Seed:SenderEmail"] ?? "Sender").ToLowerInvariant();
+        var registrarEmail = (config["Seed:RegistrarEmail"] ?? "Registrar").ToLowerInvariant();
 
         if (!await db.Users.AnyAsync(u => u.Email == adminEmail))
         {
@@ -73,7 +101,7 @@ public static class DbSeeder
         }
         await db.SaveChangesAsync();
 
-        var clientEmail = "client@example.com";
+        const string clientEmail = "client@example.com";
         var clientUser = await db.Users.FirstOrDefaultAsync(u => u.Email == clientEmail);
         if (clientUser == null)
         {
@@ -86,11 +114,10 @@ public static class DbSeeder
                 IsAdmin = false
             };
             await db.Users.AddAsync(clientUser);
-            await db.SaveChangesAsync(); // Сохраняем, чтобы сгенерировался числовой Id клиента
+            await db.SaveChangesAsync();
         }
 
-        // Добавляем адрес для клиента
-        if (clientUser != null && !await db.DeliveryAddressess.AnyAsync(a => a.UserId == clientUser.Id))
+        if (!await db.DeliveryAddressess.AnyAsync(a => a.UserId == clientUser.Id))
         {
             await db.DeliveryAddressess.AddAsync(new DeliveryAddress
             {
@@ -98,201 +125,129 @@ public static class DbSeeder
                 PostCode = "101000",
                 UserId = clientUser.Id
             });
-            await db.SaveChangesAsync(); // Сохраняем адрес, чтобы получить его ID
-        }
-        if (!await db.Zips.AnyAsync())
-        {
-            // 1. Создаем и привязываем справочники один раз
-            var honda = new MotoMark { Mark = "Honda" };
-            var yamaha = new MotoMark { Mark = "Yamaha" };
-            var kawasaki = new MotoMark { Mark = "Kawasaki" };
-            var suzuki = new MotoMark { Mark = "Suzuki" };
-            var bmw = new MotoMark { Mark = "BMW" };
-
-            var cbr = new MotoModel { Mark = honda, Model = "CBR600RR" };
-            var africa = new MotoModel { Mark = honda, Model = "Africa Twin" };
-            var r1 = new MotoModel { Mark = yamaha, Model = "YZF-R1" };
-            var mt07 = new MotoModel { Mark = yamaha, Model = "MT-07" };
-            var ninja = new MotoModel { Mark = kawasaki, Model = "Ninja ZX-10R" };
-            var gsxr = new MotoModel { Mark = suzuki, Model = "GSX-R750" };
-
-            var engine = new ZipGroup { GroupName = "Двигатель" };
-            var brakes = new ZipGroup { GroupName = "Тормозная система" };
-            var suspension = new ZipGroup { GroupName = "Подвеска" };
-            var electrics = new ZipGroup { GroupName = "Электрика" };
-            var body = new ZipGroup { GroupName = "Пластик и кузов" };
-
-            var pn1 = new PartNumber { PartNum = "15410-MFJ-D01" };
-            var pn2 = new PartNumber { PartNum = "5VY-13440-30" };
-            var pn3 = new PartNumber { PartNum = "43082-0155" };
-            var pn4 = new PartNumber { PartNum = "59100-29G00" };
-            var pn5 = new PartNumber { PartNum = "38770-MKR-D12" };
-
-            var incomeHonda = new IncomeMoto { Id = Guid.NewGuid(), Description = "Поступление Honda 2024" };
-            var incomeYamaha = new IncomeMoto { Id = Guid.NewGuid(), Description = "Поступление Yamaha 2024" };
-            var incomeKawasaki = new IncomeMoto { Id = Guid.NewGuid(), Description = "Поступление Kawasaki 2024" };
-            var incomeSuzuki = new IncomeMoto { Id = Guid.NewGuid(), Description = "Поступление Suzuki 2024" };
-
-            // 2. Добавляем сами запчасти
-            await db.Zips.AddRangeAsync(
-                new Zip
-                {
-                    Id = zip1Id, // Используем заготовленный GUID
-                    Name = "Масляный фильтр Honda CBR600RR",
-                    IncomeCost = 1250,
-                    PartNumber = pn1,
-                    Mark = honda,
-                    Model = cbr,
-                    Group = engine,
-                    IncomeMoto = incomeHonda,
-                    Year = 2020
-                },
-                new Zip
-                {
-                    Id = zip2Id, // Используем заготовленный GUID
-                    Name = "Тормозные колодки Honda CBR600RR",
-                    IncomeCost = 4200,
-                    PartNumber = pn3,
-                    Mark = kawasaki,
-                    Model = ninja,
-                    Group = brakes,
-                    IncomeMoto = incomeHonda,
-                    Year = 2019
-                },
-                new Zip
-                {
-                    Id = Guid.NewGuid(),
-                    Name = "Масляный фильтр Yamaha YZF-R1",
-                    IncomeCost = 1390,
-                    PartNumber = pn2,
-                    Mark = yamaha,
-                    Model = r1,
-                    Group = engine,
-                    IncomeMoto = incomeYamaha,
-                    Year = 2021
-                },
-                new Zip
-                {
-                    Id = Guid.NewGuid(),
-                    Name = "Тормозные колодки Kawasaki Ninja ZX-10R",
-                    IncomeCost = 4200,
-                    PartNumber = pn3,
-                    Mark = kawasaki,
-                    Model = ninja,
-                    Group = brakes,
-                    IncomeMoto = incomeKawasaki,
-                    Year = 2019
-                },
-                new Zip
-                {
-                    Id = Guid.NewGuid(),
-                    Name = "Амортизатор задний Suzuki GSX-R750",
-                    IncomeCost = 28500,
-                    PartNumber = pn4,
-                    Mark = suzuki,
-                    Model = gsxr,
-                    Group = suspension,
-                    IncomeMoto = incomeSuzuki,
-                    Year = 2018
-                },
-                new Zip
-                {
-                    Id = Guid.NewGuid(),
-                    Name = "Блок управления (ECU) Honda Africa Twin",
-                    IncomeCost = 54100,
-                    PartNumber = pn5,
-                    Mark = honda,
-                    Model = africa,
-                    Group = electrics,
-                    IncomeMoto = incomeHonda,
-                    Year = 2022
-                }
-            );
-
-            // КРИТИЧЕСКИ ВАЖНО: сохраняем всё это в БД!
-            // EF Core сам догадается сохранить справочники (MotoMarks и т.д.), 
-            // так как мы привязали их к Zips в конструкторах выше.
             await db.SaveChangesAsync();
         }
 
-        // --- ДАЛЬШЕ ИДЕТ ВАШ КОД ---
+        return clientUser;
+    }
 
-        var zips = await db.Zips.Take(2).ToListAsync();
-        if (zips.Count < 1) return; // Теперь это не сработает вхолостую, так как мы сделали SaveChangesAsync()
+    private static async Task SeedCatalogAsync(AppDbContext db, User clientUser)
+    {
+        if (await db.Zips.AnyAsync()) return;
 
-        zip1Id = zips[0].Id;
-        zip2Id = zips.Count > 1 ? zips[1].Id : zips[0].Id;
-        
-        // 4. СИДИРОВАНИЕ ОСТАТКОВ НА СКЛАДЕ (Stored)
-        if (!await db.Stored.AnyAsync())
+        // --- Справочники классификации ---
+        var honda = new MotoMark { Mark = "Honda" };
+        var yamaha = new MotoMark { Mark = "Yamaha" };
+        var kawasaki = new MotoMark { Mark = "Kawasaki" };
+        var suzuki = new MotoMark { Mark = "Suzuki" };
+
+        var cbr = new MotoModel { Mark = honda, Model = "CBR600RR" };
+        var africa = new MotoModel { Mark = honda, Model = "Africa Twin" };
+        var r1 = new MotoModel { Mark = yamaha, Model = "YZF-R1" };
+        var mt07 = new MotoModel { Mark = yamaha, Model = "MT-07" };
+        var ninja = new MotoModel { Mark = kawasaki, Model = "Ninja ZX-10R" };
+        var gsxr = new MotoModel { Mark = suzuki, Model = "GSX-R750" };
+
+        var engine = new ZipGroup { GroupName = "Двигатель" };
+        var brakes = new ZipGroup { GroupName = "Тормозная система" };
+        var suspension = new ZipGroup { GroupName = "Подвеска" };
+        var electrics = new ZipGroup { GroupName = "Электрика" };
+        var body = new ZipGroup { GroupName = "Пластик и кузов" };
+
+        // --- Каталожные позиции: наименование теперь живёт здесь ---
+        var pn1 = new PartNumber { PartNum = "15410-MFJ-D01", Name = "Масляный фильтр", Group = engine };
+        var pn2 = new PartNumber { PartNum = "5VY-13440-30", Name = "Масляный фильтр", Group = engine };
+        var pn3 = new PartNumber { PartNum = "43082-0155", Name = "Тормозные колодки", Group = brakes };
+        var pn4 = new PartNumber { PartNum = "59100-29G00", Name = "Амортизатор задний", Group = suspension };
+        var pn5 = new PartNumber { PartNum = "38770-MKR-D12", Name = "Блок управления (ECU)", Group = electrics };
+
+        // --- Применимость: одна позиция может подходить к нескольким моделям ---
+        await db.PartNumberApplicabilities.AddRangeAsync(
+            new PartNumberApplicability { PartNumber = pn1, Model = cbr },
+            new PartNumberApplicability { PartNumber = pn1, Model = africa },
+            new PartNumberApplicability { PartNumber = pn2, Model = r1 },
+            new PartNumberApplicability { PartNumber = pn2, Model = mt07 },
+            new PartNumberApplicability { PartNumber = pn3, Model = ninja },
+            new PartNumberApplicability { PartNumber = pn3, Model = cbr },
+            new PartNumberApplicability { PartNumber = pn4, Model = gsxr },
+            new PartNumberApplicability { PartNumber = pn5, Model = africa }
+        );
+
+        // --- Доноры ---
+        var incomeHonda = new IncomeMoto { Id = Guid.NewGuid(), Description = "Поступление Honda 2024" };
+        var incomeYamaha = new IncomeMoto { Id = Guid.NewGuid(), Description = "Поступление Yamaha 2024" };
+        var incomeKawasaki = new IncomeMoto { Id = Guid.NewGuid(), Description = "Поступление Kawasaki 2024" };
+        var incomeSuzuki = new IncomeMoto { Id = Guid.NewGuid(), Description = "Поступление Suzuki 2024" };
+
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+
+        var zips = new[]
         {
-            var storedItem1 = new Stored { ZipId = zip1Id, Count = 5 };
-            var storedItem2 = new Stored { ZipId = zip2Id, Count = 2 };
-            await db.Stored.AddRangeAsync(storedItem1, storedItem2);
-            await db.SaveChangesAsync();
-        }
+            new Zip { Id = Guid.NewGuid(), PartNumber = pn1, IncomeCost = 1250m,  SellCost = 1990m,  IncomeMoto = incomeHonda,    Year = 2020, IncomeDate = today },
+            new Zip { Id = Guid.NewGuid(), PartNumber = pn3, IncomeCost = 4200m,  SellCost = 6500m,  IncomeMoto = incomeHonda,    Year = 2019, IncomeDate = today },
+            new Zip { Id = Guid.NewGuid(), PartNumber = pn2, IncomeCost = 1390m,  SellCost = 2190m,  IncomeMoto = incomeYamaha,   Year = 2021, IncomeDate = today },
+            new Zip { Id = Guid.NewGuid(), PartNumber = pn3, IncomeCost = 4200m,  SellCost = 6300m,  IncomeMoto = incomeKawasaki, Year = 2019, IncomeDate = today },
+            new Zip { Id = Guid.NewGuid(), PartNumber = pn4, IncomeCost = 28500m, SellCost = 39900m, IncomeMoto = incomeSuzuki,   Year = 2018, IncomeDate = today },
+            new Zip { Id = Guid.NewGuid(), PartNumber = pn5, IncomeCost = 54100m, SellCost = 74900m, IncomeMoto = incomeHonda,    Year = 2022, IncomeDate = today },
+        };
+        await db.Zips.AddRangeAsync(zips);
 
-        if (!await db.Orders.AnyAsync())
+        // --- Остатки и приходные движения в журнале ---
+        var counts = new[] { 5, 2, 3, 1, 1, 1 };
+        for (int i = 0; i < zips.Length; i++)
         {
-            var clientAddress = await db.DeliveryAddressess.FirstOrDefaultAsync(a => a.UserId == clientUser!.Id);
-
-            if (clientAddress != null && clientUser != null)
+            await db.Stored.AddAsync(new Stored { Zip = zips[i], Count = counts[i] });
+            await db.Logs.AddAsync(new Log
             {
-                var orderId = Guid.NewGuid();
-
-                // Создаем заказ (теперь включает в себя поля из старого Movement)
-                var order = new Order
-                {
-                    Id = orderId,
-                    OrderNumber = "ORD-00001",
-                    CountOrdered = 1,
-                    NomenclatureId = zip1Id,
-                    AddressId = clientAddress.Id,
-                    UserId = clientUser.Id,
-                    OrderDateTime = DateTimeOffset.UtcNow,
-                    SellCost = 1250m,
-                    Discount = "0",
-                    OperationTypeId = 1, // 1 - Продажа
-                    DeliveryStatusId = 1 // 1 - created (Создан)
-                };
-                await db.Orders.AddAsync(order);
-
-                // Оплата
-                //var payment = new Payment
-                //{
-                //    Id = Guid.NewGuid(),
-                //    OrderId = orderId,
-                //    YooKassaPaymentId = "2412312-321321-41241-231321",
-                //    Status = "succeeded",
-                //    Amount = 1250m,
-                //    CreatedAt = DateTimeOffset.UtcNow
-                //};
-                //await db.Payments.AddAsync(payment);
-
-                // Лог заказа (новая таблица Log)
-                var log = new Log
-                {
-                    OrderId = orderId,
-                    Description = "Заказ успешно создан и оплачен клиентом."
-                };
-                await db.Logs.AddAsync(log);
-
-                await db.SaveChangesAsync();
-            }
+                CreatedAt = DateTimeOffset.UtcNow,
+                OperationId = (short)OperationEnum.Income,
+                Zip = zips[i],
+                Qty = counts[i],
+                UnitCost = zips[i].IncomeCost,
+                Description = $"Первичное оприходование: {zips[i].PartNumber.Name}"
+            });
         }
+        await db.SaveChangesAsync();
 
-        //if (!await db.Operations.AnyAsync())
-        //{
-        //    var opSale = new Operation { Id = 1, Type = 1, Description = "Продажа" };   // 1 - Продажа
-        //    var opRefund = new Operation { Id = 2, Type = 2, Description = "Возврат" }; // 2 - Возврат
-        //    var opSupply = new Operation { Id = 3, Type = 3, Description = "Приход на склад" }; // 3 - Приход на склад
-        //    await db.Operations.AddRangeAsync(opSale, opRefund, opSupply);
-        //    await db.SaveChangesAsync(); // Сразу сохраняем справочник
-        //}
+        // --- Демо-заказ ---
+        if (await db.Orders.AnyAsync()) return;
 
+        var clientAddress = await db.DeliveryAddressess.FirstOrDefaultAsync(a => a.UserId == clientUser.Id);
+        if (clientAddress == null) return;
 
+        var soldZip = zips[0];
+        var order = new Order
+        {
+            Id = Guid.NewGuid(),
+            OrderNumber = "ORD-00001",
+            CountOrdered = 1,
+            ZipId = soldZip.Id,
+            AddressId = clientAddress.Id,
+            UserId = clientUser.Id,
+            OrderDateTime = DateTimeOffset.UtcNow,
+            SellCost = soldZip.SellCost ?? 0m,
+            Discount = 0m,
+            OperationId = (short)OperationEnum.Sale,
+            DeliveryStatusId = 1 // created
+        };
+        await db.Orders.AddAsync(order);
 
-        // Финальное сохранение всего, что могло остаться в памяти
+        var stored = await db.Stored.FirstAsync(s => s.ZipId == soldZip.Id);
+        stored.Count -= order.CountOrdered;
+
+        await db.Logs.AddAsync(new Log
+        {
+            CreatedAt = DateTimeOffset.UtcNow,
+            OperationId = (short)OperationEnum.Sale,
+            OrderId = order.Id,
+            ZipId = soldZip.Id,
+            UserId = clientUser.Id,
+            Qty = -order.CountOrdered,
+            UnitCost = soldZip.IncomeCost,
+            SellCost = order.SellCost,
+            Description = $"Заказ {order.OrderNumber} создан"
+        });
+
         await db.SaveChangesAsync();
     }
 }

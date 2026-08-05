@@ -8,7 +8,7 @@ using MotoParts.Api.Services;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.Formats.Webp;
 
-using static System.Runtime.InteropServices.JavaScript.JSType;
+using System.Security.Claims;
 
 namespace MotoParts.Api.Controllers;
 
@@ -18,6 +18,9 @@ namespace MotoParts.Api.Controllers;
 [Authorize(Roles = "Admin   ,Registrar")]
 public class AdminController(AppDbContext db) : ControllerBase
 {
+    private int? CurrentUserId =>
+        int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var id) ? id : null;
+
     // ---------- MotoMarks ----------
     [HttpGet("marks")]
     public async Task<IActionResult> Marks() =>
@@ -76,40 +79,124 @@ public class AdminController(AppDbContext db) : ControllerBase
     // ---------- PartNumbers ----------
     [HttpGet("part-numbers")]
     public async Task<IActionResult> PartNumbers() =>
-        Ok(await db.PartNumbers.OrderBy(p => p.Id).Select(p => new { p.Id, p.PartNum }).ToListAsync());
+        Ok(await db.PartNumbers.OrderBy(p => p.Id)
+            .Select(p => new
+            {
+                p.Id,
+                p.PartNum,
+                p.Name,
+                p.GroupId,
+                Group = p.Group != null ? p.Group.GroupName : null
+            })
+            .ToListAsync());
 
     [HttpPost("part-numbers")]
     public async Task<IActionResult> AddPartNumber(AdminPartNumberRequest request)
     {
         if (string.IsNullOrWhiteSpace(request.PartNum))
             return BadRequest(new { message = "Номер запчасти обязателен" });
+        if (string.IsNullOrWhiteSpace(request.Name))
+            return BadRequest(new { message = "Наименование обязательно" });
+        if (await db.PartNumbers.AnyAsync(p => p.PartNum == request.PartNum.Trim()))
+            return Conflict(new { message = "Такой парт-номер уже существует" });
 
-        var pn = new PartNumber { PartNum = request.PartNum.Trim() };
+        var pn = new PartNumber
+        {
+            PartNum = request.PartNum.Trim(),
+            Name = request.Name.Trim(),
+            GroupId = request.GroupId
+        };
         db.PartNumbers.Add(pn);
         await db.SaveChangesAsync();
-        return Ok(new { pn.Id, pn.PartNum });
+        return Ok(new { pn.Id, pn.PartNum, pn.Name });
+    }
+
+    /// <summary>
+    /// Правка каталожной позиции. Нужна отдельным методом: обобщённый PUT {table}/{id}
+    /// ищет таблицу по имени и на "part-numbers" с дефисом не срабатывает.
+    /// </summary>
+    [HttpPut("part-numbers/{id:int}")]
+    public async Task<IActionResult> UpdatePartNumber(int id, [FromBody] AdminPartNumberRequest request)
+    {
+        var pn = await db.PartNumbers.FindAsync(id);
+        if (pn == null) return NotFound(new { message = "Парт-номер не найден" });
+
+        if (string.IsNullOrWhiteSpace(request.Name))
+            return BadRequest(new { message = "Наименование обязательно" });
+
+        if (!string.IsNullOrWhiteSpace(request.PartNum))
+        {
+            var partNum = request.PartNum.Trim();
+            if (partNum != pn.PartNum && await db.PartNumbers.AnyAsync(p => p.PartNum == partNum))
+                return Conflict(new { message = "Такой парт-номер уже существует" });
+            pn.PartNum = partNum;
+        }
+
+        pn.Name = request.Name.Trim();
+        pn.GroupId = request.GroupId;
+
+        await db.SaveChangesAsync();
+        return Ok(new { pn.Id, pn.PartNum, pn.Name, pn.GroupId });
+    }
+
+    // ---------- PartNumberApplicability ----------
+    [HttpGet("applicability")]
+    public async Task<IActionResult> Applicability() =>
+        Ok(await db.PartNumberApplicabilities.OrderBy(a => a.Id)
+            .Select(a => new
+            {
+                a.Id,
+                a.PartNumId,
+                PartNum = a.PartNumber.PartNum,
+                Name = a.PartNumber.Name,
+                a.ModelId,
+                Model = a.Model.Model,
+                Mark = a.Model.Mark != null ? a.Model.Mark.Mark : null
+            })
+            .ToListAsync());
+
+    [HttpPost("applicability")]
+    public async Task<IActionResult> AddApplicability(AdminApplicabilityRequest request)
+    {
+        if (!await db.PartNumbers.AnyAsync(p => p.Id == request.PartNumId))
+            return BadRequest(new { message = "Парт-номер не найден" });
+        if (!await db.MotoModels.AnyAsync(m => m.Id == request.ModelId))
+            return BadRequest(new { message = "Модель не найдена" });
+        if (await db.PartNumberApplicabilities.AnyAsync(a => a.PartNumId == request.PartNumId && a.ModelId == request.ModelId))
+            return Conflict(new { message = "Такая привязка уже существует" });
+
+        var link = new PartNumberApplicability { PartNumId = request.PartNumId, ModelId = request.ModelId };
+        db.PartNumberApplicabilities.Add(link);
+        await db.SaveChangesAsync();
+        return Ok(new { link.Id, link.PartNumId, link.ModelId });
     }
 
     // ---------- Zip ----------
     [HttpGet("zip")]
     public async Task<IActionResult> Zips() =>
-        Ok(await db.Zips.OrderBy(z => z.Name)
+        Ok(await db.Zips.OrderBy(z => z.PartNumber.Name)
             .Select(z => new
             {
                 z.Id,
-                z.Name,
+                Name = z.PartNumber.Name,
                 z.IncomeCost,
-                z.PartNumId, // Обновлено поле
-                PartNum = z.PartNumber != null ? z.PartNumber.PartNum : null,
-                z.MarkId,
-                Mark = z.Mark != null ? z.Mark.Mark : null,
-                z.ModelId,
-                Model = z.Model != null ? z.Model.Model : null,
-                z.GroupId,
-                Group = z.Group != null ? z.Group.GroupName : null,
+                z.SellCost,
+                z.PartNumId,
+                PartNum = z.PartNumber.PartNum,
+                GroupId = z.PartNumber.GroupId,
+                Group = z.PartNumber.Group != null ? z.PartNumber.Group.GroupName : null,
+                Models = z.PartNumber.Applicability.Select(a => a.Model.Model).ToList(),
+                Marks = z.PartNumber.Applicability
+                    .Where(a => a.Model.Mark != null)
+                    .Select(a => a.Model.Mark!.Mark)
+                    .Distinct()
+                    .ToList(),
                 z.Year,
+                z.IncomeDate,
+                z.Comment,
                 z.IncomeMotoId,
                 IncomeMoto = z.IncomeMoto != null ? z.IncomeMoto.Description : null,
+                CountStored = z.Stored != null ? z.Stored.Count : 0,
                 Photos = z.Photos.Select(p => new { p.Id, p.FileName, p.IsMain }).ToList()
             })
             .ToListAsync());
@@ -117,20 +204,42 @@ public class AdminController(AppDbContext db) : ControllerBase
     [HttpPost("zip")]
     public async Task<IActionResult> AddZip([FromForm] AdminZipRequest request)
     {
+        var partNumber = await db.PartNumbers.FindAsync(request.PartNumId);
+        if (partNumber == null)
+            return BadRequest(new { message = "Парт-номер не найден" });
+        if (!await db.IncomeMotos.AnyAsync(i => i.Id == request.IncomeMotoId))
+            return BadRequest(new { message = "Донор не найден" });
+        if (request.CountStored < 0)
+            return BadRequest(new { message = "Количество не может быть отрицательным" });
+
         var zip = new Zip
         {
             Id = Guid.NewGuid(),
-            Name = request.Name.Trim(),
             IncomeCost = request.IncomeCost,
-            PartNumId = request.PartNumId, // Обновлено поле
-            MarkId = request.MarkId,
-            ModelId = request.ModelId,
-            GroupId = request.GroupId,
-            Year = request.Year.HasValue ? (uint)request.Year.Value : null,
-            IncomeMotoId = request.IncomeMotoId
+            SellCost = request.SellCost,
+            PartNumId = request.PartNumId,
+            Year = request.Year,
+            IncomeMotoId = request.IncomeMotoId,
+            IncomeDate = request.IncomeDate ?? DateOnly.FromDateTime(DateTime.UtcNow),
+            Comment = request.Comment
         };
 
         db.Zips.Add(zip);
+
+        // Остаток и приходное движение создаются вместе с деталью.
+        db.Stored.Add(new Stored { ZipId = zip.Id, Count = request.CountStored });
+        db.Logs.Add(new Log
+        {
+            CreatedAt = DateTimeOffset.UtcNow,
+            OperationId = (short)OperationEnum.Income,
+            ZipId = zip.Id,
+            UserId = CurrentUserId,
+            Qty = request.CountStored,
+            UnitCost = request.IncomeCost,
+            SellCost = request.SellCost,
+            Description = $"Оприходование: {partNumber.Name} ({partNumber.PartNum})"
+        });
+
         await db.SaveChangesAsync();
         var photos = Request.Form.Files;
         // 2. Обработка фотографий
@@ -166,7 +275,7 @@ public class AdminController(AppDbContext db) : ControllerBase
             await db.SaveChangesAsync();
         }
 
-        return Ok(new { zip.Id, zip.Name });
+        return Ok(new { zip.Id, Name = partNumber.Name });
     }
 
     [HttpPut("zip/{id}")]
@@ -179,15 +288,36 @@ public class AdminController(AppDbContext db) : ControllerBase
             return NotFound(new { message = "Запчасть не найдена" });
         }
 
-        // 2. Обновляем текстовые и числовые поля
-        zip.Name = request.Name?.Trim() ?? zip.Name;
+        var userId = CurrentUserId;
+        if (userId is null) return Unauthorized(new { message = "Не удалось определить пользователя" });
+
+        // 2. Обновляем числовые поля
+        var oldSellCost = zip.SellCost;
+
         zip.IncomeCost = request.IncomeCost;
+        zip.SellCost = request.SellCost;
         zip.PartNumId = request.PartNumId;
-        zip.MarkId = request.MarkId;
-        zip.ModelId = request.ModelId;
-        zip.GroupId = request.GroupId;
-        zip.Year = request.Year.HasValue ? (uint)request.Year.Value : null;
+        zip.Year = request.Year;
         zip.IncomeMotoId = request.IncomeMotoId; // Убедитесь, что фронтенд передает правильный Guid
+        zip.IncomeDate = request.IncomeDate ?? zip.IncomeDate;
+        zip.Comment = request.Comment;
+
+        // Изменение цены продажи попадает в историю переоценки как наценка или уценка.
+        if (request.SellCost.HasValue && oldSellCost.HasValue && request.SellCost.Value != oldSellCost.Value)
+        {
+            db.PriceHistories.Add(new PriceHistory
+            {
+                ZipId = zip.Id,
+                OldCost = oldSellCost.Value,
+                NewCost = request.SellCost.Value,
+                OperationId = (short)(request.SellCost.Value > oldSellCost.Value
+                    ? OperationEnum.Markup
+                    : OperationEnum.Markdown),
+                UserId = userId.Value,
+                CreatedAt = DateTimeOffset.UtcNow,
+                Comment = "Изменение цены через админ-панель"
+            });
+        }
 
         // 3. Обработка новых фотографий (если они были загружены)
         var photos = Request.Form.Files;
@@ -260,6 +390,86 @@ public class AdminController(AppDbContext db) : ControllerBase
 
         return Ok(new { message = "Фотография удалена" });
     }
+
+    // ---------- Коррекции остатка ----------
+
+    /// <summary>Ручная коррекция остатка со знаком: +5 доприходовать, −3 списать.</summary>
+    [HttpPost("corrections")]
+    public async Task<IActionResult> AddCorrection(AdminCorrectionRequest request)
+    {
+        if (request.Delta == 0)
+            return BadRequest(new { message = "Изменение количества не может быть нулевым" });
+        if (string.IsNullOrWhiteSpace(request.Comment))
+            return BadRequest(new { message = "Причина коррекции обязательна" });
+
+        var zip = await db.Zips.Include(z => z.PartNumber).FirstOrDefaultAsync(z => z.Id == request.ZipId);
+        if (zip == null) return NotFound(new { message = "Запчасть не найдена" });
+
+        await using var tx = await db.Database.BeginTransactionAsync();
+
+        var stored = await db.Stored.FirstOrDefaultAsync(s => s.ZipId == request.ZipId);
+        if (stored == null)
+        {
+            stored = new Stored { ZipId = request.ZipId, Count = 0 };
+            db.Stored.Add(stored);
+        }
+
+        if (stored.Count + request.Delta < 0)
+            return BadRequest(new { message = $"Остаток не может стать отрицательным. Сейчас на складе: {stored.Count}" });
+
+        stored.Count += request.Delta;
+
+        // Отрицательная дельта — это списание, положительная — коррекция в плюс.
+        db.Logs.Add(new Log
+        {
+            CreatedAt = DateTimeOffset.UtcNow,
+            OperationId = (short)(request.Delta < 0 ? OperationEnum.WriteOff : OperationEnum.Correction),
+            ZipId = zip.Id,
+            UserId = CurrentUserId,
+            Qty = request.Delta,
+            UnitCost = zip.IncomeCost,
+            Description = request.Comment.Trim()
+        });
+
+        await db.SaveChangesAsync();
+        await tx.CommitAsync();
+
+        return Ok(new { message = "Коррекция проведена", zipId = zip.Id, count = stored.Count });
+    }
+
+    /// <summary>Изменение цены продажи с записью в историю переоценки.</summary>
+    [HttpPost("reprice")]
+    public async Task<IActionResult> Reprice(AdminRepriceRequest request)
+    {
+        var userId = CurrentUserId;
+        if (userId is null) return Unauthorized(new { message = "Не удалось определить пользователя" });
+
+        var zip = await db.Zips.FindAsync(request.ZipId);
+        if (zip == null) return NotFound(new { message = "Запчасть не найдена" });
+
+        var oldCost = zip.SellCost ?? 0m;
+        if (oldCost == request.NewCost)
+            return BadRequest(new { message = "Новая цена совпадает с текущей" });
+
+        zip.SellCost = request.NewCost;
+
+        db.PriceHistories.Add(new PriceHistory
+        {
+            ZipId = zip.Id,
+            OldCost = oldCost,
+            NewCost = request.NewCost,
+            OperationId = (short)(request.NewCost > oldCost ? OperationEnum.Markup : OperationEnum.Markdown),
+            UserId = userId.Value,
+            CreatedAt = DateTimeOffset.UtcNow,
+            Comment = request.Comment
+        });
+
+        await db.SaveChangesAsync();
+        return Ok(new { message = "Цена обновлена", oldCost, newCost = request.NewCost });
+    }
+
+    // Отчёты вынесены в ReportsController — Sender-у нужен доступ к ним,
+    // но не ко всему остальному AdminController.
 
     // ---------- Users ----------
     [HttpGet("users")]
@@ -334,15 +544,15 @@ public class AdminController(AppDbContext db) : ControllerBase
                 o.Id,
                 o.OrderNumber,
                 o.CountOrdered,
-                o.NomenclatureId,
-                NomenclatureName = o.Nomenclature != null ? o.Nomenclature.Name : null,
+                o.ZipId,
+                ZipName = o.Zip.PartNumber.Name,
                 o.AddressId,
                 o.OrderDateTime,
-                o.SellCost,         
-                o.OperationTypeId,  
-                o.Discount,         
-                o.UserId,           
-                o.DeliveryStatusId, 
+                o.SellCost,
+                o.OperationId,
+                o.Discount,
+                o.UserId,
+                o.DeliveryStatusId,
                 DeliveryStatus = o.DeliveryStatus != null ? o.DeliveryStatus.Description : null
             })
             .ToListAsync());
@@ -354,21 +564,52 @@ public class AdminController(AppDbContext db) : ControllerBase
             return BadRequest(new { message = "Номер заказа обязателен" });
         if (!await db.DeliveryAddressess.AnyAsync(a => a.Id == request.AddressId))
             return BadRequest(new { message = "Адрес доставки не найден" });
-        if (!await db.Zips.AnyAsync(z => z.Id == request.NomenclatureId))
-            return BadRequest(new { message = "Запчасть не найдена" });
+        if (!await db.Users.AnyAsync(u => u.Id == request.UserId))
+            return BadRequest(new { message = "Покупатель не найден" });
+
+        var zip = await db.Zips.Include(z => z.PartNumber).FirstOrDefaultAsync(z => z.Id == request.ZipId);
+        if (zip == null) return BadRequest(new { message = "Запчасть не найдена" });
+
+        await using var tx = await db.Database.BeginTransactionAsync();
+
+        var stored = await db.Stored.FirstOrDefaultAsync(s => s.ZipId == request.ZipId);
+        if (stored == null || stored.Count < request.CountOrdered)
+            return BadRequest(new { message = "Недостаточно товара на складе. Доступно: " + (stored?.Count ?? 0) });
+
+        stored.Count -= request.CountOrdered;
 
         var order = new Order
         {
             Id = Guid.NewGuid(),
             OrderNumber = request.OrderNumber.Trim(),
             CountOrdered = request.CountOrdered,
-            NomenclatureId = request.NomenclatureId,
+            ZipId = request.ZipId,
             AddressId = request.AddressId,
+            UserId = request.UserId,
             OrderDateTime = request.OrderDateTime ?? DateTimeOffset.UtcNow,
-            Discount = request.Discount
+            SellCost = request.SellCost,
+            Discount = request.Discount,
+            OperationId = request.OperationId ?? (short)OperationEnum.Sale,
+            DeliveryStatusId = request.DeliveryStatusId
         };
         db.Orders.Add(order);
+
+        db.Logs.Add(new Log
+        {
+            CreatedAt = DateTimeOffset.UtcNow,
+            OperationId = (short)OperationEnum.Sale,
+            OrderId = order.Id,
+            ZipId = zip.Id,
+            UserId = CurrentUserId,
+            Qty = -request.CountOrdered,
+            UnitCost = zip.IncomeCost,
+            SellCost = request.SellCost,
+            Description = $"Заказ {order.OrderNumber} заведён из админ-панели"
+        });
+
         await db.SaveChangesAsync();
+        await tx.CommitAsync();
+
         return Ok(new { order.Id, order.OrderNumber });
     }
 
@@ -598,9 +839,16 @@ public class AdminController(AppDbContext db) : ControllerBase
                 break;
 
             case "partnumbers":
+            case "part-numbers":
                 var pn = await db.PartNumbers.FindAsync(int.Parse(id));
                 if (pn == null) return NotFound();
                 db.PartNumbers.Remove(pn);
+                break;
+
+            case "applicability":
+                var link = await db.PartNumberApplicabilities.FindAsync(int.Parse(id));
+                if (link == null) return NotFound();
+                db.PartNumberApplicabilities.Remove(link);
                 break;
 
             case "zip":

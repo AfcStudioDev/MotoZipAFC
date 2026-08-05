@@ -8,124 +8,238 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
 {
     public DbSet<MotoMark> MotoMarks { get; set; }
     public DbSet<PartNumber> PartNumbers { get; set; }
+    public DbSet<PartNumberApplicability> PartNumberApplicabilities { get; set; }
     public DbSet<ZipGroup> ZipGroups { get; set; }
     public DbSet<MotoModel> MotoModels { get; set; }
     public DbSet<Zip> Zips { get; set; }
     public DbSet<User> Users { get; set; }
     public DbSet<DeliveryAddress> DeliveryAddressess { get; set; } // Имя таблицы по DBML
+    public DbSet<OperationType> OperationTypes { get; set; }
     public DbSet<Operation> Operations { get; set; }
     public DbSet<Stored> Stored { get; set; }
     public DbSet<IncomeMoto> IncomeMotos { get; set; }
     public DbSet<Order> Orders { get; set; }
     public DbSet<Log> Logs { get; set; }
+    public DbSet<PriceHistory> PriceHistories { get; set; }
     public DbSet<DeliveryStatus> DeliveryStatuses { get; set; }
     public DbSet<ZipPhoto> ZipPhotos { get; set; }
-
-    // Если Payment нужен, раскомментируйте:
-    // public DbSet<Payment> Payments { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
 
-        // Уникальные индексы (Unique)
+        // ----------------------------------------------------
+        // УНИКАЛЬНЫЕ ИНДЕКСЫ
+        // ----------------------------------------------------
         modelBuilder.Entity<MotoMark>().HasIndex(m => m.Mark).IsUnique();
         modelBuilder.Entity<PartNumber>().HasIndex(p => p.PartNum).IsUnique();
         modelBuilder.Entity<User>().HasIndex(u => u.Email).IsUnique();
 
         // ----------------------------------------------------
-        // НАСТРОЙКА СВЯЗЕЙ СТРОГО ПО СХЕМЕ DBML
+        // СПРАВОЧНИКИ КЛАССИФИКАЦИИ
         // ----------------------------------------------------
 
-        // fk_MotoMark_id_MotoModels [ delete: set null ]
+        // MotoMarks.id < MotoModels.MarkId [ delete: set null ]
         modelBuilder.Entity<MotoModel>()
             .HasOne(m => m.Mark)
             .WithMany(m => m.MotoModels)
             .HasForeignKey(m => m.MarkId)
             .OnDelete(DeleteBehavior.ClientSetNull);
 
-        // fk_ZipGroups_id_Zip [ delete: set null ]
-        modelBuilder.Entity<Zip>()
-            .HasOne(z => z.Group)
-            .WithMany(g => g.Zips)
-            .HasForeignKey(z => z.GroupId)
-            .OnDelete(DeleteBehavior.ClientSetNull);
+        // ZipGroups.id < PartNumbers.GroupId
+        modelBuilder.Entity<PartNumber>()
+            .HasOne(p => p.Group)
+            .WithMany(g => g.PartNumbers)
+            .HasForeignKey(p => p.GroupId)
+            .OnDelete(DeleteBehavior.Restrict);
 
-        // fk_MotoModels_id_Zip [ delete: set null ]
-        modelBuilder.Entity<Zip>()
-            .HasOne(z => z.Model)
-            .WithMany(m => m.Zips)
-            .HasForeignKey(z => z.ModelId)
-            .OnDelete(DeleteBehavior.ClientSetNull);
+        // ----------------------------------------------------
+        // ПРИМЕНИМОСТЬ ПАРТ-НОМЕРА К МОДЕЛЯМ (многие-ко-многим)
+        // ----------------------------------------------------
 
-        // fk_PartNumbers_id_Zip [ delete: no action ]
+        // PartNumbers.id < PartNumberApplicability.PartNumId [ delete: cascade ]
+        modelBuilder.Entity<PartNumberApplicability>()
+            .HasOne(a => a.PartNumber)
+            .WithMany(p => p.Applicability)
+            .HasForeignKey(a => a.PartNumId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // MotoModels.id < PartNumberApplicability.ModelId [ delete: no action ]
+        modelBuilder.Entity<PartNumberApplicability>()
+            .HasOne(a => a.Model)
+            .WithMany(m => m.Applicability)
+            .HasForeignKey(a => a.ModelId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        // Одна и та же пара «парт-номер + модель» не должна повторяться.
+        modelBuilder.Entity<PartNumberApplicability>()
+            .HasIndex(a => new { a.PartNumId, a.ModelId })
+            .IsUnique();
+
+        // Отдельный индекс под запрос «все детали, подходящие к этой модели».
+        modelBuilder.Entity<PartNumberApplicability>()
+            .HasIndex(a => a.ModelId);
+
+        // ----------------------------------------------------
+        // ЗАПЧАСТИ
+        // ----------------------------------------------------
+
+        // PartNumbers.id < Zip.PartNumId
         modelBuilder.Entity<Zip>()
             .HasOne(z => z.PartNumber)
             .WithMany(p => p.Zips)
-            .HasForeignKey(z => z.PartNumId) // Используем переименованное поле
+            .HasForeignKey(z => z.PartNumId)
             .OnDelete(DeleteBehavior.Restrict);
 
-        // fk_MotoMarks_id_Zip [ delete: no action ]
-        modelBuilder.Entity<Zip>()
-            .HasOne(z => z.Mark)
-            .WithMany(m => m.Zips)
-            .HasForeignKey(z => z.MarkId)
-            .OnDelete(DeleteBehavior.Restrict);
-
-        // fk_Users_id_DeliveryAdressess [ delete: no action ]
-        modelBuilder.Entity<DeliveryAddress>()
-            .HasOne(d => d.User)
-            .WithMany(u => u.DeliveryAddresses)
-            .HasForeignKey(d => d.UserId)
-            .OnDelete(DeleteBehavior.Restrict);
-
-        // fk_DeliveryAdressess_id_Orders [ delete: no action ]
-        modelBuilder.Entity<Order>()
-            .HasOne(o => o.Address)
-            .WithMany(d => d.Orders)
-            .HasForeignKey(o => o.AddressId)
-            .OnDelete(DeleteBehavior.Restrict);
-
-        // fk_Operations_id_Orders [ delete: no action ]
-        modelBuilder.Entity<Order>()
-            .HasOne(o => o.OperationType)
-            .WithMany(op => op.Orders)
-            .HasForeignKey(o => o.OperationTypeId)
-            .OnDelete(DeleteBehavior.Restrict);
-
-        // fk_Zip_id_Stored [ delete: no action ]
-        modelBuilder.Entity<Stored>()
-            .HasOne(s => s.Zip)
-            .WithMany(z => z.StoredItems)
-            .HasForeignKey(s => s.ZipId)
-            .OnDelete(DeleteBehavior.Restrict);
-
-        // fk_IncomeMoto_id_Zip [ delete: no action ]
+        // IncomeMoto.id < Zip.IncomeMotoId
         modelBuilder.Entity<Zip>()
             .HasOne(z => z.IncomeMoto)
             .WithMany(i => i.Zips)
             .HasForeignKey(z => z.IncomeMotoId)
             .OnDelete(DeleteBehavior.Restrict);
 
-        // fk_Zip_id_Orders [ delete: no action ]
-        modelBuilder.Entity<Order>()
-            .HasOne(o => o.Nomenclature)
-            .WithMany(z => z.Orders)
-            .HasForeignKey(o => o.NomenclatureId)
+        // Users.id < IncomeMoto.UserId
+        modelBuilder.Entity<IncomeMoto>()
+            .HasOne(i => i.User)
+            .WithMany(u => u.IncomeMotos)
+            .HasForeignKey(i => i.UserId)
             .OnDelete(DeleteBehavior.Restrict);
 
-        // fk_Orders_id_Log [ delete: no action ]
+        // Zip.id < Stored.ZipId — один-к-одному, ZipId уникален
+        modelBuilder.Entity<Stored>()
+            .HasOne(s => s.Zip)
+            .WithOne(z => z.Stored)
+            .HasForeignKey<Stored>(s => s.ZipId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        // Zip.id < ZipPhotos.ZipId
+        modelBuilder.Entity<ZipPhoto>()
+            .HasOne(p => p.Zip)
+            .WithMany(z => z.Photos)
+            .HasForeignKey(p => p.ZipId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // Фотографии всегда выбираются по детали — в Postgres FK не индексируется автоматически.
+        modelBuilder.Entity<ZipPhoto>().HasIndex(p => p.ZipId);
+
+        // ----------------------------------------------------
+        // ПОЛЬЗОВАТЕЛИ, АДРЕСА, ЗАКАЗЫ
+        // ----------------------------------------------------
+
+        // Users.id < DeliveryAdressess.UserId
+        modelBuilder.Entity<DeliveryAddress>()
+            .HasOne(d => d.User)
+            .WithMany(u => u.DeliveryAddresses)
+            .HasForeignKey(d => d.UserId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        // DeliveryAdressess.id < Orders.AddressId
+        modelBuilder.Entity<Order>()
+            .HasOne(o => o.Address)
+            .WithMany(d => d.Orders)
+            .HasForeignKey(o => o.AddressId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        // Users.id < Orders.UserId
+        modelBuilder.Entity<Order>()
+            .HasOne(o => o.User)
+            .WithMany(u => u.Orders)
+            .HasForeignKey(o => o.UserId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        // Zip.id < Orders.ZipId
+        modelBuilder.Entity<Order>()
+            .HasOne(o => o.Zip)
+            .WithMany(z => z.Orders)
+            .HasForeignKey(o => o.ZipId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        // Operations.id < Orders.OperationId
+        modelBuilder.Entity<Order>()
+            .HasOne(o => o.Operation)
+            .WithMany(op => op.Orders)
+            .HasForeignKey(o => o.OperationId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        // DeliveryStatuses.id < Orders.DeliveryStatusId
+        modelBuilder.Entity<Order>()
+            .HasOne(o => o.DeliveryStatus)
+            .WithMany(ds => ds.Orders)
+            .HasForeignKey(o => o.DeliveryStatusId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        // ----------------------------------------------------
+        // СПРАВОЧНИК ОПЕРАЦИЙ
+        // ----------------------------------------------------
+
+        // OperationType.id < Operations.TypeId
+        modelBuilder.Entity<Operation>()
+            .HasOne(o => o.Type)
+            .WithMany(t => t.Operations)
+            .HasForeignKey(o => o.TypeId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        // ----------------------------------------------------
+        // ЖУРНАЛ ОПЕРАЦИЙ
+        // ----------------------------------------------------
+
+        // Orders.id < Log.OrderId
         modelBuilder.Entity<Log>()
             .HasOne(l => l.Order)
             .WithMany(o => o.Logs)
             .HasForeignKey(l => l.OrderId)
             .OnDelete(DeleteBehavior.Restrict);
 
-        // fk_DeliveryStatuses_id_Orders [ delete: no action ]
-        modelBuilder.Entity<Order>()
-            .HasOne(o => o.DeliveryStatus)
-            .WithMany(ds => ds.Orders)
-            .HasForeignKey(o => o.DeliveryStatusId)
+        // Zip.id < Log.ZipId
+        modelBuilder.Entity<Log>()
+            .HasOne(l => l.Zip)
+            .WithMany(z => z.Logs)
+            .HasForeignKey(l => l.ZipId)
             .OnDelete(DeleteBehavior.Restrict);
+
+        // Users.id < Log.UserId
+        modelBuilder.Entity<Log>()
+            .HasOne(l => l.User)
+            .WithMany()
+            .HasForeignKey(l => l.UserId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        // Operations.id < Log.OperationId
+        modelBuilder.Entity<Log>()
+            .HasOne(l => l.Operation)
+            .WithMany(op => op.Logs)
+            .HasForeignKey(l => l.OperationId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<Log>().HasIndex(l => new { l.ZipId, l.CreatedAt });
+        modelBuilder.Entity<Log>().HasIndex(l => new { l.OperationId, l.CreatedAt });
+        modelBuilder.Entity<Log>().HasIndex(l => l.OrderId);
+
+        // ----------------------------------------------------
+        // ИСТОРИЯ ПЕРЕОЦЕНКИ
+        // ----------------------------------------------------
+
+        // Zip.id < PriceHistory.ZipId
+        modelBuilder.Entity<PriceHistory>()
+            .HasOne(p => p.Zip)
+            .WithMany(z => z.PriceHistory)
+            .HasForeignKey(p => p.ZipId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        // Operations.id < PriceHistory.OperationId
+        modelBuilder.Entity<PriceHistory>()
+            .HasOne(p => p.Operation)
+            .WithMany(op => op.PriceHistory)
+            .HasForeignKey(p => p.OperationId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        // Users.id < PriceHistory.UserId
+        modelBuilder.Entity<PriceHistory>()
+            .HasOne(p => p.User)
+            .WithMany()
+            .HasForeignKey(p => p.UserId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<PriceHistory>().HasIndex(p => new { p.ZipId, p.CreatedAt });
     }
 }
