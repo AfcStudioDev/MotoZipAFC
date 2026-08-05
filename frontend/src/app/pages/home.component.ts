@@ -6,13 +6,15 @@ import { CatalogService, SearchFilters } from '../core/catalog.service';
 import { OrdersService } from '../core/orders.service';
 import { AuthService } from '../core/auth.service';
 import { AddressDto, GroupDto, MarkDto, ModelDto, PagedResult, ZipDto } from '../core/models';
-import { NgxMaskDirective } from 'ngx-mask'; // Импорт маски
+import { NgxMaskDirective } from 'ngx-mask';
 import { Subject, of } from 'rxjs';
 import { debounceTime, distinctUntilChanged, switchMap, catchError } from 'rxjs/operators';
+import { environment } from '../../environments/environment';
+import { ChangeDetectorRef } from '@angular/core';
 
 @Component({
   selector: 'app-home',
-  // ДОБАВЛЕНО: NgxMaskDirective в массив imports
+  styleUrls: ['../styles/home.component.css'],
   imports: [FormsModule, CurrencyPipe, NgxMaskDirective],
   template: `
     <section class="search-panel card">
@@ -76,7 +78,18 @@ import { debounceTime, distinctUntilChanged, switchMap, catchError } from 'rxjs/
         <p class="muted">Найдено: {{ r.total }}</p>
         <div class="grid">
           @for (zip of r.items; track zip.id) {
-            <div class="card zip-card">
+            <div class="card zip-card" (click)="openDetails(zip)">
+              @if (zip.photos && zip.photos.length > 0) {
+                <img
+                  [src]="photoBaseUrl + zip.photos[0]"
+                  alt="{{ zip.name }}"
+                  class="product-image"
+                  (error)="onImageError($event)"
+                >
+              } @else {
+                <div class="product-image product-image-placeholder">Нет фото</div>
+              }
+
               <h3>{{ zip.name }}</h3>
               <p class="muted">
                 @if (zip.mark) { <span>{{ zip.mark }}</span> }
@@ -86,9 +99,9 @@ import { debounceTime, distinctUntilChanged, switchMap, catchError } from 'rxjs/
               @if (zip.partNumber) { <p class="pn">Part number: {{ zip.partNumber }}</p> }
               @if (zip.group) { <p class="muted">Группа: {{ zip.group }}</p> }
               <div class="zip-footer">
-                <span class="price">{{ zip.cost | currency:'RUB':'symbol-narrow':'1.0-0' }}</span>
+                <span class="price">{{ zip.incomeCost | currency:'RUB':'symbol-narrow':'1.0-0' }}</span>
                 @if (zip.countStored > 0) {
-                  <button class="btn" (click)="openBuy(zip)">Купить</button>
+                  <button class="btn" (click)="$event.stopPropagation(); openBuy(zip)">Купить</button>
                 } @else {
                   <span class="muted">Нет в наличии</span>
                 }
@@ -114,7 +127,7 @@ import { debounceTime, distinctUntilChanged, switchMap, catchError } from 'rxjs/
       <div class="modal-backdrop" (click)="closeBuy()">
         <div class="card modal" (click)="$event.stopPropagation()">
           <h3>Оформление заказа</h3>
-          <p>{{ zip.name }} — <b>{{ zip.cost | currency:'RUB':'symbol-narrow':'1.0-0' }}</b></p>
+          <p>{{ zip.name }} — <b>{{ zip.incomeCost | currency:'RUB':'symbol-narrow':'1.0-0' }}</b></p>
           <div class="form-field">
             <label>Количество (в наличии {{ zip.countStored }})</label>
             <input type="number" min="1" [max]="zip.countStored" [(ngModel)]="buyCount" />
@@ -123,7 +136,7 @@ import { debounceTime, distinctUntilChanged, switchMap, catchError } from 'rxjs/
             <label>Адрес доставки</label>
             <select [(ngModel)]="buyAddressId">
               <option [ngValue]="undefined">— выберите адрес —</option>
-              @for (a of addresses(); track a.id) {
+              @for (a of addressess(); track a.id) {
                 <option [ngValue]="a.id">{{ a.address }}</option>
               }
             </select>
@@ -140,81 +153,130 @@ import { debounceTime, distinctUntilChanged, switchMap, catchError } from 'rxjs/
         </div>
       </div>
     }
-  `,
-  changeDetection: ChangeDetectionStrategy.Eager,
-  styles: [`
-    .search-panel { margin-bottom: 24px; }
-    .search-row { display: flex; gap: 10px; margin-bottom: 14px; }
-    .search-row input { flex: 1; }
-    .filters {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
-      gap: 10px;
-    }
-    .grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-      gap: 16px;
-    }
-    .zip-card h3 { font-size: 16px; margin-bottom: 8px; }
-    .pn { font-family: monospace; font-size: 13px; }
-    .zip-footer {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-top: 12px;
-    }
-    .price { font-size: 18px; font-weight: 700; }
-    .modal-backdrop {
-      position: fixed; inset: 0;
-      background: rgba(0,0,0,.4);
-      display: flex; align-items: center; justify-content: center;
-      z-index: 100;
-    }
-    .modal { width: 420px; max-width: 92vw; }
-    .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; }
 
-    /* ДОБАВЛЕНО: Стили для выпадающего списка предложений */
-    .suggestions-dropdown {
-      position: absolute;
-      top: 100%;
-      left: 0;
-      right: 90px; /* Оставляем место под кнопку Найти */
-      background: white;
-      border: 1px solid #ccc;
-      border-radius: 4px;
-      list-style: none;
-      padding: 0;
-      margin: 4px 0 0 0;
-      z-index: 1000;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-      max-height: 250px;
-      overflow-y: auto;
+    @if (isGuestBuying(); as guestZip) {
+      <div class="modal-backdrop">
+        <div class="modal-content">
+          <h3>Оформление заказа</h3>
+          <p>Вы покупаете: <strong>{{ guestZip.name }}</strong></p>
+
+          @if (buyError()) {
+            <div class="alert alert-danger">{{ buyError() }}</div>
+          }
+
+          <div class="form-group mb-2">
+            <label>ФИО</label>
+            <input type="text" class="form-control" [(ngModel)]="guestForm.fio" placeholder="Иванов Иван Иванович">
+          </div>
+
+          <div class="form-group mb-2">
+            <label>Email</label>
+            <input type="email" class="form-control" [(ngModel)]="guestForm.email" placeholder="example@mail.ru">
+          </div>
+
+          <div class="form-group mb-2">
+            <label>Телефон</label>
+            <input type="text" class="form-control" [(ngModel)]="guestForm.phone" mask="+0 (000) 000-00-00" placeholder="+7 (999) 000-00-00">
+          </div>
+
+          <div class="form-group mb-2">
+            <label>Пароль для личного кабинета <small class="text-muted">(если заказываете в первый раз)</small></label>
+            <input type="password" class="form-control" [(ngModel)]="guestForm.password">
+          </div>
+
+          <div class="form-group mb-2">
+            <label>Адрес доставки</label>
+            <input type="text" class="form-control" [(ngModel)]="guestForm.address" placeholder="г. Москва, ул. Пушкина, д. 1">
+          </div>
+
+          <div class="form-group mb-2">
+            <label>Почтовый индекс</label>
+            <input type="text" class="form-control" [(ngModel)]="guestForm.postCode" placeholder="123456">
+          </div>
+
+          <div class="form-group mb-3">
+            <label>Количество</label>
+            <input type="number" class="form-control" [(ngModel)]="guestForm.count" min="1">
+          </div>
+
+          <div class="d-flex gap-2 justify-content-end">
+            <button class="btn btn-secondary" (click)="closeBuy()" [disabled]="busy()">Отмена</button>
+            <button class="btn btn-primary" (click)="confirmGuestBuy(guestZip)" [disabled]="busy() || !guestForm.fio || !guestForm.phone || !guestForm.address">
+              @if (busy()) { Загрузка... } @else { Подтвердить и перейти к оплате }
+            </button>
+          </div>
+        </div>
+      </div>
     }
-    .suggestions-dropdown li {
-      padding: 10px 14px;
-      cursor: pointer;
-      border-bottom: 1px solid #f0f0f0;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-    .suggestions-dropdown li:hover {
-      background: #f8f9fa;
-    }
-    .suggestion-name { font-weight: 500; }
-    .suggestion-pn { font-size: 0.85em; }
-  `]
+
+    <!--Модальное окно товара-->
+    @if (selectedZip(); as zip) {
+      <div class="modal-backdrop" (click)="onBackdropClick($event)">
+        <div class="modal-content item-details-modal">
+          <button class="close-btn" (click)="closeDetails()">&times;</button>
+          
+          <h3 class="mb-3">{{ zip.name }}</h3>
+          
+          <div class="details-info">
+            <p><strong>Марка:</strong> {{ zip.mark || 'Не указана' }}</p>
+            <p><strong>Модель:</strong> {{ zip.model || 'Не указана' }}</p>
+            <p><strong>Группа:</strong> {{ zip.group || 'Не указана' }}</p>
+            <p><strong>Год:</strong> {{ zip.year || 'Не указан' }}</p>
+            <p><strong>Парт-номер:</strong> {{ zip.partNumber || 'Не указан' }}</p>
+            <h4 class="mt-3 text-primary">Цена: {{ zip.incomeCost | currency:'RUB':'symbol':'1.0-0':'ru' }}</h4>
+          </div>
+
+          <div class="gallery mt-4">
+            <p class="text-muted mb-2">Фотографии:</p>
+            <div class="d-flex gap-2" style="overflow-x: auto;">
+              @for (photo of getZipPhotos(zip); track photo) {
+                <img 
+                  [src]="photo" 
+                  alt="Фото запчасти {{ zip.name }}" 
+                  class="gallery-img" 
+                  (error)="onImageError($event)"
+                  (click)="openImage(photo)"
+                  style="cursor: pointer;"
+                  title="Нажмите для увеличения">
+              }
+            </div>
+          </div>
+
+          <div class="d-flex justify-content-end mt-4">
+            <button class="btn btn-secondary me-2" (click)="closeDetails()">Закрыть</button>
+            <button class="btn btn-success" (click)="openBuy(zip); closeDetails()">Купить</button>
+          </div>
+        </div>
+      </div>
+
+      <!--Открытие изображения крупным планом при клике-->
+      @if (expandedImage(); as imgUrl) {
+        <div class="image-lightbox-backdrop" (click)="closeImage()" (mousemove)="onMouseMove($event)">
+          <button class="lightbox-close-btn" (click)="closeImage()">&times;</button>
+          <img [src]="imgUrl" class="lightbox-img" [class.zoomed]="isZoomed()" [style.transform-origin]="zoomOrigin()" (click)="toggleZoom($event)" alt="Крупное фото">
+        </div>
+      }
+}
+  `,
+  changeDetection: ChangeDetectionStrategy.Eager
 })
+
 export class HomeComponent implements OnInit {
+  public photoBaseUrl = `${environment.apiUrl.replace('/api', '')}/ZipPhotos/`;
   // ДОБАВЛЕНО: Сигнал и сабжект для автопредложений
-  suggestions = signal<ZipDto[]>([]); 
+  suggestions = signal<ZipDto[]>([]);
+  expandedImage = signal<string | null>(null);
+
   private searchSubject = new Subject<string>();
 
   private catalog = inject(CatalogService);
   private orders = inject(OrdersService);
   private auth = inject(AuthService);
-  private router = inject(Router);
+  private cdr = inject(ChangeDetectorRef);
+
+  // Добавляем новые сигналы в класс компонента
+  isZoomed = signal(false);
+  zoomOrigin = signal('50% 50%'); // По умолчанию центр
 
   filters: SearchFilters = {};
   marks = signal<MarkDto[]>([]);
@@ -227,9 +289,53 @@ export class HomeComponent implements OnInit {
   buyCount = 1;
   buyAddressId?: number;
   newAddress = '';
-  addresses = signal<AddressDto[]>([]);
+  addressess = signal<AddressDto[]>([]);
   buyError = signal('');
   busy = signal(false);
+
+  // Для заказа без регистрации
+  guestForm = {
+    fio: '',
+    email: '',
+    phone: '',
+    password: '',
+    address: '',
+    postCode: '',
+    count: 1
+  };
+  isGuestBuying = signal<ZipDto | null>(null);
+
+  selectedZip = signal<ZipDto | null>(null);
+
+  // Открыть информацию о товаре
+  openDetails(zip: ZipDto): void {
+    this.selectedZip.set(zip);
+    this.cdr.detectChanges();
+  }
+
+  // Закрыть информацию о товаре
+  closeDetails(): void {
+    this.selectedZip.set(null);
+  }
+
+  // Закрытие при клике на затемненный фон (вне окна)
+  onBackdropClick(event: MouseEvent): void {
+    // Проверяем, что клик был именно по фону, а не по самому окну внутри
+    if ((event.target as HTMLElement).classList.contains('modal-backdrop')) {
+      this.closeDetails();
+    }
+  }
+
+  // Метод для получения путей к реально загруженным фотографиям запчасти
+  getZipPhotos(zip: ZipDto): string[] {
+    return (zip.photos || []).map(fileName => this.photoBaseUrl + fileName);
+  }
+
+  // Если фото не найдено (например, их только 1 или 2), скрываем сломанную картинку
+  onImageError(event: Event): void {
+    (event.target as HTMLImageElement).style.display = 'none';
+  }
+
 
   ngOnInit(): void {
     // ДОБАВЛЕНО: Логика обработки ввода для автопредложений
@@ -253,6 +359,8 @@ export class HomeComponent implements OnInit {
     this.search(1);
 
     this.catalog.models().subscribe(m => this.models.set(m));
+    this.catalog.marks().subscribe(m => this.marks.set(m));
+    this.catalog.groups().subscribe(g => this.groups.set(g));
   }
 
   // ДОБАВЛЕНО: Метод, вызываемый при каждом изменении поля ввода
@@ -290,24 +398,84 @@ export class HomeComponent implements OnInit {
     return Array.from({ length: to - from + 1 }, (_, i) => from + i);
   }
 
+  // openBuy(zip: ZipDto): void {
+  //   if (!this.auth.isLoggedIn) {
+  //     this.router.navigate(['/login']);
+  //     return;
+  //   }
+  //   this.buyError.set('');
+  //   this.buyCount = 1;
+  //   this.newAddress = '';
+  //   this.buying.set(zip);
+  //   this.orders.addressess().subscribe(a => {
+  //     this.addressess.set(a);
+  //     this.buyAddressId = a[0]?.id;
+  //   });
+  // }
+
   openBuy(zip: ZipDto): void {
     if (!this.auth.isLoggedIn) {
-      this.router.navigate(['/login']);
+      // Если не авторизован - открываем окно гостевой покупки
+      this.buyError.set('');
+      this.guestForm = { fio: '', email: '', phone: '', password: '', address: '', postCode: '', count: 1 };
+      this.isGuestBuying.set(zip);
       return;
     }
+
+    // Существующая логика для авторизованного пользователя
     this.buyError.set('');
     this.buyCount = 1;
     this.newAddress = '';
     this.buying.set(zip);
-    this.orders.addresses().subscribe(a => {
-      this.addresses.set(a);
+
+    this.orders.addressess().subscribe(a => {
+      this.addressess.set(a);
       this.buyAddressId = a[0]?.id;
     });
   }
 
   closeBuy(): void {
     this.buying.set(null);
+    this.isGuestBuying.set(null);
   }
+
+  confirmGuestBuy(zip: ZipDto): void {
+    this.buyError.set('');
+    this.busy.set(true);
+
+    const requestData = {
+      zipId: zip.id,
+      count: this.guestForm.count,
+      fio: this.guestForm.fio,
+      email: this.guestForm.email,
+      phone: this.guestForm.phone,
+      password: this.guestForm.password,
+      address: this.guestForm.address,
+      postCode: this.guestForm.postCode
+    };
+
+    this.orders.createGuestOrder(requestData).subscribe({
+      next: order => {
+        // Существующая логика запуска оплаты
+        const returnUrl = `${location.origin}/payment-result/${order.id}`;
+        this.orders.createPayment(order.id, returnUrl).subscribe({
+          next: p => { location.href = p.confirmationUrl; },
+          error: err => {
+            this.busy.set(false);
+            this.buyError.set(err.error?.message ?? 'Заказ создан, но оплату запустить не удалось.');
+          }
+        });
+      },
+      error: err => {
+        this.busy.set(false);
+        this.buyError.set(err.error?.message ?? 'Не удалось создать заказ');
+      }
+    });
+  }
+
+  // closeBuy(): void {
+  //   this.buying.set(null);
+  // }
 
   confirmBuy(zip: ZipDto): void {
     this.buyError.set('');
@@ -346,5 +514,47 @@ export class HomeComponent implements OnInit {
       this.busy.set(false);
       this.buyError.set('Укажите адрес доставки');
     }
+  }
+
+  openImage(photoUrl: string) {
+    this.expandedImage.set(photoUrl);
+  }
+
+  // closeImage() {
+  //   this.expandedImage.set(null);
+  // }
+
+  // Дополнительное приближение открытой картинки на 50%
+  // Метод для клика по самой картинке
+  toggleZoom(event: MouseEvent) {
+    event.stopPropagation(); // Чтобы клик не передался оверлею и не закрыл окно
+    this.isZoomed.update(z => !z);
+
+    if (this.isZoomed()) {
+      this.calculateZoomOrigin(event);
+    } else {
+      this.zoomOrigin.set('50% 50%'); // Сбрасываем позицию при отдалении
+    }
+  }
+
+  // Метод для отслеживания движения мыши
+  onMouseMove(event: MouseEvent) {
+    if (this.isZoomed()) {
+      this.calculateZoomOrigin(event);
+    }
+  }
+
+  // Вычисление координат в процентах относительно экрана
+  private calculateZoomOrigin(event: MouseEvent) {
+    const x = (event.clientX / window.innerWidth) * 100;
+    const y = (event.clientY / window.innerHeight) * 100;
+    this.zoomOrigin.set(`${x}% ${y}%`);
+  }
+
+  // Обновите ваш метод закрытия картинки, чтобы сбрасывать зум
+  closeImage() {
+    this.expandedImage.set(null); // У вас может называться иначе
+    this.isZoomed.set(false);
+    this.zoomOrigin.set('50% 50%');
   }
 }

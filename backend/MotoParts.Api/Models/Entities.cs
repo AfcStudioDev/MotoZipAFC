@@ -20,7 +20,7 @@ public class Order
     // Новые поля из DBML
     public decimal SellCost { get; set; }
     public short? OperationTypeId { get; set; }
-    public decimal? Discount { get; set; }
+    public string? Discount { get; set; }
     public int UserId { get; set; }
     public short? DeliveryStatusId { get; set; }
 
@@ -100,6 +100,8 @@ public class Zip
     public string Name { get; set; }
 
     public decimal IncomeCost { get; set; }
+    
+    public decimal SellCost{ get; set; }
 
     public int? PartNumId { get; set; }
     public PartNumber PartNumber { get; set; }
@@ -113,13 +115,15 @@ public class Zip
     public int? GroupId { get; set; }
     public ZipGroup Group { get; set; }
 
-    public DateOnly? Year { get; set; }
+    public uint? Year { get; set; }
 
     public Guid IncomeMotoId { get; set; }
     public IncomeMoto IncomeMoto { get; set; }
 
+
     public ICollection<Order> Orders { get; set; } = new HashSet<Order>();
     public ICollection<Stored> StoredItems { get; set; } = new HashSet<Stored>();
+    public ICollection<ZipPhoto> Photos { get; set; } = new HashSet<ZipPhoto>();
 }
 
 public class Log
@@ -222,4 +226,20 @@ public class IncomeMoto
     public string Description { get; set; }
 
     public ICollection<Zip> Zips { get; set; } = new HashSet<Zip>();
+}
+
+public class ZipPhoto
+{
+    [Key]
+    public int Id { get; set; }
+
+    public Guid ZipId { get; set; }
+    public Zip Zip { get; set; } = null!;
+
+    public string FileName { get; set; } = null!;
+
+    /// <summary>
+    /// Флаг для главной картинки
+    /// </summary>
+    public bool IsMain { get; set; }
 }

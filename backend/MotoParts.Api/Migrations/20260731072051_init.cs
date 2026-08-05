@@ -160,11 +160,12 @@ namespace MotoParts.Api.Migrations
                     Id = table.Column<Guid>(type: "uuid", nullable: false),
                     Name = table.Column<string>(type: "text", nullable: false),
                     IncomeCost = table.Column<decimal>(type: "numeric", nullable: false),
+                    SellCost = table.Column<decimal>(type: "numeric", nullable: false),
                     PartNumId = table.Column<int>(type: "integer", nullable: true),
                     MarkId = table.Column<int>(type: "integer", nullable: true),
                     ModelId = table.Column<int>(type: "integer", nullable: true),
                     GroupId = table.Column<int>(type: "integer", nullable: true),
-                    Year = table.Column<DateOnly>(type: "date", nullable: true),
+                    Year = table.Column<long>(type: "bigint", nullable: true),
                     IncomeMotoId = table.Column<Guid>(type: "uuid", nullable: false)
                 },
                 constraints: table =>
@@ -212,7 +213,7 @@ namespace MotoParts.Api.Migrations
                     OrderDateTime = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
                     SellCost = table.Column<decimal>(type: "numeric", nullable: false),
                     OperationTypeId = table.Column<short>(type: "smallint", nullable: true),
-                    Discount = table.Column<decimal>(type: "numeric", nullable: true),
+                    Discount = table.Column<string>(type: "text", nullable: true),
                     UserId = table.Column<int>(type: "integer", nullable: false),
                     DeliveryStatusId = table.Column<short>(type: "smallint", nullable: true)
                 },
@@ -269,6 +270,27 @@ namespace MotoParts.Api.Migrations
                         principalTable: "Zips",
                         principalColumn: "Id",
                         onDelete: ReferentialAction.Restrict);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "ZipPhotos",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "integer", nullable: false)
+                        .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
+                    ZipId = table.Column<Guid>(type: "uuid", nullable: false),
+                    FileName = table.Column<string>(type: "text", nullable: false),
+                    IsMain = table.Column<bool>(type: "boolean", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_ZipPhotos", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_ZipPhotos_Zips_ZipId",
+                        column: x => x.ZipId,
+                        principalTable: "Zips",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
                 });
 
             migrationBuilder.CreateTable(
@@ -355,6 +377,11 @@ namespace MotoParts.Api.Migrations
                 unique: true);
 
             migrationBuilder.CreateIndex(
+                name: "IX_ZipPhotos_ZipId",
+                table: "ZipPhotos",
+                column: "ZipId");
+
+            migrationBuilder.CreateIndex(
                 name: "IX_Zips_GroupId",
                 table: "Zips",
                 column: "GroupId");
@@ -388,6 +415,9 @@ namespace MotoParts.Api.Migrations
 
             migrationBuilder.DropTable(
                 name: "Stored");
+
+            migrationBuilder.DropTable(
+                name: "ZipPhotos");
 
             migrationBuilder.DropTable(
                 name: "Orders");

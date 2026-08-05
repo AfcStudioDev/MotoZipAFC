@@ -19,6 +19,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<Order> Orders { get; set; }
     public DbSet<Log> Logs { get; set; }
     public DbSet<DeliveryStatus> DeliveryStatuses { get; set; }
+    public DbSet<ZipPhoto> ZipPhotos { get; set; }
 
     // Если Payment нужен, раскомментируйте:
     // public DbSet<Payment> Payments { get; set; }

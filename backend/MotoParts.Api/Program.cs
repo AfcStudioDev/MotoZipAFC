@@ -1,9 +1,12 @@
-using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.FileProviders;
 using Microsoft.IdentityModel.Tokens;
+
 using MotoParts.Api.Data;
 using MotoParts.Api.Services;
+
+using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -39,7 +42,7 @@ builder.Services
 builder.Services.AddAuthorization();
 
 builder.Services.AddCors(options => options.AddDefaultPolicy(policy => policy
-    .WithOrigins(builder.Configuration["Frontend:BaseUrl"] ?? "http://localhost:4200")
+    .WithOrigins(builder.Configuration["Frontend:BaseUrl"] ?? "http://192.168.88.122:4200")
     .AllowAnyHeader()
     .AllowAnyMethod()));
 
@@ -64,8 +67,23 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseCors();
+app.UseStaticFiles();
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
+
+
+var photosPath = Path.Combine(Directory.GetCurrentDirectory(), "..", "ZipPhotos"); // Настройте путь до вашей папки верхнего уровня
+
+if (!Directory.Exists(photosPath))
+{
+    Directory.CreateDirectory(photosPath); // Создаст папку, если её нет
+}
+
+app.UseStaticFiles(new StaticFileOptions
+{
+    FileProvider = new PhysicalFileProvider(photosPath),
+    RequestPath = "/ZipPhotos"
+});
 
 app.Run();

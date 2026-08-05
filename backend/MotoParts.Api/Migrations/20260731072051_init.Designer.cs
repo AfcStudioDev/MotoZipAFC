@@ -12,7 +12,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace MotoParts.Api.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20260728035049_init")]
+    [Migration("20260731072051_init")]
     partial class init
     {
         /// <inheritdoc />
@@ -182,8 +182,8 @@ namespace MotoParts.Api.Migrations
                     b.Property<short?>("DeliveryStatusId")
                         .HasColumnType("smallint");
 
-                    b.Property<decimal?>("Discount")
-                        .HasColumnType("numeric");
+                    b.Property<string>("Discount")
+                        .HasColumnType("text");
 
                     b.Property<Guid>("NomenclatureId")
                         .HasColumnType("uuid");
@@ -340,8 +340,11 @@ namespace MotoParts.Api.Migrations
                     b.Property<int?>("PartNumId")
                         .HasColumnType("integer");
 
-                    b.Property<DateOnly?>("Year")
-                        .HasColumnType("date");
+                    b.Property<decimal>("SellCost")
+                        .HasColumnType("numeric");
+
+                    b.Property<long?>("Year")
+                        .HasColumnType("bigint");
 
                     b.HasKey("Id");
 
@@ -373,6 +376,31 @@ namespace MotoParts.Api.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("ZipGroups");
+                });
+
+            modelBuilder.Entity("MotoParts.Api.Models.ZipPhoto", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<bool>("IsMain")
+                        .HasColumnType("boolean");
+
+                    b.Property<Guid>("ZipId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ZipId");
+
+                    b.ToTable("ZipPhotos");
                 });
 
             modelBuilder.Entity("MotoParts.Api.Models.DeliveryAddress", b =>
@@ -494,6 +522,17 @@ namespace MotoParts.Api.Migrations
                     b.Navigation("PartNumber");
                 });
 
+            modelBuilder.Entity("MotoParts.Api.Models.ZipPhoto", b =>
+                {
+                    b.HasOne("MotoParts.Api.Models.Zip", "Zip")
+                        .WithMany("Photos")
+                        .HasForeignKey("ZipId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Zip");
+                });
+
             modelBuilder.Entity("MotoParts.Api.Models.DeliveryAddress", b =>
                 {
                     b.Navigation("Orders");
@@ -546,6 +585,8 @@ namespace MotoParts.Api.Migrations
             modelBuilder.Entity("MotoParts.Api.Models.Zip", b =>
                 {
                     b.Navigation("Orders");
+
+                    b.Navigation("Photos");
 
                     b.Navigation("StoredItems");
                 });

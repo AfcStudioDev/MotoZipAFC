@@ -89,7 +89,7 @@ public class AuthController(
             user.PasswordResetTokenExpiresAt = DateTimeOffset.UtcNow.AddHours(1);
             await db.SaveChangesAsync();
 
-            var frontendUrl = config["Frontend:BaseUrl"] ?? "http://localhost:4200";
+            var frontendUrl = config["Frontend:BaseUrl"] ?? "http://192.168.88.122:4200";
             var link = $"{frontendUrl}/reset-password?email={Uri.EscapeDataString(email)}&token={token}";
             await emailService.SendPasswordResetLinkAsync(
                 email,

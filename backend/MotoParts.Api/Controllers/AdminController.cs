@@ -5,6 +5,8 @@ using MotoParts.Api.Data;
 using MotoParts.Api.DTOs;
 using MotoParts.Api.Models;
 using MotoParts.Api.Services;
+using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.Formats.Webp;
 
 using static System.Runtime.InteropServices.JavaScript.JSType;
 
@@ -13,7 +15,7 @@ namespace MotoParts.Api.Controllers;
 /// <summary>Админ-панель: ручное добавление записей в каждую таблицу и просмотр содержимого.</summary>
 [ApiController]
 [Route("api/admin")]
-[Authorize(Roles = "Admin,Sender,Registrar")]
+[Authorize(Roles = "Admin   ,Registrar")]
 public class AdminController(AppDbContext db) : ControllerBase
 {
     // ---------- MotoMarks ----------
@@ -72,11 +74,11 @@ public class AdminController(AppDbContext db) : ControllerBase
     }
 
     // ---------- PartNumbers ----------
-    [HttpGet("partnumbers")]
+    [HttpGet("part-numbers")]
     public async Task<IActionResult> PartNumbers() =>
         Ok(await db.PartNumbers.OrderBy(p => p.Id).Select(p => new { p.Id, p.PartNum }).ToListAsync());
 
-    [HttpPost("partnumbers")]
+    [HttpPost("part-numbers")]
     public async Task<IActionResult> AddPartNumber(AdminPartNumberRequest request)
     {
         if (string.IsNullOrWhiteSpace(request.PartNum))
@@ -107,16 +109,14 @@ public class AdminController(AppDbContext db) : ControllerBase
                 Group = z.Group != null ? z.Group.GroupName : null,
                 z.Year,
                 z.IncomeMotoId,
-                IncomeMoto = z.IncomeMoto != null ? z.IncomeMoto.Description : null
+                IncomeMoto = z.IncomeMoto != null ? z.IncomeMoto.Description : null,
+                Photos = z.Photos.Select(p => new { p.Id, p.FileName, p.IsMain }).ToList()
             })
             .ToListAsync());
 
     [HttpPost("zip")]
-    public async Task<IActionResult> AddZip(AdminZipRequest request)
+    public async Task<IActionResult> AddZip([FromForm] AdminZipRequest request)
     {
-        if (string.IsNullOrWhiteSpace(request.Name))
-            return BadRequest(new { message = "Название запчасти обязательно" });
-
         var zip = new Zip
         {
             Id = Guid.NewGuid(),
@@ -126,13 +126,139 @@ public class AdminController(AppDbContext db) : ControllerBase
             MarkId = request.MarkId,
             ModelId = request.ModelId,
             GroupId = request.GroupId,
-            Year = request.Year.HasValue ? new DateOnly(request.Year.Value, 1, 1) : null,
+            Year = request.Year.HasValue ? (uint)request.Year.Value : null,
             IncomeMotoId = request.IncomeMotoId
         };
 
         db.Zips.Add(zip);
         await db.SaveChangesAsync();
+        var photos = Request.Form.Files;
+        // 2. Обработка фотографий
+        if (photos != null && photos.Count > 0)
+        {
+            if (photos.Count > 3)
+            {
+                return BadRequest(new { message = "Разрешено загружать не более 3-х фотографий." });
+            }
+
+            // Указываем путь к папке ZipPhotos (например, в wwwroot)
+            string uploadFolder = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "ZipPhotos");
+
+            if (!Directory.Exists(uploadFolder))
+            {
+                Directory.CreateDirectory(uploadFolder);
+            }
+
+            for (int i = 0; i < photos.Count; i++)
+            {
+                var photo = photos[i];
+                if (photo.Length == 0) continue;
+
+                string uniqueFileName = await SavePhotoAsWebpAsync(photo, uploadFolder, zip.Id, i);
+
+                db.ZipPhotos.Add(new ZipPhoto
+                {
+                    ZipId = zip.Id,
+                    FileName = uniqueFileName,
+                    IsMain = (i == 0) // Первое фото делаем главным
+                });
+            }
+            await db.SaveChangesAsync();
+        }
+
         return Ok(new { zip.Id, zip.Name });
+    }
+
+    [HttpPut("zip/{id}")]
+    public async Task<IActionResult> UpdateZip(Guid id, [FromForm] AdminZipRequest request)
+    {
+        // 1. Ищем существующую запись
+        var zip = await db.Zips.FindAsync(id);
+        if (zip == null)
+        {
+            return NotFound(new { message = "Запчасть не найдена" });
+        }
+
+        // 2. Обновляем текстовые и числовые поля
+        zip.Name = request.Name?.Trim() ?? zip.Name;
+        zip.IncomeCost = request.IncomeCost;
+        zip.PartNumId = request.PartNumId;
+        zip.MarkId = request.MarkId;
+        zip.ModelId = request.ModelId;
+        zip.GroupId = request.GroupId;
+        zip.Year = request.Year.HasValue ? (uint)request.Year.Value : null;
+        zip.IncomeMotoId = request.IncomeMotoId; // Убедитесь, что фронтенд передает правильный Guid
+
+        // 3. Обработка новых фотографий (если они были загружены)
+        var photos = Request.Form.Files;
+        if (photos.Count > 0)
+        {
+            if (photos.Count > 3)
+            {
+                return BadRequest(new { message = "Разрешено загружать не более 3-х фотографий." });
+            }
+
+            string uploadFolder = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "ZipPhotos");
+            if (!Directory.Exists(uploadFolder))
+            {
+                Directory.CreateDirectory(uploadFolder);
+            }
+
+            // Опционально: можно удалить старые фото перед сохранением новых
+            var oldFiles = Directory.GetFiles(uploadFolder, $"{zip.Id}_*.*");
+            foreach (var oldFile in oldFiles) System.IO.File.Delete(oldFile);
+
+            await db.ZipPhotos.Where(photo => photo.ZipId == zip.Id).ExecuteDeleteAsync();
+
+            for (int i = 0; i < photos.Count; i++)
+            {
+                var photo = photos[i];
+                if (photo.Length == 0) continue;
+
+                string uniqueFileName = await SavePhotoAsWebpAsync(photo, uploadFolder, zip.Id, i);
+
+                db.ZipPhotos.Add(new ZipPhoto
+                {
+                    ZipId = zip.Id,
+                    FileName = uniqueFileName,
+                    IsMain = (i == 0) // Первое фото делаем главным
+                });
+            }
+            await db.SaveChangesAsync();
+        }
+
+        await db.SaveChangesAsync();
+        return Ok(new { message = "Запись успешно обновлена", id = zip.Id });
+    }
+
+    /// <summary>Перекодирует загруженное изображение в WebP и сохраняет на диск, возвращая итоговое имя файла.</summary>
+    private static async Task<string> SavePhotoAsWebpAsync(IFormFile photo, string uploadFolder, Guid zipId, int index)
+    {
+        string uniqueFileName = $"{zipId}_{index}.webp";
+        string filePath = Path.Combine(uploadFolder, uniqueFileName);
+
+        await using var stream = photo.OpenReadStream();
+        using var image = await Image.LoadAsync(stream);
+        await image.SaveAsync(filePath, new WebpEncoder { Quality = 80 });
+
+        return uniqueFileName;
+    }
+
+    [HttpDelete("zip-photos/{photoId:int}")]
+    public async Task<IActionResult> DeleteZipPhoto(int photoId)
+    {
+        var photo = await db.ZipPhotos.FindAsync(photoId);
+        if (photo == null) return NotFound(new { message = "Фотография не найдена" });
+
+        string uploadFolder = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "ZipPhotos");
+        string filePath = Path.Combine(uploadFolder, photo.FileName);
+        if (System.IO.File.Exists(filePath))
+            System.IO.File.Delete(filePath);
+
+        db.ZipPhotos.Remove(photo);
+        await db.SaveChangesAsync();
+
+        return Ok(new { message = "Фотография удалена" });
     }
 
     // ---------- Users ----------
@@ -167,8 +293,8 @@ public class AdminController(AppDbContext db) : ControllerBase
     }
 
     // ---------- DeliveryAdresses ----------
-    [HttpGet("addresses")]
-    public async Task<IActionResult> Addresses() =>
+    [HttpGet("addressess")]
+    public async Task<IActionResult> Addressess() =>
         Ok(await db.DeliveryAddressess.OrderBy(a => a.Id) // Исправлено на DeliveryAddressess
             .Select(a => new
             {
@@ -180,7 +306,7 @@ public class AdminController(AppDbContext db) : ControllerBase
             })
             .ToListAsync());
 
-    [HttpPost("addresses")]
+    [HttpPost("addressess")]
     public async Task<IActionResult> AddAddress(AdminAddressRequest request)
     {
         if (string.IsNullOrWhiteSpace(request.Address))
@@ -239,6 +365,7 @@ public class AdminController(AppDbContext db) : ControllerBase
             NomenclatureId = request.NomenclatureId,
             AddressId = request.AddressId,
             OrderDateTime = request.OrderDateTime ?? DateTimeOffset.UtcNow,
+            Discount = request.Discount
         };
         db.Orders.Add(order);
         await db.SaveChangesAsync();
@@ -489,7 +616,7 @@ public class AdminController(AppDbContext db) : ControllerBase
                 db.Users.Remove(user);
                 break;
 
-            case "adresses":
+            case "addressess":
                 var address = await db.DeliveryAddressess.FindAsync(int.Parse(id)); // Исправлено на DeliveryAddressess
                 if (address == null) return NotFound();
                 db.DeliveryAddressess.Remove(address);
