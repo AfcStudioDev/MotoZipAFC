@@ -103,4 +103,29 @@ public class CatalogController(AppDbContext db) : ControllerBase
     public async Task<IActionResult> Years() =>
         Ok(await db.Zips.Where(z => z.Year != null)
             .Select(z => z.Year!.Value).Distinct().OrderByDescending(y => y).ToListAsync());
+
+    /// <summary>
+    /// Подсказки для поля «Part number» в фильтрах каталога.
+    /// Отдаются только парт-номера, по которым реально заведены запчасти —
+    /// иначе подсказка приводила бы к пустой выдаче.
+    /// </summary>
+    [HttpGet("part-numbers")]
+    public async Task<IActionResult> PartNumberSuggestions([FromQuery] string? query, [FromQuery] int limit = 10)
+    {
+        limit = Math.Clamp(limit, 1, 50);
+
+        var partNumbers = db.PartNumbers.Where(p => p.Zips.Any());
+
+        if (!string.IsNullOrWhiteSpace(query))
+        {
+            var q = query.Trim();
+            partNumbers = partNumbers.Where(p => EF.Functions.ILike(p.PartNum, $"%{q}%"));
+        }
+
+        return Ok(await partNumbers
+            .OrderBy(p => p.PartNum)
+            .Take(limit)
+            .Select(p => new { p.PartNum, p.Name })
+            .ToListAsync());
+    }
 }

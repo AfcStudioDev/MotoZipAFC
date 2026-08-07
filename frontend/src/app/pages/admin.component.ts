@@ -483,7 +483,7 @@ export class AdminComponent implements OnInit {
     },
     {
       endpoint: 'zip',
-      title: 'Запчасти (Номенклатура)',
+      title: 'Запчасти (Приход)',
       fields: [
         // Наименование и группа принадлежат парт-номеру: подставляются при его выборе
         // и сохраняются отдельным запросом в PartNumbers.

@@ -8,7 +8,7 @@ import { AuthService } from './core/auth.service';
     template: `
     <header class="header">
       <div class="container header-inner">
-        <a routerLink="/" class="logo">Moto<span>Parts</span></a>
+        <a routerLink="/" class="logo">Donor<span>Garage</span></a>
         <nav class="nav">
           <!-- exact: true — иначе "/" подсвечивался бы на любой странице -->
           <a routerLink="/" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }">Каталог</a>

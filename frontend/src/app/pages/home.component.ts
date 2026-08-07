@@ -68,7 +68,27 @@ import { ChangeDetectorRef } from '@angular/core';
           placeholder="ГГГГ" 
           mask="0000"
           class="form-control">
-        <input type="text" placeholder="Part number" [(ngModel)]="filters.partNumber" />
+        <div class="pn-field">
+          <input
+            type="text"
+            placeholder="Part number"
+            [(ngModel)]="filters.partNumber"
+            (ngModelChange)="onPartNumberInput($event)"
+            (focus)="onPartNumberInput(filters.partNumber || '')"
+            (keyup.enter)="search(1); partNumSuggestions.set([])"
+            autocomplete="off" />
+
+          @if (partNumSuggestions().length > 0) {
+            <ul class="suggestions-dropdown pn-dropdown">
+              @for (pn of partNumSuggestions(); track pn.partNum) {
+                <li (click)="selectPartNumber(pn.partNum)">
+                  <span class="suggestion-name">{{ pn.partNum }}</span>
+                  <span class="muted suggestion-pn">{{ pn.name }}</span>
+                </li>
+              }
+            </ul>
+          }
+        </div>
         <button class="btn btn-secondary" (click)="reset()">Сбросить</button>
       </div>
     </section>
@@ -270,7 +290,11 @@ export class HomeComponent implements OnInit {
   suggestions = signal<ZipDto[]>([]);
   expandedImage = signal<string | null>(null);
 
+  /** Подсказки для поля «Part number» в фильтрах. */
+  partNumSuggestions = signal<{ partNum: string; name: string }[]>([]);
+
   private searchSubject = new Subject<string>();
+  private partNumSubject = new Subject<string>();
 
   private catalog = inject(CatalogService);
   private orders = inject(OrdersService);
@@ -359,6 +383,14 @@ export class HomeComponent implements OnInit {
       this.suggestions.set(res.items || []);
     });
 
+    // Подсказки по парт-номеру. Пустой ввод тоже допустим — тогда показываем
+    // первые доступные номера, чтобы поле было подсказкой само по себе.
+    this.partNumSubject.pipe(
+      debounceTime(250),
+      distinctUntilChanged(),
+      switchMap(query => this.catalog.partNumbers(query).pipe(catchError(() => of([]))))
+    ).subscribe(list => this.partNumSuggestions.set(list));
+
     this.search(1);
 
     this.catalog.models().subscribe(m => this.models.set(m));
@@ -378,6 +410,16 @@ export class HomeComponent implements OnInit {
     this.search(1);                 // Сразу запускаем полноценный поиск и обновляем сетку
   }
 
+  onPartNumberInput(query: string | undefined) {
+    this.partNumSubject.next(query || '');
+  }
+
+  selectPartNumber(partNum: string) {
+    this.filters.partNumber = partNum;
+    this.partNumSuggestions.set([]);
+    this.search(1);
+  }
+
   onMarkChange(): void {
     this.filters.modelId = undefined;
     this.catalog.models(this.filters.markId).subscribe(m => this.models.set(m));
@@ -385,12 +427,14 @@ export class HomeComponent implements OnInit {
 
   search(page: number): void {
     this.suggestions.set([]); // Скрываем подсказки при принудительном поиске
+    this.partNumSuggestions.set([]);
     this.catalog.search({ ...this.filters, page, pageSize: 12 }).subscribe(r => this.result.set(r));
   }
 
   reset(): void {
     this.filters = {};
     this.suggestions.set([]);
+    this.partNumSuggestions.set([]);
     this.catalog.models().subscribe(m => this.models.set(m));
     this.search(1);
   }

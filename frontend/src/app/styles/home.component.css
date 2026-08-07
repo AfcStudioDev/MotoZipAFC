@@ -67,6 +67,23 @@
   gap: 10px;
 }
 
+/* Поле «Part number» с выпадающими подсказками.
+   Своя обёртка нужна, чтобы список позиционировался относительно самого поля,
+   а не всей строки фильтров. */
+.pn-field {
+  position: relative;
+}
+
+.pn-field input {
+  width: 100%;
+}
+
+/* У общего .suggestions-dropdown отступ справа рассчитан на кнопку «Найти»
+   в строке поиска — здесь кнопки нет, список занимает всю ширину поля. */
+.pn-dropdown {
+  right: 0;
+}
+
 .grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
