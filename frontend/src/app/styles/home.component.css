@@ -78,12 +78,6 @@
   width: 100%;
 }
 
-/* У общего .suggestions-dropdown отступ справа рассчитан на кнопку «Найти»
-   в строке поиска — здесь кнопки нет, список занимает всю ширину поля. */
-.pn-dropdown {
-  right: 0;
-}
-
 .grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
@@ -172,6 +166,40 @@
 
 .suggestion-pn {
   font-size: 0.85em;
+}
+
+/* Отступ справа в 90px у .suggestions-dropdown рассчитан на кнопку «Найти»
+   в строке поиска. У поля «Part number» кнопки нет, поэтому список тянется
+   на всю ширину поля. Селектор с двумя классами — чтобы правило не зависело
+   от порядка объявления в файле. */
+.pn-field .pn-dropdown {
+  right: 0;
+  /* Не уже поля ввода, но может подрасти под длинные названия.
+     Растёт влево (left: auto), а не вправо — иначе на крайней колонке
+     фильтров список вылез бы за правый край карточки. */
+  left: auto;
+  min-width: 100%;
+  width: max-content;
+  max-width: 340px;
+}
+
+/* Номер и название в одну строку: название сжимается и обрезается,
+   чтобы длинное имя не растягивало список за границы поля. */
+.pn-dropdown li {
+  gap: 12px;
+}
+
+.pn-dropdown .suggestion-name {
+  white-space: nowrap;
+}
+
+.pn-dropdown .suggestion-pn {
+  flex: 1;
+  min-width: 0;
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Крестик для закрытия */
