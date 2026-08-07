@@ -102,6 +102,9 @@ services:
       - frontend
     environment:
       DOMAIN: ${DOMAIN:-localhost}
+      # Что именно слушает Caddy. По умолчанию — сам домен; переопределяется,
+      # когда нужен www или доступ по IP без TLS (см. комментарии в Caddyfile).
+      CADDY_SITE_ADDRESS: ${CADDY_SITE_ADDRESS:-${DOMAIN:-localhost}}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       # Здесь Caddy хранит выпущенные сертификаты — без volume каждый пересоздание
