@@ -471,6 +471,54 @@ public class AdminController(AppDbContext db) : ControllerBase
     // Отчёты вынесены в ReportsController — Sender-у нужен доступ к ним,
     // но не ко всему остальному AdminController.
 
+    /// <summary>
+    /// Ставит одну цену продажи всем запчастям указанного парт-номера.
+    /// Каждое фактическое изменение попадает в историю переоценки отдельной записью,
+    /// чтобы было видно, что цена менялась массово.
+    /// </summary>
+    [HttpPost("reprice-part-num")]
+    public async Task<IActionResult> RepricePartNum(AdminRepricePartNumRequest request)
+    {
+        var userId = CurrentUserId;
+        if (userId is null) return Unauthorized(new { message = "Не удалось определить пользователя" });
+
+        var zips = await db.Zips
+            .Where(z => z.PartNumId == request.PartNumId)
+            .Where(z => request.ExceptZipId == null || z.Id != request.ExceptZipId)
+            .ToListAsync();
+
+        if (zips.Count == 0)
+            return Ok(new { message = "Обновлять нечего", updated = 0 });
+
+        await using var tx = await db.Database.BeginTransactionAsync();
+
+        var updated = 0;
+        foreach (var zip in zips)
+        {
+            var oldCost = zip.SellCost ?? 0m;
+            if (oldCost == request.NewCost) continue;
+
+            zip.SellCost = request.NewCost;
+
+            db.PriceHistories.Add(new PriceHistory
+            {
+                ZipId = zip.Id,
+                OldCost = oldCost,
+                NewCost = request.NewCost,
+                OperationId = (short)(request.NewCost > oldCost ? OperationEnum.Markup : OperationEnum.Markdown),
+                UserId = userId.Value,
+                CreatedAt = DateTimeOffset.UtcNow,
+                Comment = request.Comment ?? "Массовая переоценка по парт-номеру"
+            });
+            updated++;
+        }
+
+        await db.SaveChangesAsync();
+        await tx.CommitAsync();
+
+        return Ok(new { message = $"Цена обновлена у запчастей: {updated}", updated });
+    }
+
     // ---------- Users ----------
     [HttpGet("users")]
     public async Task<IActionResult> Users() =>
@@ -546,6 +594,7 @@ public class AdminController(AppDbContext db) : ControllerBase
                 o.CountOrdered,
                 o.ZipId,
                 ZipName = o.Zip.PartNumber.Name,
+                PartNum = o.Zip.PartNumber.PartNum,
                 o.AddressId,
                 o.OrderDateTime,
                 o.SellCost,
@@ -809,92 +858,208 @@ public class AdminController(AppDbContext db) : ControllerBase
         return Ok(donor);
     }
 
+    /// <summary>
+    /// Удаление записи вместе с зависимыми данными.
+    ///
+    /// Подчищается только то, что без родителя теряет смысл (остаток, фотографии,
+    /// записи журнала, применимость). Ссылки, за которыми стоят реальные документы —
+    /// прежде всего заказы, — не удаляются: вместо этого возвращается 409 с
+    /// объяснением, что именно мешает. Иначе одно нажатие «Удалить» на запчасти
+    /// стирало бы историю продаж.
+    /// </summary>
     [HttpDelete("{endpoint}/{id}")]
     public async Task<IActionResult> DeleteEntity(string endpoint, string id)
     {
-        // Если у вас есть система авторизации через JWT/Cookies,
-        // проверку можно настроить через [Authorize(Roles = "Admin")] 
-        // или вручную проверить флаг IsAdmin текущего пользователя:
-        // var currentUser = await GetCurrentUserAsync();
-        // if (!currentUser.IsAdmin) return Forbid();
+        await using var tx = await db.Database.BeginTransactionAsync();
 
         switch (endpoint.ToLower())
         {
             case "marks":
-                var mark = await db.MotoMarks.FindAsync(int.Parse(id));
+            {
+                if (!int.TryParse(id, out var markId)) return BadRequest(new { message = "Неверный формат идентификатора" });
+                var mark = await db.MotoMarks.FindAsync(markId);
                 if (mark == null) return NotFound();
+
+                // Модели остаются, но теряют привязку к марке (MarkId допускает null).
+                await db.MotoModels.Where(m => m.MarkId == markId)
+                    .ExecuteUpdateAsync(s => s.SetProperty(m => m.MarkId, (int?)null));
+
                 db.MotoMarks.Remove(mark);
                 break;
+            }
 
             case "models":
-                var model = await db.MotoModels.FindAsync(int.Parse(id));
+            {
+                if (!int.TryParse(id, out var modelId)) return BadRequest(new { message = "Неверный формат идентификатора" });
+                var model = await db.MotoModels.FindAsync(modelId);
                 if (model == null) return NotFound();
+
+                // Применимость к удаляемой модели смысла не имеет.
+                await db.PartNumberApplicabilities.Where(a => a.ModelId == modelId).ExecuteDeleteAsync();
+
                 db.MotoModels.Remove(model);
                 break;
+            }
 
             case "groups":
-                var group = await db.ZipGroups.FindAsync(int.Parse(id));
+            {
+                if (!int.TryParse(id, out var groupId)) return BadRequest(new { message = "Неверный формат идентификатора" });
+                var group = await db.ZipGroups.FindAsync(groupId);
                 if (group == null) return NotFound();
+
+                // Каталожные позиции остаются, просто без группы.
+                await db.PartNumbers.Where(p => p.GroupId == groupId)
+                    .ExecuteUpdateAsync(s => s.SetProperty(p => p.GroupId, (int?)null));
+
                 db.ZipGroups.Remove(group);
                 break;
+            }
 
             case "partnumbers":
             case "part-numbers":
-                var pn = await db.PartNumbers.FindAsync(int.Parse(id));
+            {
+                if (!int.TryParse(id, out var partNumId)) return BadRequest(new { message = "Неверный формат идентификатора" });
+                var pn = await db.PartNumbers.FindAsync(partNumId);
                 if (pn == null) return NotFound();
+
+                var zipCount = await db.Zips.CountAsync(z => z.PartNumId == partNumId);
+                if (zipCount > 0)
+                    return Conflict(new { message = $"По этому парт-номеру заведено запчастей: {zipCount}. Сначала удалите их." });
+
+                await db.PartNumberApplicabilities.Where(a => a.PartNumId == partNumId).ExecuteDeleteAsync();
+
                 db.PartNumbers.Remove(pn);
                 break;
+            }
 
             case "applicability":
-                var link = await db.PartNumberApplicabilities.FindAsync(int.Parse(id));
+            {
+                if (!int.TryParse(id, out var linkId)) return BadRequest(new { message = "Неверный формат идентификатора" });
+                var link = await db.PartNumberApplicabilities.FindAsync(linkId);
                 if (link == null) return NotFound();
                 db.PartNumberApplicabilities.Remove(link);
                 break;
+            }
 
             case "zip":
-                if (!Guid.TryParse(id, out var zipGuid)) return BadRequest("Неверный формат GUID");
+            {
+                if (!Guid.TryParse(id, out var zipGuid)) return BadRequest(new { message = "Неверный формат GUID" });
                 var zip = await db.Zips.FindAsync(zipGuid);
                 if (zip == null) return NotFound();
+
+                var orderCount = await db.Orders.CountAsync(o => o.ZipId == zipGuid);
+                if (orderCount > 0)
+                    return Conflict(new { message = $"На эту запчасть ссылаются заказы: {orderCount}. Удалить нельзя — иначе из истории продаж пропадёт документ." });
+
+                // Файлы фотографий удаляем с диска до того, как исчезнут строки в БД.
+                var photoNames = await db.ZipPhotos.Where(p => p.ZipId == zipGuid).Select(p => p.FileName).ToListAsync();
+                var uploadFolder = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "ZipPhotos");
+                foreach (var name in photoNames)
+                {
+                    var filePath = Path.Combine(uploadFolder, name);
+                    if (System.IO.File.Exists(filePath)) System.IO.File.Delete(filePath);
+                }
+
+                await db.ZipPhotos.Where(p => p.ZipId == zipGuid).ExecuteDeleteAsync();
+                await db.PriceHistories.Where(p => p.ZipId == zipGuid).ExecuteDeleteAsync();
+                await db.Logs.Where(l => l.ZipId == zipGuid).ExecuteDeleteAsync();
+                await db.Stored.Where(s => s.ZipId == zipGuid).ExecuteDeleteAsync();
+
                 db.Zips.Remove(zip);
                 break;
+            }
 
             case "users":
-                var user = await db.Users.FindAsync(int.Parse(id));
+            {
+                if (!int.TryParse(id, out var userId)) return BadRequest(new { message = "Неверный формат идентификатора" });
+                var user = await db.Users.FindAsync(userId);
                 if (user == null) return NotFound();
+
+                var orderCount = await db.Orders.CountAsync(o => o.UserId == userId);
+                if (orderCount > 0)
+                    return Conflict(new { message = $"У пользователя есть заказы: {orderCount}. Удалить нельзя — вместе с ним пропали бы документы." });
+
+                // PriceHistory.UserId не допускает null, поэтому пользователя,
+                // проводившего переоценку, удалить нельзя без потери истории цен.
+                var repriceCount = await db.PriceHistories.CountAsync(p => p.UserId == userId);
+                if (repriceCount > 0)
+                    return Conflict(new { message = $"Пользователь проводил переоценку ({repriceCount} записей в истории цен). Удалить нельзя." });
+
+                // В журнале и у доноров автор остаётся неизвестным — поля допускают null.
+                await db.Logs.Where(l => l.UserId == userId)
+                    .ExecuteUpdateAsync(s => s.SetProperty(l => l.UserId, (int?)null));
+                await db.IncomeMotos.Where(i => i.UserId == userId)
+                    .ExecuteUpdateAsync(s => s.SetProperty(i => i.UserId, (int?)null));
+
+                await db.DeliveryAddressess.Where(a => a.UserId == userId).ExecuteDeleteAsync();
+
                 db.Users.Remove(user);
                 break;
+            }
 
             case "addressess":
-                var address = await db.DeliveryAddressess.FindAsync(int.Parse(id)); // Исправлено на DeliveryAddressess
+            {
+                if (!int.TryParse(id, out var addressId)) return BadRequest(new { message = "Неверный формат идентификатора" });
+                var address = await db.DeliveryAddressess.FindAsync(addressId);
                 if (address == null) return NotFound();
+
+                var orderCount = await db.Orders.CountAsync(o => o.AddressId == addressId);
+                if (orderCount > 0)
+                    return Conflict(new { message = $"На этот адрес оформлены заказы: {orderCount}. Удалить нельзя." });
+
                 db.DeliveryAddressess.Remove(address);
                 break;
+            }
 
             case "orders":
-                if (!Guid.TryParse(id, out var orderGuid)) return BadRequest("Неверный формат GUID");
+            {
+                if (!Guid.TryParse(id, out var orderGuid)) return BadRequest(new { message = "Неверный формат GUID" });
                 var order = await db.Orders.FindAsync(orderGuid);
                 if (order == null) return NotFound();
+
+                // Записи журнала по этому заказу уходят вместе с ним.
+                await db.Logs.Where(l => l.OrderId == orderGuid).ExecuteDeleteAsync();
+
                 db.Orders.Remove(order);
                 break;
+            }
 
             case "incomemotos":
-                if (!Guid.TryParse(id, out var donorGuid)) return BadRequest("Неверный формат GUID");
+            {
+                if (!Guid.TryParse(id, out var donorGuid)) return BadRequest(new { message = "Неверный формат GUID" });
                 var donor = await db.IncomeMotos.FindAsync(donorGuid);
                 if (donor == null) return NotFound();
+
+                var zipCount = await db.Zips.CountAsync(z => z.IncomeMotoId == donorGuid);
+                if (zipCount > 0)
+                    return Conflict(new { message = $"С этого донора заведено запчастей: {zipCount}. Сначала удалите их." });
+
                 db.IncomeMotos.Remove(donor);
                 break;
+            }
 
             case "logs":
-                var log = await db.Logs.FindAsync(int.Parse(id));
+            {
+                if (!int.TryParse(id, out var logId)) return BadRequest(new { message = "Неверный формат идентификатора" });
+                var log = await db.Logs.FindAsync(logId);
                 if (log == null) return NotFound();
                 db.Logs.Remove(log);
                 break;
+            }
 
             case "deliverystatuses":
-                var ds = await db.DeliveryStatuses.FindAsync(short.Parse(id));
+            {
+                if (!short.TryParse(id, out var statusId)) return BadRequest(new { message = "Неверный формат идентификатора" });
+                var ds = await db.DeliveryStatuses.FindAsync(statusId);
                 if (ds == null) return NotFound();
+
+                var orderCount = await db.Orders.CountAsync(o => o.DeliveryStatusId == statusId);
+                if (orderCount > 0)
+                    return Conflict(new { message = $"Статус используется в заказах: {orderCount}. Удалить нельзя." });
+
                 db.DeliveryStatuses.Remove(ds);
                 break;
+            }
 
             default:
                 return BadRequest(new { message = "Неизвестный эндпоинт" });
@@ -903,11 +1068,13 @@ public class AdminController(AppDbContext db) : ControllerBase
         try
         {
             await db.SaveChangesAsync();
+            await tx.CommitAsync();
             return Ok(new { message = "Запись успешно удалена" });
         }
         catch (Exception ex)
         {
-            return BadRequest(new { message = "Невозможно удалить запись, так как на нее ссылаются другие данные", error = ex.Message });
+            await tx.RollbackAsync();
+            return BadRequest(new { message = "Невозможно удалить запись, так как на нее ссылаются другие данные", error = ex.InnerException?.Message ?? ex.Message });
         }
     }
 }

@@ -107,6 +107,13 @@ public record AdminCorrectionRequest(Guid ZipId, int Delta, string Comment);
 /// <summary>Изменение цены продажи с записью в историю переоценки.</summary>
 public record AdminRepriceRequest(Guid ZipId, decimal NewCost, string? Comment);
 
+/// <summary>
+/// Массовая переоценка всех запчастей одного парт-номера.
+/// Используется, когда при заведении запчасти оператор выбрал вариант
+/// «обновить цены для всех существующих».
+/// </summary>
+public record AdminRepricePartNumRequest(int PartNumId, decimal NewCost, Guid? ExceptZipId, string? Comment);
+
 public class UpdateUserRolesRequest
 {
     public bool IsSender { get; set; }

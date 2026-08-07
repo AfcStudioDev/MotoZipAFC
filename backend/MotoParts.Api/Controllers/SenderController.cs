@@ -29,6 +29,7 @@ namespace MotoParts.Api.Controllers
                     DeliveryStatus = o.DeliveryStatus != null ? o.DeliveryStatus.Description : "unknown",
                     o.OrderDateTime,
                     ZipName = o.Zip.PartNumber.Name,
+                    PartNum = o.Zip.PartNumber.PartNum,
                     Address = o.Address.Address // Исправлено с Address.Address на Address.Address
                 })
                 .ToListAsync();

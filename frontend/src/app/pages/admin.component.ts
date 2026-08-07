@@ -13,7 +13,13 @@ interface ZipPhotoRow {
 interface FieldDef {
   key: string;
   label: string;
-  type: 'text' | 'number' | 'checkbox' | 'select' | 'date';
+  /**
+   * zip-picker — выбор запчасти в два шага: сначала парт-номер, затем конкретный
+   * экземпляр. Нужен потому, что одно наименование встречается у разных парт-номеров
+   * (например, «Масляный фильтр» и у Honda, и у Yamaha), и по одному названию
+   * невозможно понять, какая именно деталь выбирается.
+   */
+  type: 'text' | 'number' | 'checkbox' | 'select' | 'date' | 'zip-picker';
   required?: boolean;
   refTable?: string;
   refLabelKey?: string;
@@ -38,6 +44,19 @@ interface TableDef {
 interface DynamicRow {
   id: any;
   [key: string]: any;
+}
+
+/** Расхождение цены с уже заведёнными запчастями того же парт-номера. */
+interface PriceConflict {
+  partNumId: number;
+  partNum: string;
+  name: string;
+  /** Цена, стоящая сейчас у запчастей в базе. */
+  existingCost: number;
+  /** Цена, введённая пользователем. */
+  newCost: number;
+  /** Сколько запчастей с этим парт-номером уже заведено. */
+  count: number;
 }
 
 @Component({
@@ -107,6 +126,47 @@ interface DynamicRow {
                       [required]="!!f.required"
                     >
                   } 
+                  @else if (f.type === 'zip-picker') {
+                    <!-- Шаг 1: парт-номер. Наименование в списке — подсказка, что это за деталь. -->
+                    <select
+                      class="form-control"
+                      [ngModel]="zipPartNumId()"
+                      [name]="f.key + '__partNum'"
+                      (ngModelChange)="onZipPartNumChange($event)"
+                    >
+                      <option [ngValue]="null">— Выберите парт-номер —</option>
+                      @for (pn of zipPartNumbers(); track pn.partNumId) {
+                        <option [ngValue]="pn.partNumId">{{ pn.partNum }} — {{ pn.name }}</option>
+                      }
+                    </select>
+
+                    <!-- Шаг 2: нужен только когда под одним парт-номером заведено несколько
+                         экземпляров. Единственный подставляется сам (см. onZipPartNumChange). -->
+                    @if (zipCandidates().length > 1) {
+                      <select
+                        class="form-control zip-picker-second"
+                        [(ngModel)]="form[f.key]"
+                        [name]="f.key"
+                        [required]="!!f.required"
+                      >
+                        <option [ngValue]="null">— Выберите запчасть —</option>
+                        @for (z of zipCandidates(); track z.id) {
+                          <option [ngValue]="z.id">{{ zipOptionLabel(z) }}</option>
+                        }
+                      </select>
+                      <small class="picker-hint">
+                        Под этим парт-номером заведено {{ zipCandidates().length }} шт. — уточните, какая именно
+                      </small>
+                    } @else if (zipCandidates().length === 1) {
+                      <small class="picker-hint picker-hint-ok">
+                        Подставлено автоматически: {{ zipOptionLabel(zipCandidates()[0]) }}
+                      </small>
+                    } @else if (zipPartNumId() !== null) {
+                      <small class="picker-hint picker-hint-warn">
+                        По этому парт-номеру нет заведённых запчастей
+                      </small>
+                    }
+                  }
                   @else if (f.type === 'date') {
                     <!-- Бэкенд принимает и отдаёт DateOnly в формате YYYY-MM-DD —
                          это же значение нативно использует input[type=date]. -->
@@ -278,10 +338,15 @@ interface DynamicRow {
                 @for (r of visibleRows(); track r.id) {
                   <!-- Использование r.id теперь работает благодаря интерфейсу DynamicRow -->
                   <tr [class.active-row]="selectedId() === r.id" (click)="editRow(r)">
-                    <td style="color: #888; font-size: 12px;">{{ r.id }}</td>
+                    <td class="id-cell" data-label="ID">{{ r.id }}</td>
                     @for (f of table.fields; track f.key) {
-                      <td>
-                        @if (f.type === 'select') {
+                      <td [attr.data-label]="f.label">
+                        @if (f.type === 'zip-picker') {
+                          <!-- В строке заказа бэкенд отдаёт и партномер, и наименование -->
+                          <span style="background: #e0f7fa; padding: 2px 6px; border-radius: 4px; font-size: 13px;">
+                            {{ r['partNum'] }} — {{ r['zipName'] }}
+                          </span>
+                        } @else if (f.type === 'select') {
                           <span style="background: #e0f7fa; padding: 2px 6px; border-radius: 4px; font-size: 13px;">
                             {{ getRefDisplay(f, r[f.key]) }}
                           </span>
@@ -294,15 +359,15 @@ interface DynamicRow {
                         }
                       </td>
                     }
-                    <td style="text-align: right;" (click)="$event.stopPropagation()">
-                      <button (click)="remove(table, r.id)" style="color: red; cursor: pointer; padding: 4px 8px;">
+                    <td class="actions-cell" data-label="Действия" (click)="$event.stopPropagation()">
+                      <button class="btn-delete" (click)="remove(table, r.id)">
                         Удалить
                       </button>
                     </td>
                   </tr>
                 } @empty {
-                  <tr>
-                    <td [attr.colspan]="table.fields.length + 2" style="text-align: center; padding: 20px; color: #777;">
+                  <tr class="empty-row">
+                    <td [attr.colspan]="table.fields.length + 2">
                       {{ isFiltered() ? 'Ничего не найдено по заданным условиям' : 'Нет данных в этой таблице' }}
                     </td>
                   </tr>
@@ -312,6 +377,40 @@ interface DynamicRow {
           </div>
         </div>
 
+      }
+
+      <!-- Выбор действия с ценой, когда парт-номер уже заведён с другой ценой -->
+      @if (pricePrompt(); as p) {
+        <div class="price-modal-backdrop" (click)="cancelPriceChoice()">
+          <div class="price-modal" (click)="$event.stopPropagation()">
+            <h3>Какое действие применить к таким же парт-номерам?</h3>
+
+            <p class="price-modal-summary">
+              По парт-номеру <b>{{ p.partNum }}</b> ({{ p.name }}) уже заведено:
+              <b>{{ p.count }}</b> шт. с ценой <b>{{ p.existingCost }} ₽</b>.
+              Вы указали <b>{{ p.newCost }} ₽</b>.
+            </p>
+
+            <div class="price-modal-actions">
+              <button type="button" class="price-option" (click)="applyPriceChoice('update-all')">
+                <span class="price-option-title">Обновить цены для всех существующих запчастей</span>
+                <span class="price-option-note">Всем {{ p.count }} шт. будет проставлено {{ p.newCost }} ₽</span>
+              </button>
+
+              <button type="button" class="price-option" (click)="applyPriceChoice('use-existing')">
+                <span class="price-option-title">Установить текущую цену такой же, как у запчастей в базе</span>
+                <span class="price-option-note">Введённое значение заменится на {{ p.existingCost }} ₽</span>
+              </button>
+
+              <button type="button" class="price-option" (click)="applyPriceChoice('keep-unique')">
+                <span class="price-option-title">Оставить уникальную цену не обновляя старые запчасти</span>
+                <span class="price-option-note">Новая запчасть получит {{ p.newCost }} ₽, остальные не изменятся</span>
+              </button>
+            </div>
+
+            <button type="button" class="price-modal-cancel" (click)="cancelPriceChoice()">Отмена</button>
+          </div>
+        </div>
       }
     </div>
   `,
@@ -441,7 +540,7 @@ export class AdminComponent implements OnInit {
       fields: [
         { key: 'orderNumber', label: 'Номер заказа', type: 'text', required: true },
         { key: 'countOrdered', label: 'Кол-во', type: 'number', required: true },
-        { key: 'zipId', label: 'Запчасть', type: 'select', refTable: 'zip', refLabelKey: 'name', required: true },
+        { key: 'zipId', label: 'Запчасть', type: 'zip-picker', required: true },
         { key: 'addressId', label: 'Адрес доставки', type: 'select', refTable: 'addressess', refLabelKey: 'address', required: true },
         { key: 'sellCost', label: 'Цена продажи', type: 'number', required: true },
         { key: 'userId', label: 'Покупатель', type: 'select', refTable: 'users', refLabelKey: 'fio', required: true },
@@ -450,7 +549,10 @@ export class AdminComponent implements OnInit {
       ],
       searchFields: [
         { key: 'orderNumber', label: 'Номер заказа' },
-        { key: 'nomenclatureName', label: 'Запчасть' }
+        { key: 'partNum', label: 'Парт-номер' },
+        // Бэкенд отдаёт наименование в поле zipName; прежний ключ nomenclatureName
+        // не существовал в ответе, из-за чего поиск по запчасти ничего не находил.
+        { key: 'zipName', label: 'Наименование' }
       ]
     }
   ];
@@ -464,6 +566,58 @@ export class AdminComponent implements OnInit {
 
   activeField = signal<string | null>(null);
   fieldSuggestions = signal<string[]>([]);
+
+  //#region [Выбор запчасти по парт-номеру]
+
+  /** Парт-номер, выбранный на первом шаге поля zip-picker. */
+  zipPartNumId = signal<number | null>(null);
+
+  /** Парт-номера, по которым реально заведены запчасти — заказать можно только их. */
+  zipPartNumbers = computed(() => {
+    const seen = new Map<number, { partNumId: number; partNum: string; name: string }>();
+    for (const z of this.references()['zip'] ?? []) {
+      if (z.partNumId != null && !seen.has(z.partNumId)) {
+        seen.set(z.partNumId, { partNumId: z.partNumId, partNum: z.partNum, name: z.name });
+      }
+    }
+    return Array.from(seen.values()).sort((a, b) => a.partNum.localeCompare(b.partNum));
+  });
+
+  /** Экземпляры запчастей выбранного парт-номера. */
+  zipCandidates = computed(() => {
+    const pn = this.zipPartNumId();
+    if (pn === null || pn === undefined) return [];
+    return (this.references()['zip'] ?? []).filter(z => z.partNumId === pn);
+  });
+
+  /**
+   * Наименование у всех экземпляров одного парт-номера совпадает (оно хранится
+   * в PartNumbers), поэтому к нему добавляем то, что реально их различает.
+   */
+  zipOptionLabel(z: any): string {
+    const parts = [z.name];
+    if (z.incomeMoto) parts.push(z.incomeMoto);
+    if (z.sellCost != null) parts.push(`${z.sellCost} ₽`);
+    parts.push(`остаток ${z.countStored ?? 0}`);
+    return parts.join(' · ');
+  }
+
+  onZipPartNumChange(partNumId: number | null) {
+    this.zipPartNumId.set(partNumId);
+    const candidates = this.zipCandidates();
+    // Единственный экземпляр подставляем сразу, иначе ждём выбора во втором списке.
+    this.form['zipId'] = candidates.length === 1 ? candidates[0].id : null;
+  }
+
+  /** Восстанавливает первый шаг по уже сохранённой в заказе запчасти. */
+  private syncZipPickerFromForm() {
+    const zipId = this.form['zipId'];
+    if (!zipId) { this.zipPartNumId.set(null); return; }
+    const zip = (this.references()['zip'] ?? []).find(z => String(z.id) === String(zipId));
+    this.zipPartNumId.set(zip ? zip.partNumId : null);
+  }
+
+  //#endregion
 
   // --- Поиск по таблице ---
   /** Введённые значения по каждому поисковому полю. */
@@ -641,6 +795,8 @@ export class AdminComponent implements OnInit {
     this.form = { ...row };
     this.selectedFiles.set([]);
     this.existingPhotos.set(Array.isArray(row.photos) ? row.photos : []);
+    // Чтобы в заказе первым шагом сразу стоял парт-номер сохранённой запчасти.
+    this.syncZipPickerFromForm();
   }
 
   cancelEdit() {
@@ -650,12 +806,27 @@ export class AdminComponent implements OnInit {
     this.fieldSuggestions.set([]);
     this.selectedFiles.set([]);
     this.existingPhotos.set([]);
+    this.zipPartNumId.set(null);
   }
 
   save(table: TableDef) {
-    this.busy.set(true);
     this.error.set('');
     this.message.set('');
+
+    // Новая запчасть с уже существующим парт-номером и другой ценой продажи —
+    // спрашиваем, что делать с ценами остальных, и продолжаем после ответа.
+    const conflict = this.detectPriceConflict(table);
+    if (conflict) {
+      this.pendingPriceTable = table;
+      this.pricePrompt.set(conflict);
+      return;
+    }
+
+    this.runSave(table);
+  }
+
+  private runSave(table: TableDef) {
+    this.busy.set(true);
 
     // Поля, принадлежащие парт-номеру, живут в другой таблице — сохраняем их отдельно.
     const ownedChanged = this.partNumberPatch(table);
@@ -672,6 +843,88 @@ export class AdminComponent implements OnInit {
 
     this.saveRow(table);
   }
+
+  //#region [Цена при совпадении парт-номера]
+
+  /** Данные для модального окна выбора действия с ценой. */
+  pricePrompt = signal<PriceConflict | null>(null);
+  private pendingPriceTable: TableDef | null = null;
+  /** Если задано — после сохранения проставить эту цену всем запчастям парт-номера. */
+  private bulkRepriceAfterSave: { partNumId: number; newCost: number } | null = null;
+
+  /**
+   * Срабатывает только при добавлении новой запчасти: если по этому парт-номеру
+   * уже есть позиции и введённая цена продажи от них отличается — надо спросить.
+   */
+  private detectPriceConflict(table: TableDef): PriceConflict | null {
+    if (table.endpoint !== 'zip' || this.selectedId()) return null;
+
+    const partNumId = Number(this.form['partNumId']);
+    if (!partNumId) return null;
+
+    const newCost = Number(this.form['sellCost']);
+    if (this.isEmpty(this.form['sellCost']) || Number.isNaN(newCost)) return null;
+
+    const siblings = (this.references()['zip'] ?? [])
+      .filter(z => Number(z.partNumId) === partNumId && z.sellCost != null);
+    if (siblings.length === 0) return null;
+
+    const existingCost = Number(siblings[0].sellCost);
+    if (existingCost === newCost) return null;
+
+    return {
+      partNumId,
+      partNum: siblings[0].partNum,
+      name: siblings[0].name,
+      existingCost,
+      newCost,
+      count: siblings.length
+    };
+  }
+
+  applyPriceChoice(choice: 'update-all' | 'use-existing' | 'keep-unique') {
+    const prompt = this.pricePrompt();
+    const table = this.pendingPriceTable;
+    this.pricePrompt.set(null);
+    this.pendingPriceTable = null;
+    if (!prompt || !table) return;
+
+    if (choice === 'use-existing') {
+      // Цену пользователя заменяем на ту, что уже в базе.
+      this.form['sellCost'] = prompt.existingCost;
+      this.bulkRepriceAfterSave = null;
+    } else if (choice === 'update-all') {
+      // Сохраняем как ввёл пользователь, а остальным проставим её же после сохранения.
+      this.bulkRepriceAfterSave = { partNumId: prompt.partNumId, newCost: prompt.newCost };
+    } else {
+      this.bulkRepriceAfterSave = null;
+    }
+
+    this.runSave(table);
+  }
+
+  cancelPriceChoice() {
+    this.pricePrompt.set(null);
+    this.pendingPriceTable = null;
+  }
+
+  /** Массовая переоценка после успешного создания запчасти. */
+  private applyBulkRepriceIfNeeded(createdZipId?: string) {
+    const bulk = this.bulkRepriceAfterSave;
+    this.bulkRepriceAfterSave = null;
+    if (!bulk) return;
+
+    this.admin.repricePartNum(bulk.partNumId, bulk.newCost, createdZipId).subscribe({
+      next: (res) => {
+        this.message.set(`${this.message()} ${res.message}.`);
+        this.loadAllReferences();
+      },
+      error: (err) => this.error.set('Запчасть добавлена, но обновить цены остальных не удалось: '
+        + (err.error?.message || err.message))
+    });
+  }
+
+  //#endregion
 
   /**
    * Возвращает данные для обновления PartNumbers, если поля парт-номера в форме
@@ -707,16 +960,19 @@ export class AdminComponent implements OnInit {
       : this.admin.add(table.endpoint, this.form, this.selectedFiles());
 
     request.subscribe({
-      next: () => {
+      next: (res: any) => {
         this.message.set(id ? 'Запись успешно обновлена!' : 'Запись успешно добавлена!');
         this.busy.set(false);
         this.cancelEdit();
         this.reload(table);
         this.loadAllReferences();
+        // Выбранное в модальном окне действие «обновить цены для всех».
+        this.applyBulkRepriceIfNeeded(res?.id);
       },
       error: (err) => {
         this.error.set('Ошибка сохранения: ' + (err.error?.message || err.message));
         this.busy.set(false);
+        this.bulkRepriceAfterSave = null;
       }
     });
   }

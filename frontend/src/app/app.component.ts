@@ -87,6 +87,27 @@ import { AuthService } from './core/auth.service';
     }
     .user-name { color: var(--muted); font-size: 14px; }
     .main { padding: 24px 16px 48px; }
+
+    /* На мобильном пункты меню не помещаются в одну строку рядом с логотипом:
+       переносим их и позволяем шапке расти по высоте вместо горизонтальной прокрутки. */
+    @media (max-width: 768px) {
+      .header-inner {
+        flex-wrap: wrap;
+        height: auto;
+        gap: 8px;
+        padding-top: 10px;
+        padding-bottom: 10px;
+      }
+      .logo { font-size: 20px; }
+      .nav {
+        flex-wrap: wrap;
+        gap: 10px 14px;
+        width: 100%;
+      }
+      .nav a { font-size: 14px; }
+      .user-name { font-size: 13px; }
+      .main { padding: 16px 12px 40px; }
+    }
   `]
 })
 export class AppComponent {

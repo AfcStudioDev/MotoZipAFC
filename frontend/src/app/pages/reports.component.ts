@@ -100,12 +100,12 @@ type ReportKind = 'sales' | 'income' | 'price-history' | 'zip-history';
                 <tbody>
                   @for (r of sales(); track r.zipId) {
                     <tr>
-                      <td>{{ r.name }}</td>
-                      <td class="muted">{{ r.partNum }}</td>
-                      <td class="num">{{ r.sold }}</td>
-                      <td class="num">{{ r.revenue | currency:'RUB':'symbol-narrow':'1.0-2' }}</td>
-                      <td class="num">{{ r.cost | currency:'RUB':'symbol-narrow':'1.0-2' }}</td>
-                      <td class="num" [class.negative]="r.margin < 0">
+                      <td data-label="Наименование">{{ r.name }}</td>
+                      <td data-label="Парт-номер" class="muted">{{ r.partNum }}</td>
+                      <td data-label="Продано" class="num">{{ r.sold }}</td>
+                      <td data-label="Выручка" class="num">{{ r.revenue | currency:'RUB':'symbol-narrow':'1.0-2' }}</td>
+                      <td data-label="Себестоимость" class="num">{{ r.cost | currency:'RUB':'symbol-narrow':'1.0-2' }}</td>
+                      <td data-label="Маржа" class="num" [class.negative]="r.margin < 0">
                         {{ r.margin | currency:'RUB':'symbol-narrow':'1.0-2' }}
                       </td>
                     </tr>
@@ -139,13 +139,13 @@ type ReportKind = 'sales' | 'income' | 'price-history' | 'zip-history';
                 <tbody>
                   @for (r of income(); track $index) {
                     <tr>
-                      <td>{{ r.createdAt | date:'dd.MM.yyyy HH:mm' }}</td>
-                      <td>{{ r.name }}</td>
-                      <td class="muted">{{ r.partNum }}</td>
-                      <td class="num">{{ r.qty }}</td>
-                      <td class="num">{{ r.unitCost | currency:'RUB':'symbol-narrow':'1.0-2' }}</td>
-                      <td class="num">{{ r.total | currency:'RUB':'symbol-narrow':'1.0-2' }}</td>
-                      <td class="muted">{{ r.incomeMoto }}</td>
+                      <td data-label="Дата">{{ r.createdAt | date:'dd.MM.yyyy HH:mm' }}</td>
+                      <td data-label="Наименование">{{ r.name }}</td>
+                      <td data-label="Парт-номер" class="muted">{{ r.partNum }}</td>
+                      <td data-label="Кол-во" class="num">{{ r.qty }}</td>
+                      <td data-label="Цена закупки" class="num">{{ r.unitCost | currency:'RUB':'symbol-narrow':'1.0-2' }}</td>
+                      <td data-label="Сумма" class="num">{{ r.total | currency:'RUB':'symbol-narrow':'1.0-2' }}</td>
+                      <td data-label="Донор" class="muted">{{ r.incomeMoto }}</td>
                     </tr>
                   } @empty {
                     <tr><td colspan="7" class="empty">За выбранный период поступлений не было</td></tr>
@@ -174,18 +174,18 @@ type ReportKind = 'sales' | 'income' | 'price-history' | 'zip-history';
                 <tbody>
                   @for (r of priceHistory(); track r.id) {
                     <tr>
-                      <td>{{ r.createdAt | date:'dd.MM.yyyy HH:mm' }}</td>
-                      <td>{{ r.name }}</td>
-                      <td>
+                      <td data-label="Дата">{{ r.createdAt | date:'dd.MM.yyyy HH:mm' }}</td>
+                      <td data-label="Наименование">{{ r.name }}</td>
+                      <td data-label="Операция">
                         <span class="badge" [class.markdown]="r.delta < 0">{{ r.operation }}</span>
                       </td>
-                      <td class="num">{{ r.oldCost | currency:'RUB':'symbol-narrow':'1.0-2' }}</td>
-                      <td class="num">{{ r.newCost | currency:'RUB':'symbol-narrow':'1.0-2' }}</td>
-                      <td class="num" [class.negative]="r.delta < 0">
+                      <td data-label="Было" class="num">{{ r.oldCost | currency:'RUB':'symbol-narrow':'1.0-2' }}</td>
+                      <td data-label="Стало" class="num">{{ r.newCost | currency:'RUB':'symbol-narrow':'1.0-2' }}</td>
+                      <td data-label="Изменение" class="num" [class.negative]="r.delta < 0">
                         {{ r.delta > 0 ? '+' : '' }}{{ r.delta | currency:'RUB':'symbol-narrow':'1.0-2' }}
                       </td>
-                      <td class="muted">{{ r.user }}</td>
-                      <td class="muted">{{ r.comment }}</td>
+                      <td data-label="Кто" class="muted">{{ r.user }}</td>
+                      <td data-label="Комментарий" class="muted">{{ r.comment }}</td>
                     </tr>
                   } @empty {
                     <tr><td colspan="8" class="empty">Переоценок не зафиксировано</td></tr>
@@ -213,15 +213,15 @@ type ReportKind = 'sales' | 'income' | 'price-history' | 'zip-history';
                 <tbody>
                   @for (r of zipHistory(); track r.id) {
                     <tr>
-                      <td>{{ r.createdAt | date:'dd.MM.yyyy HH:mm' }}</td>
-                      <td><span class="badge">{{ r.operation }}</span></td>
-                      <td class="num" [class.negative]="(r.qty ?? 0) < 0">
+                      <td data-label="Дата">{{ r.createdAt | date:'dd.MM.yyyy HH:mm' }}</td>
+                      <td data-label="Операция"><span class="badge">{{ r.operation }}</span></td>
+                      <td data-label="Кол-во" class="num" [class.negative]="(r.qty ?? 0) < 0">
                         {{ r.qty !== null && r.qty !== undefined ? ((r.qty > 0 ? '+' : '') + r.qty) : '—' }}
                       </td>
-                      <td class="num">{{ r.unitCost | currency:'RUB':'symbol-narrow':'1.0-2' }}</td>
-                      <td class="num">{{ r.sellCost | currency:'RUB':'symbol-narrow':'1.0-2' }}</td>
-                      <td class="muted">{{ r.user }}</td>
-                      <td class="muted">{{ r.description }}</td>
+                      <td data-label="Себестоимость" class="num">{{ r.unitCost | currency:'RUB':'symbol-narrow':'1.0-2' }}</td>
+                      <td data-label="Цена продажи" class="num">{{ r.sellCost | currency:'RUB':'symbol-narrow':'1.0-2' }}</td>
+                      <td data-label="Кто" class="muted">{{ r.user }}</td>
+                      <td data-label="Описание" class="muted">{{ r.description }}</td>
                     </tr>
                   } @empty {
                     <tr><td colspan="7" class="empty">Движений по этой детали нет</td></tr>
@@ -327,6 +327,56 @@ type ReportKind = 'sales' | 'income' | 'price-history' | 'zip-history';
       border-radius: 4px;
     }
     .close-inline { float: right; cursor: pointer; background: none; border: none; }
+
+    /* На узких экранах отчётные таблицы шире экрана. Строку разворачиваем
+       в карточку — подпись колонки берётся из data-label у ячейки. */
+    @media (max-width: 768px) {
+      .reports-container { padding: 12px 0 32px; }
+      .card { padding: 14px; }
+
+      .report-tabs { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 4px; }
+      .report-tabs button { flex: 0 0 auto; font-size: 14px; padding: 7px 13px; }
+
+      .filters { flex-direction: column; align-items: stretch; }
+      .filter-field.grow { flex: 1 1 auto; }
+      .btn { width: 100%; }
+
+      .summary { flex-direction: column; gap: 6px; }
+
+      .table-container { overflow-x: visible; }
+      .data-table, .data-table tbody, .data-table tr, .data-table td { display: block; width: 100%; }
+      .data-table thead { display: none; }
+
+      .data-table tr {
+        border: 1px solid #eee;
+        border-radius: 8px;
+        margin-bottom: 12px;
+        padding: 4px 0;
+      }
+
+      .data-table td {
+        border: none;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+        padding: 7px 12px;
+        text-align: right;
+        overflow-wrap: anywhere;
+      }
+      .data-table td::before {
+        content: attr(data-label);
+        font-weight: 600;
+        color: #6b7280;
+        font-size: 12px;
+        text-align: left;
+        flex-shrink: 0;
+      }
+      .data-table .num { text-align: right; }
+
+      .data-table td.empty { justify-content: center; }
+      .data-table td.empty::before { content: none; }
+    }
   `]
 })
 export class ReportsComponent {

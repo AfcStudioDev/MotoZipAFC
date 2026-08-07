@@ -269,3 +269,44 @@
     font-size: 13px;
     box-sizing: border-box;
 }
+/* ============================================================
+   Мобильная адаптация витрины
+   ============================================================ */
+@media (max-width: 768px) {
+  /* На узком экране 280px минимума не хватает: контейнер уже,
+     и карточка вылезала бы за край */
+  .grid {
+    grid-template-columns: 1fr;
+  }
+
+  .filters {
+    grid-template-columns: 1fr;
+  }
+
+  /* Поле поиска и кнопка — в столбик, иначе поле сжимается до нечитаемого */
+  .search-row {
+    flex-direction: column;
+  }
+
+  .modal-content {
+    max-width: 100%;
+    padding: 16px;
+    max-height: 90vh;
+    overflow-y: auto;
+  }
+
+  .item-details-modal {
+    max-width: 100%;
+  }
+
+  /* Галерея прокручивается внутри себя, не растягивая окно */
+  .gallery-img {
+    width: 120px;
+    height: 120px;
+  }
+
+  .zip-footer {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+}

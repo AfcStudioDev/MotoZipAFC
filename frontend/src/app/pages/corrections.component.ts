@@ -221,6 +221,15 @@ interface ZipRow {
       border-radius: 4px;
     }
     .close-inline { float: right; cursor: pointer; background: none; border: none; }
+
+    @media (max-width: 768px) {
+      .corrections-container { padding: 12px 0 32px; }
+      .card { padding: 14px; }
+      .mode-tabs { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 4px; }
+      .mode-tabs button { flex: 0 0 auto; font-size: 14px; padding: 7px 13px; }
+      .current-state { flex-direction: column; gap: 6px; }
+      .btn { width: 100%; }
+    }
   `]
 })
 export class CorrectionsComponent {

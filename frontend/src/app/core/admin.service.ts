@@ -21,10 +21,15 @@ export class AdminService {
   //   return this.http.post(`${this.api}/${table}`, payload);
   // }
 
-  add(endpoint: string, data: any, files?: File[]) {
-    // ВСЕГДА используем FormData для таблиц, которые могут принимать файлы (например, zips)
-    // Если вам нужно, чтобы этот метод работал и для других таблиц без файлов,
-    // можно оставить условие if (files), как мы делали ранее.
+  /**
+   * Эндпоинты, принимающие multipart/form-data (у них на бэкенде стоит [FromForm]).
+   * Все остальные ждут JSON и на multipart отвечают 415 Unsupported Media Type,
+   * поэтому формат запроса выбирается по этому списку, а не по наличию файлов:
+   * zip нужно слать формой даже без единой фотографии.
+   */
+  private static readonly MULTIPART_ENDPOINTS = ['zip'];
+
+  private toFormData(data: any, files?: File[]): FormData {
     const formData = new FormData();
 
     Object.keys(data).forEach(key => {
@@ -36,46 +41,34 @@ export class AdminService {
 
     if (files && files.length > 0) {
       files.forEach(file => {
-        formData.append('photos', file, file.name); // ключ 'photos' не обязателен для C# Request.Form.Files, но хорошая практика
+        formData.append('photos', file, file.name);
       });
     }
 
-    return this.http.post(`${this.api}/${endpoint}`, formData);
+    return formData;
   }
 
-  // update(table: string, id: string | number, payload: Record<string, unknown>): Observable<unknown> {
-  //   return this.http.put(`${this.api}/${table}/${id}`, payload);
-  // }
+  /** Убирает пустые строки, чтобы необязательные поля уходили как null, а не "" . */
+  private cleanPayload(data: any): Record<string, unknown> {
+    const payload: Record<string, unknown> = {};
+    Object.keys(data).forEach(key => {
+      payload[key] = data[key] === '' ? null : data[key];
+    });
+    return payload;
+  }
 
-
+  add(endpoint: string, data: any, files?: File[]) {
+    if (AdminService.MULTIPART_ENDPOINTS.includes(endpoint)) {
+      return this.http.post(`${this.api}/${endpoint}`, this.toFormData(data, files));
+    }
+    return this.http.post(`${this.api}/${endpoint}`, this.cleanPayload(data));
+  }
 
   update(endpoint: string, id: any, data: any, files?: File[]) {
-    // Если параметр files был передан (даже если массив пустой []),
-    // значит эндпоинт ожидает multipart/form-data
-    if (files) {
-      const formData = new FormData();
-
-      // Добавляем все текстовые и числовые поля
-      Object.keys(data).forEach(key => {
-        const val = data[key];
-        // Пропускаем null, undefined и пустые строки, чтобы не вызывать ошибку 400 на бэкенде
-        if (val !== null && val !== undefined && val !== '') {
-          formData.append(key, val);
-        }
-      });
-
-      // Если есть прикреплённые файлы — добавляем их в FormData
-      if (files.length > 0) {
-        files.forEach(file => {
-          formData.append('photos', file, file.name);
-        });
-      }
-
-      return this.http.put(`${this.api}/${endpoint}/${id}`, formData);
+    if (AdminService.MULTIPART_ENDPOINTS.includes(endpoint)) {
+      return this.http.put(`${this.api}/${endpoint}/${id}`, this.toFormData(data, files));
     }
-
-    // Обычный JSON-запрос для таблиц без файлов
-    return this.http.put(`${this.api}/${endpoint}/${id}`, data);
+    return this.http.put(`${this.api}/${endpoint}/${id}`, this.cleanPayload(data));
   }
 
   searchUsers(query: string) {
@@ -109,6 +102,12 @@ export class AdminService {
   /** Изменение цены продажи. Наценка/уценка определяется бэкендом по знаку разницы. */
   reprice(zipId: string, newCost: number, comment?: string) {
     return this.http.post(`${this.api}/reprice`, { zipId, newCost, comment });
+  }
+
+  /** Ставит одну цену всем запчастям парт-номера; exceptZipId исключает только что заведённую. */
+  repricePartNum(partNumId: number, newCost: number, exceptZipId?: string, comment?: string) {
+    return this.http.post<{ message: string; updated: number }>(
+      `${this.api}/reprice-part-num`, { partNumId, newCost, exceptZipId, comment });
   }
 
   // ---------- Отчёты ----------
