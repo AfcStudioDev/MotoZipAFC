@@ -1,12 +1,12 @@
-/* Общие стили в духе auto.ru: светлый фон, красный акцент */
+/* Оранжево-серая схема в тон логотипу DonorGarage */
 :root {
-  --accent: #d81e28;
-  --accent-hover: #b5141d;
-  --bg: #f5f6f8;
+  --accent: #e06b2a;
+  --accent-hover: #c25e22;
+  --bg: #f4f3f1;
   --card: #ffffff;
-  --text: #1d222b;
-  --muted: #7b8494;
-  --border: #e3e6eb;
+  --text: #2a2723;
+  --muted: #8a8378;
+  --border: #e4e0da;
   --radius: 12px;
 }
 
@@ -53,8 +53,8 @@ input:focus, select:focus, textarea:focus {
 }
 .btn:hover { background: var(--accent-hover); }
 .btn:disabled { background: #ccc; cursor: not-allowed; }
-.btn-secondary { background: #eef0f3; color: var(--text); }
-.btn-secondary:hover { background: #e0e3e8; }
+.btn-secondary { background: #f0ece4; color: var(--text); }
+.btn-secondary:hover { background: #e3ddd2; }
 
 .card {
   background: var(--card);
@@ -85,7 +85,7 @@ table.data th, table.data td {
   border-bottom: 1px solid var(--border);
   font-size: 14px;
 }
-table.data th { background: #fafbfc; color: var(--muted); font-weight: 600; }
+table.data th { background: #faf9f7; color: var(--muted); font-weight: 600; }
 
 .pagination {
   display: flex;

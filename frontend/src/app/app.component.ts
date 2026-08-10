@@ -8,7 +8,10 @@ import { AuthService } from './core/auth.service';
     template: `
     <header class="header">
       <div class="container header-inner">
-        <a routerLink="/" class="logo">Donor<span>Garage</span></a>
+        <a routerLink="/" class="logo">
+          <img src="/logo.svg" alt="" class="logo-img" />
+          Donor<span>Garage</span>
+        </a>
         <nav class="nav">
           <!-- exact: true — иначе "/" подсвечивался бы на любой странице -->
           <a routerLink="/" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }">Каталог</a>
@@ -55,12 +58,20 @@ import { AuthService } from './core/auth.service';
       height: 64px;
     }
     .logo {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
       font-size: 24px;
       font-weight: 800;
       color: var(--text);
       text-decoration: none;
     }
     .logo span { color: var(--accent); }
+    .logo-img {
+      display: block;
+      height: 40px;
+      width: auto;
+    }
     .nav { display: flex; align-items: center; gap: 18px; }
     .nav a {
       color: var(--text);
@@ -69,6 +80,15 @@ import { AuthService } from './core/auth.service';
       padding: 4px 0;
       transition: color 0.15s;
     }
+    /* .nav a (класс + тег) специфичнее одного класса .btn, поэтому без этого
+       переопределения ссылка «Регистрация» получала бы цвет текста и отступы
+       навигации вместо собственного вида кнопки. */
+    .nav a.btn {
+      color: #fff;
+      padding: 10px 20px;
+      font-weight: 600;
+    }
+
     /* Подсветка вкладки текущей страницы. Кнопка «Регистрация» исключена —
        у неё собственный стиль .btn, подчёркивание его ломает. */
     .nav a.active:not(.btn) {
@@ -98,7 +118,8 @@ import { AuthService } from './core/auth.service';
         padding-top: 10px;
         padding-bottom: 10px;
       }
-      .logo { font-size: 20px; }
+      .logo { font-size: 20px; gap: 6px; }
+      .logo-img { height: 30px; }
       .nav {
         flex-wrap: wrap;
         gap: 10px 14px;

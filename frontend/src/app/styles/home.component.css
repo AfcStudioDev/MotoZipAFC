@@ -18,8 +18,7 @@
 .modal-content {
   background-color: #ffffff;
   /* Чисто белый фон для максимального контраста */
-  color: #212529;
-  /* Темно-серый (почти черный) цвет шрифта */
+  color: var(--text);
 
   width: 100%;
   max-width: 500px;
@@ -39,12 +38,11 @@
 .modal-content h3,
 .modal-content p,
 .modal-content label {
-  color: #212529;
+  color: var(--text);
 }
 
 .modal-content .text-muted {
-  color: #6c757d;
-  /* Немного приглушенный цвет для примечаний */
+  color: var(--muted);
 }
 
 .search-panel {
@@ -136,7 +134,7 @@
   right: 90px;
   /* Оставляем место под кнопку Найти */
   background: white;
-  border: 1px solid #ccc;
+  border: 1px solid var(--border);
   border-radius: 4px;
   list-style: none;
   padding: 0;
@@ -150,14 +148,16 @@
 .suggestions-dropdown li {
   padding: 10px 14px;
   cursor: pointer;
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid var(--border);
   display: flex;
   justify-content: space-between;
   align-items: center;
 }
 
 .suggestions-dropdown li:hover {
-  background: #f8f9fa;
+  /* Лёгкий оранжевый оттенок акцента вместо нейтрального серого — подсказка
+     заметно откликается на наведение, оставаясь в общей палитре. */
+  background: rgba(224, 107, 42, 0.08);
 }
 
 .suggestion-name {
@@ -210,13 +210,13 @@
   background: none;
   border: none;
   font-size: 28px;
-  color: #6c757d;
+  color: var(--muted);
   cursor: pointer;
   line-height: 1;
 }
 
 .close-btn:hover {
-  color: #212529;
+  color: var(--text);
 }
 
 .item-details-modal {
