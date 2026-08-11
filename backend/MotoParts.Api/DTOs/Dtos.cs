@@ -86,7 +86,7 @@ public record AdminZipRequest(
 public record AdminUserRequest(string Email, string FIO, string? PhoneNumber, bool IsAdmin, bool IsRegistrar, bool IsSender, string? Password);
 public record AdminAddressRequest(string Address, string? PostCode, int? UserId);
 public record AdminOrderRequest(
-    string OrderNumber,
+    string? OrderNumber,
     int CountOrdered,
     Guid ZipId,
     int AddressId,

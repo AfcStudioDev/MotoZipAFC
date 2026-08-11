@@ -34,6 +34,12 @@ interface FieldDef {
   catalogRole?: 'partNum' | 'name';
   /** Кнопка «+» рядом с полем, открывающая модалку быстрого добавления записи в этот справочник. */
   quickAdd?: 'part-number' | 'group' | 'incomemoto';
+  /**
+   * Для select: показывать в выпадающем списке только записи справочника, у которых
+   * userId совпадает с выбранным в форме form['userId']. Если у покупателя нет ни
+   * одного своего адреса — показывается полный список, чтобы поле не оставалось пустым.
+   */
+  filterByUserId?: boolean;
 }
 
 /** Что именно создаём в модалке быстрого добавления и как это применить к форме после сохранения. */
@@ -98,7 +104,7 @@ interface PriceConflict {
   standalone: true,
   imports: [FormsModule, CommonModule],
   changeDetection: ChangeDetectionStrategy.OnPush,
-    styleUrls: ['../styles/admin.component.css'],
+  styleUrls: ['../styles/admin.component.css'],
   template: `
     <div class="admin-container">
       <h2>Панель администратора</h2>
@@ -179,8 +185,9 @@ interface PriceConflict {
                     @if (zipCandidates().length > 1) {
                       <select
                         class="form-control zip-picker-second"
-                        [(ngModel)]="form[f.key]"
+                        [ngModel]="form[f.key]"
                         [name]="f.key"
+                        (ngModelChange)="onZipCandidateChange($event)"
                         [required]="!!f.required"
                       >
                         <option [ngValue]="null">— Выберите запчасть —</option>
@@ -272,7 +279,7 @@ interface PriceConflict {
                         [required]="!!f.required"
                       >
                         <option [ngValue]="null">— Выберите —</option>
-                        @for (opt of references()[f.refTable!] || []; track opt.id) {
+                        @for (opt of refOptionsFor(f); track opt.id) {
                           <option [ngValue]="opt.id">
                             {{ opt[f.refLabelKey!] || opt.name || opt.id }}
                           </option>
@@ -527,12 +534,15 @@ interface PriceConflict {
               </div>
               <div class="form-field">
                 <label>Группа запчастей</label>
-                <select [(ngModel)]="quickAddForm['groupId']" name="qaGroupId">
-                  <option [ngValue]="null">— Выберите —</option>
-                  @for (g of references()['groups'] || []; track g.id) {
-                    <option [ngValue]="g.id">{{ g.groupName }}</option>
-                  }
-                </select>
+                <div class="field-with-add">
+                  <select [(ngModel)]="quickAddForm['groupId']" name="qaGroupId">
+                    <option [ngValue]="null">— Выберите —</option>
+                    @for (g of references()['groups'] || []; track g.id) {
+                      <option [ngValue]="g.id">{{ g.groupName }}</option>
+                    }
+                  </select>
+                  <button type="button" class="btn-quick-add" (click)="openGroupQuickAdd()" title="Добавить новую группу">+</button>
+                </div>
               </div>
               <div class="applicability-section">
                 <ng-container [ngTemplateOutlet]="applicabilityFields"></ng-container>
@@ -565,6 +575,30 @@ interface PriceConflict {
             <div class="quick-add-actions">
               <button type="button" (click)="closeQuickAdd()" [disabled]="quickAddBusy()">Отмена</button>
               <button type="button" (click)="submitQuickAdd()" [disabled]="quickAddBusy()">Добавить</button>
+            </div>
+          </div>
+        </div>
+      }
+
+      <!-- Вложенное добавление группы поверх модалки «Новый парт-номер» — та же кнопка «+»,
+           только рендерится позже в DOM, поэтому перекрывает первую модалку без доп. z-index. -->
+      @if (groupQuickAddOpen()) {
+        <div class="price-modal-backdrop" (click)="closeGroupQuickAdd()">
+          <div class="price-modal" style="max-width: 380px;" (click)="$event.stopPropagation()">
+            <h3>Новая группа запчастей</h3>
+
+            @if (groupQuickAddError()) {
+              <div class="error">{{ groupQuickAddError() }}</div>
+            }
+
+            <div class="form-field">
+              <label>Название группы *</label>
+              <input type="text" [(ngModel)]="groupQuickAddName" name="nestedGroupName" autocomplete="off">
+            </div>
+
+            <div class="quick-add-actions">
+              <button type="button" (click)="closeGroupQuickAdd()" [disabled]="groupQuickAddBusy()">Отмена</button>
+              <button type="button" (click)="submitGroupQuickAdd()" [disabled]="groupQuickAddBusy()">Добавить</button>
             </div>
           </div>
         </div>
@@ -828,21 +862,24 @@ export class AdminComponent implements OnInit {
       endpoint: 'orders',
       title: 'Заказы',
       fields: [
-        { key: 'orderNumber', label: 'Номер заказа', type: 'text', required: true },
-        { key: 'countOrdered', label: 'Кол-во', type: 'number', required: true },
         { key: 'zipId', label: 'Запчасть', type: 'zip-picker', required: true },
-        { key: 'addressId', label: 'Адрес доставки', type: 'select', refTable: 'addressess', refLabelKey: 'address', required: true },
-        { key: 'sellCost', label: 'Цена продажи', type: 'number', required: true },
+        { key: 'countOrdered', label: 'Кол-во', type: 'number', required: true },
         { key: 'userId', label: 'Покупатель', type: 'select', refTable: 'users', refLabelKey: 'fio', required: true },
+        { key: 'addressId', label: 'Адрес доставки', type: 'select', refTable: 'addressess', refLabelKey: 'address', required: true, filterByUserId: true },
+        { key: 'sellCost', label: 'Цена продажи', type: 'number', required: true },
         { key: 'discount', label: 'Скидка', type: 'number' },
-        { key: 'orderDateTime', label: 'Дата заказа', type: 'text' }
+        { key: 'orderDateTime', label: 'Дата заказа', type: 'date' },
+        { key: 'orderNumber', label: 'Комментарий заказа', type: 'text' }
       ],
       searchFields: [
-        { key: 'orderNumber', label: 'Номер заказа' },
+        { key: 'orderNumber', label: 'Комментарий заказа' },
         { key: 'partNum', label: 'Парт-номер' },
         // Бэкенд отдаёт наименование в поле zipName; прежний ключ nomenclatureName
         // не существовал в ответе, из-за чего поиск по запчасти ничего не находил.
-        { key: 'zipName', label: 'Наименование' }
+        { key: 'zipName', label: 'Наименование' },
+        // Поиск по userId (сырому id) был бесполезен — искать приходилось по числу.
+        // Бэкенд теперь отдаёт userFio отдельным полем специально для поиска по имени.
+        { key: 'userFio', label: 'Покупатель' }
       ]
     }
   ];
@@ -939,7 +976,7 @@ export class AdminComponent implements OnInit {
           },
           validate: () =>
             !(this.quickAddForm['partNum'] ?? '').toString().trim() ? 'Укажите парт-номер' :
-            !(this.quickAddForm['name'] ?? '').toString().trim() ? 'Укажите наименование' : null
+              !(this.quickAddForm['name'] ?? '').toString().trim() ? 'Укажите наименование' : null
         };
       case 'group':
         return {
@@ -972,6 +1009,56 @@ export class AdminComponent implements OnInit {
     } else if (kind === 'incomemoto') {
       this.form['incomeMotoId'] = res.id;
     }
+  }
+
+  //#endregion
+
+  //#region [Вложенное добавление группы поверх модалки «Новый парт-номер»]
+
+  /**
+   * Отдельное состояние, а не переиспользование quickAddKind: пока эта модалка
+   * открыта, «Новый парт-номер» должен остаться открытым под ней (со всем, что
+   * пользователь уже успел ввести), а не подмениться.
+   */
+  groupQuickAddOpen = signal(false);
+  groupQuickAddName = '';
+  groupQuickAddBusy = signal(false);
+  groupQuickAddError = signal('');
+
+  openGroupQuickAdd() {
+    this.groupQuickAddName = '';
+    this.groupQuickAddError.set('');
+    this.groupQuickAddOpen.set(true);
+  }
+
+  closeGroupQuickAdd() {
+    this.groupQuickAddOpen.set(false);
+    this.groupQuickAddName = '';
+    this.groupQuickAddError.set('');
+  }
+
+  submitGroupQuickAdd() {
+    const groupName = this.groupQuickAddName.trim();
+    if (!groupName) {
+      this.groupQuickAddError.set('Укажите название группы');
+      return;
+    }
+
+    this.groupQuickAddBusy.set(true);
+    this.groupQuickAddError.set('');
+    this.admin.add('groups', { groupName }).subscribe({
+      next: (res: any) => {
+        this.groupQuickAddBusy.set(false);
+        // Записываем в форму модалки «Новый парт-номер», которая осталась открытой.
+        this.quickAddForm['groupId'] = res.id;
+        this.loadAllReferences();
+        this.closeGroupQuickAdd();
+      },
+      error: (err) => {
+        this.groupQuickAddBusy.set(false);
+        this.groupQuickAddError.set(err.error?.message || err.message);
+      }
+    });
   }
 
   //#endregion
@@ -1286,6 +1373,22 @@ export class AdminComponent implements OnInit {
     const candidates = this.zipCandidates();
     // Единственный экземпляр подставляем сразу, иначе ждём выбора во втором списке.
     this.form['zipId'] = candidates.length === 1 ? candidates[0].id : null;
+    this.applyZipSellCost(this.form['zipId']);
+  }
+
+  /** Шаг 2: пользователь уточнил конкретный экземпляр запчасти из нескольких. */
+  onZipCandidateChange(zipId: any) {
+    this.form['zipId'] = zipId;
+    this.applyZipSellCost(zipId);
+  }
+
+  /** Цена продажи заказа подставляется из цены выбранной запчасти. */
+  private applyZipSellCost(zipId: any) {
+    if (this.isEmpty(zipId)) return;
+    const zip = (this.references()['zip'] ?? []).find(z => String(z.id) === String(zipId));
+    if (zip && zip.sellCost != null) {
+      this.form['sellCost'] = zip.sellCost;
+    }
   }
 
   /** Восстанавливает первый шаг по уже сохранённой в заказе запчасти. */
@@ -1437,6 +1540,31 @@ export class AdminComponent implements OnInit {
 
   onSelectChange(table: TableDef, key: string, value: any) {
     this.form[key] = value;
+
+    // Заказ: при выборе покупателя подставляем его адрес, если он есть.
+    // Если у покупателя несколько адресов — берём последний добавленный (обычно актуальный).
+    if (table.endpoint === 'orders' && key === 'userId') {
+      const addresses = (this.references()['addressess'] || [])
+        .filter(a => !this.isEmpty(value) && String(a.userId) === String(value));
+      this.form['addressId'] = addresses.length > 0 ? addresses[addresses.length - 1].id : null;
+    }
+  }
+
+  /**
+   * Список опций для select-поля. Для addressId в заказе — только адреса выбранного
+   * покупателя (form['userId']), чтобы не путать одинаковым списком независимо от
+   * того, кто выбран. Если у покупателя нет своих адресов — список пуст: чужие
+   * адреса выбирать нельзя, сначала нужно завести адрес для этого покупателя
+   * (вкладка «Адреса доставки»).
+   */
+  refOptionsFor(f: FieldDef): any[] {
+    const list = this.references()[f.refTable!] || [];
+    if (f.filterByUserId) {
+      const uid = this.form['userId'];
+      if (this.isEmpty(uid)) return [];
+      return list.filter(opt => String(opt.userId) === String(uid));
+    }
+    return list;
   }
 
   /**
@@ -1588,6 +1716,13 @@ export class AdminComponent implements OnInit {
     this.form = { ...row };
     this.selectedFiles.set([]);
     this.existingPhotos.set(Array.isArray(row.photos) ? row.photos : []);
+
+    // orderDateTime приходит с бэкенда как полный DateTimeOffset (с временем и
+    // смещением) — input[type=date] понимает только YYYY-MM-DD, обрезаем.
+    if (this.current()?.endpoint === 'orders' && typeof this.form['orderDateTime'] === 'string') {
+      this.form['orderDateTime'] = this.form['orderDateTime'].slice(0, 10);
+    }
+
     // Чтобы в заказе первым шагом сразу стоял парт-номер сохранённой запчасти.
     this.syncZipPickerFromForm();
     this.refreshPartNumStock();
@@ -1611,11 +1746,14 @@ export class AdminComponent implements OnInit {
     this.zipPartNumId.set(null);
     this.resetStagedApplicability();
 
-    // Дата поступления по умолчанию — сегодня, чтобы не проставлять вручную
-    // на каждой новой запчасти. Только для добавления: при редактировании
+    // Дата поступления / дата заказа по умолчанию — сегодня, чтобы не проставлять
+    // вручную на каждой новой записи. Только для добавления: при редактировании
     // существующей записи форму заполняет editRow из данных самой записи.
     if (this.current()?.endpoint === 'zip') {
       this.form['incomeDate'] = this.todayIso();
+    }
+    if (this.current()?.endpoint === 'orders') {
+      this.form['orderDateTime'] = this.todayIso();
     }
   }
 

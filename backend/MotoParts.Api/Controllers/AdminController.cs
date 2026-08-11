@@ -667,6 +667,7 @@ public class AdminController(AppDbContext db) : ControllerBase
                 o.OperationId,
                 o.Discount,
                 o.UserId,
+                UserFio = o.User.FIO,
                 o.DeliveryStatusId,
                 DeliveryStatus = o.DeliveryStatus != null ? o.DeliveryStatus.Description : null
             })
@@ -675,8 +676,6 @@ public class AdminController(AppDbContext db) : ControllerBase
     [HttpPost("orders")]
     public async Task<IActionResult> AddOrder(AdminOrderRequest request)
     {
-        if (string.IsNullOrWhiteSpace(request.OrderNumber))
-            return BadRequest(new { message = "Номер заказа обязателен" });
         if (!await db.DeliveryAddressess.AnyAsync(a => a.Id == request.AddressId))
             return BadRequest(new { message = "Адрес доставки не найден" });
         if (!await db.Users.AnyAsync(u => u.Id == request.UserId))
@@ -693,15 +692,27 @@ public class AdminController(AppDbContext db) : ControllerBase
 
         stored.Count -= request.CountOrdered;
 
+        // Комментарий заказа необязателен — если пусто, генерируем номер, как это уже
+        // делает публичный OrdersController для гостевых/пользовательских заказов.
+        var orderNumber = string.IsNullOrWhiteSpace(request.OrderNumber)
+            ? "ORD-" + DateTimeOffset.UtcNow.ToUnixTimeSeconds()
+            : request.OrderNumber.Trim();
+
         var order = new Order
         {
             Id = Guid.NewGuid(),
-            OrderNumber = request.OrderNumber.Trim(),
+            OrderNumber = orderNumber,
             CountOrdered = request.CountOrdered,
             ZipId = request.ZipId,
             AddressId = request.AddressId,
             UserId = request.UserId,
-            OrderDateTime = request.OrderDateTime ?? DateTimeOffset.UtcNow,
+            // С фронта приходит только календарная дата (input[type=date], без времени и зоны) —
+            // ASP.NET достраивает её локальным смещением сервера, а Npgsql пишет timestamptz
+            // только с Offset=0. ToUniversalTime() тут сдвинул бы саму дату (например, на день
+            // назад), поэтому просто фиксируем выбранный день на полночь UTC, без конвертации.
+            OrderDateTime = request.OrderDateTime.HasValue
+                ? new DateTimeOffset(request.OrderDateTime.Value.Date, TimeSpan.Zero)
+                : DateTimeOffset.UtcNow,
             SellCost = request.SellCost,
             Discount = request.Discount,
             OperationId = request.OperationId ?? (short)OperationEnum.Sale,
@@ -800,7 +811,9 @@ public class AdminController(AppDbContext db) : ControllerBase
                     else if (propType == typeof(decimal)) convertedValue = value.GetDecimal();
                     else if (propType == typeof(bool)) convertedValue = value.GetBoolean();
                     else if (propType == typeof(Guid)) convertedValue = value.GetGuid();
-                    else if (propType == typeof(DateTimeOffset)) convertedValue = value.GetDateTimeOffset();
+                    // Как и в AddOrder — фиксируем календарную дату на полночь UTC вместо
+                    // конвертации через локальное смещение сервера (см. комментарий там).
+                    else if (propType == typeof(DateTimeOffset)) convertedValue = new DateTimeOffset(value.GetDateTimeOffset().Date, TimeSpan.Zero);
                     else if (propType == typeof(DateTime)) convertedValue = value.GetDateTime();
                     else if (propType == typeof(DateOnly))
                     {
@@ -1109,10 +1122,36 @@ public class AdminController(AppDbContext db) : ControllerBase
             case "orders":
             {
                 if (!Guid.TryParse(id, out var orderGuid)) return BadRequest(new { message = "Неверный формат GUID" });
-                var order = await db.Orders.FindAsync(orderGuid);
+                var order = await db.Orders.Include(o => o.DeliveryStatus).FirstOrDefaultAsync(o => o.Id == orderGuid);
                 if (order == null) return NotFound();
 
-                // Записи журнала по этому заказу уходят вместе с ним.
+                var statusDescription = order.DeliveryStatus?.Description;
+
+                // "canceled" уже вернул остаток на склад при смене статуса (см. SenderController.UpdateStatus) —
+                // повторный возврат задвоил бы количество. "completed" — товар реально отгружен покупателю,
+                // удаление документа задним числом не должно магически возвращать его на склад.
+                // Во всех остальных случаях (null, created, sent) заказ ещё не завершён — резерв возвращаем.
+                if (statusDescription != "completed" && statusDescription != "canceled")
+                {
+                    var storedItem = await db.Stored.FirstOrDefaultAsync(s => s.ZipId == order.ZipId);
+                    if (storedItem != null)
+                        storedItem.Count += order.CountOrdered;
+                    else
+                        db.Stored.Add(new Stored { ZipId = order.ZipId, Count = order.CountOrdered });
+
+                    db.Logs.Add(new Log
+                    {
+                        CreatedAt = DateTimeOffset.UtcNow,
+                        OperationId = (short)OperationEnum.Refund,
+                        ZipId = order.ZipId,
+                        UserId = CurrentUserId,
+                        Qty = order.CountOrdered,
+                        SellCost = order.SellCost,
+                        Description = $"Возврат на склад: незавершённый заказ {order.OrderNumber} удалён из админ-панели"
+                    });
+                }
+
+                // Записи журнала по этому заказу уходят вместе с ним (кроме только что добавленной — она не привязана к OrderId).
                 await db.Logs.Where(l => l.OrderId == orderGuid).ExecuteDeleteAsync();
 
                 db.Orders.Remove(order);
