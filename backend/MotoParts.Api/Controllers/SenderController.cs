@@ -16,7 +16,7 @@ namespace MotoParts.Api.Controllers
         public async Task<IActionResult> GetOrders()
         {
             var orders = await db.Orders
-                .Include(o => o.Nomenclature)
+                .Include(o => o.Zip).ThenInclude(z => z.PartNumber)
                 .Include(o => o.Address) // Исправлено с Address на Address
                 .Include(o => o.DeliveryStatus) // Подтягиваем новый справочник статусов
                 .OrderByDescending(o => o.OrderDateTime)
@@ -28,7 +28,8 @@ namespace MotoParts.Api.Controllers
                     // Для фронтенда отдаем текстовое описание статуса (например, "created", "sent")
                     DeliveryStatus = o.DeliveryStatus != null ? o.DeliveryStatus.Description : "unknown",
                     o.OrderDateTime,
-                    ZipName = o.Nomenclature.Name,
+                    ZipName = o.Zip.PartNumber.Name,
+                    PartNum = o.Zip.PartNumber.PartNum,
                     Address = o.Address.Address // Исправлено с Address.Address на Address.Address
                 })
                 .ToListAsync();
@@ -59,43 +60,71 @@ namespace MotoParts.Api.Controllers
             if (order.DeliveryStatusId == newStatus.Id)
                 return Ok(new { message = "Статус уже установлен" });
 
+            // Остаток и журнал меняются в одной транзакции, иначе они разъедутся при сбое.
+            await using var tx = await db.Database.BeginTransactionAsync();
+
             // --- ЛОГИКА СКЛАДА ---
             // Если заказ отменяют - возвращаем товар на склад
             if (newStatus.Description == "canceled" && oldStatusDescription != "canceled")
             {
-                var storedItem = await db.Stored.FirstOrDefaultAsync(s => s.ZipId == order.NomenclatureId);
+                var storedItem = await db.Stored.FirstOrDefaultAsync(s => s.ZipId == order.ZipId);
                 if (storedItem != null)
                 {
                     storedItem.Count += order.CountOrdered;
                 }
                 else
                 {
-                    db.Stored.Add(new Stored { ZipId = order.NomenclatureId, Count = order.CountOrdered });
+                    db.Stored.Add(new Stored { ZipId = order.ZipId, Count = order.CountOrdered });
                 }
+
+                db.Logs.Add(new Log
+                {
+                    CreatedAt = DateTimeOffset.UtcNow,
+                    OperationId = (short)OperationEnum.Refund,
+                    OrderId = order.Id,
+                    ZipId = order.ZipId,
+                    Qty = order.CountOrdered,
+                    SellCost = order.SellCost,
+                    Description = $"Возврат на склад: заказ {order.OrderNumber} отменён"
+                });
             }
             // Если заказ восстанавливают из отмененных - нужно снова списать товар со склада
             else if (oldStatusDescription == "canceled" && newStatus.Description != "canceled")
             {
-                var storedItem = await db.Stored.FirstOrDefaultAsync(s => s.ZipId == order.NomenclatureId);
+                var storedItem = await db.Stored.FirstOrDefaultAsync(s => s.ZipId == order.ZipId);
                 if (storedItem != null)
                 {
                     storedItem.Count = Math.Max(0, storedItem.Count - order.CountOrdered);
                 }
+
+                db.Logs.Add(new Log
+                {
+                    CreatedAt = DateTimeOffset.UtcNow,
+                    OperationId = (short)OperationEnum.Sale,
+                    OrderId = order.Id,
+                    ZipId = order.ZipId,
+                    Qty = -order.CountOrdered,
+                    SellCost = order.SellCost,
+                    Description = $"Повторное списание: заказ {order.OrderNumber} восстановлен из отменённых"
+                });
             }
 
             // --- ОБНОВЛЕНИЕ СТАТУСА ---
             order.DeliveryStatusId = newStatus.Id;
 
             // --- ЛОГИРОВАНИЕ ---
-            // Записываем действие в новую таблицу Logs
-            var log = new Log
+            // Событие аудита: движения товара нет, поэтому Qty остаётся null.
+            db.Logs.Add(new Log
             {
+                CreatedAt = DateTimeOffset.UtcNow,
+                OperationId = (short)OperationEnum.Other,
                 OrderId = order.Id,
+                ZipId = order.ZipId,
                 Description = $"Статус доставки изменен с '{oldStatusDescription ?? "нет"}' на '{newStatus.Description}'"
-            };
-            db.Logs.Add(log);
+            });
 
             await db.SaveChangesAsync();
+            await tx.CommitAsync();
 
             return Ok(new { message = "Статус успешно обновлен" });
         }

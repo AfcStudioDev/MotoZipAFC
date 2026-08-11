@@ -121,10 +121,168 @@
     text-decoration: underline;
 }
 
+.applicability-section {
+    grid-column: 1 / -1;
+    margin-top: 15px;
+}
+
+.applicability-section label {
+    display: block;
+    margin-bottom: 6px;
+    font-weight: 500;
+    font-size: 13px;
+    color: #555;
+}
+
+.chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.chips-empty {
+    font-size: 13px;
+    color: #999;
+}
+
+.chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: #e0f7fa;
+    color: #00575e;
+    padding: 4px 6px 4px 10px;
+    border-radius: 14px;
+    font-size: 13px;
+}
+
+.chip button {
+    background: none;
+    border: none;
+    color: inherit;
+    cursor: pointer;
+    padding: 0 4px;
+    font-size: 12px;
+    line-height: 1;
+    opacity: 0.7;
+}
+
+.chip button:hover {
+    opacity: 1;
+}
+
+.chip-add-row {
+    display: flex;
+    gap: 8px;
+    align-items: flex-start;
+    flex-wrap: wrap;
+}
+
+.chip-add-field {
+    position: relative;
+    flex: 1 1 160px;
+    min-width: 140px;
+}
+
+.btn-chip-add {
+    padding: 8px 16px;
+    border: 1px solid var(--border, #ccc);
+    border-radius: 4px;
+    background: #fff;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.btn-chip-add:hover {
+    background: #f8f9fa;
+}
+
 .actions {
     display: flex;
     gap: 10px;
     margin-top: 10px;
+}
+
+.search-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 10px;
+    padding: 12px;
+    margin-bottom: 15px;
+    background: #f8f9fa;
+    border: 1px solid #e6e9ec;
+    border-radius: 6px;
+}
+
+.search-field {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    flex: 1 1 180px;
+    min-width: 160px;
+}
+
+.search-field label {
+    font-size: 12px;
+    font-weight: 500;
+    color: #555;
+}
+
+.search-actions {
+    display: flex;
+    gap: 8px;
+    margin-left: auto;
+}
+
+.btn-search,
+.btn-reset {
+    padding: 8px 18px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: 500;
+    font-size: 14px;
+    border: 1px solid transparent;
+    white-space: nowrap;
+}
+
+.btn-search {
+    background: var(--accent, #007bff);
+    color: #fff;
+}
+
+.btn-reset {
+    background: #fff;
+    border-color: #ccc;
+    color: #555;
+}
+
+.owned-hint {
+    display: block;
+    margin-top: 4px;
+    font-size: 11px;
+    color: #8a6d3b;
+}
+
+.zip-picker-second {
+    margin-top: 6px;
+}
+
+.picker-hint {
+    display: block;
+    margin-top: 4px;
+    font-size: 11px;
+    color: #777;
+}
+
+.picker-hint-ok {
+    color: #1a8f3c;
+}
+
+.picker-hint-warn {
+    color: #b5141d;
 }
 
 .table-container {
@@ -191,4 +349,297 @@
 
 .suggestions-dropdown li:hover {
     background: #f8f9fa;
+}
+/* Кнопка удаления в строке таблицы */
+.btn-delete {
+    color: #dc3545;
+    background: none;
+    border: 1px solid transparent;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 13px;
+}
+
+.btn-delete:hover {
+    border-color: #dc3545;
+    background: #fff5f5;
+}
+
+.data-table .id-cell {
+    color: #888;
+    font-size: 12px;
+}
+
+.data-table .actions-cell {
+    text-align: right;
+    width: 100px;
+}
+
+.empty-row td {
+    text-align: center;
+    padding: 20px;
+    color: #777;
+}
+
+/* ============================================================
+   Мобильная адаптация: на узких экранах таблица админки не влезает
+   по ширине, поэтому каждую строку разворачиваем в карточку —
+   подпись колонки берётся из data-label у ячейки.
+   ============================================================ */
+@media (max-width: 768px) {
+    .admin-container {
+        padding: 12px 0 32px;
+    }
+
+    /* Форма и строка поиска — в одну колонку */
+    .form-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .search-bar {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .search-field {
+        flex: 1 1 auto;
+        min-width: 0;
+    }
+
+    .search-actions {
+        margin-left: 0;
+    }
+
+    .btn-search,
+    .btn-reset {
+        flex: 1;
+    }
+
+    .card {
+        padding: 14px;
+    }
+
+    /* Вкладки прокручиваются по горизонтали в своей полосе, не растягивая страницу */
+    .tabs {
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        padding-bottom: 4px;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .tabs button {
+        flex: 0 0 auto;
+        font-size: 14px;
+        padding: 7px 13px;
+    }
+
+    .table-container {
+        overflow-x: visible;
+    }
+
+    .data-table,
+    .data-table tbody,
+    .data-table tr,
+    .data-table td {
+        display: block;
+        width: 100%;
+    }
+
+    .data-table thead {
+        display: none;
+    }
+
+    .data-table tr {
+        border: 1px solid var(--border, #e3e6eb);
+        border-radius: 8px;
+        margin-bottom: 12px;
+        padding: 4px 0;
+        background: #fff;
+    }
+
+    .data-table tr.active-row {
+        border-color: var(--accent, #007bff);
+        border-left-width: 3px;
+    }
+
+    .data-table td {
+        border: none;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+        padding: 7px 12px;
+        text-align: right;
+        overflow-wrap: anywhere;
+    }
+
+    /* Подпись колонки слева, значение справа */
+    .data-table td::before {
+        content: attr(data-label);
+        font-weight: 600;
+        color: #6b7280;
+        font-size: 12px;
+        text-align: left;
+        flex-shrink: 0;
+    }
+
+    .data-table .actions-cell {
+        width: auto;
+        justify-content: flex-end;
+    }
+
+    .empty-row td {
+        justify-content: center;
+    }
+
+    .empty-row td::before {
+        content: none;
+    }
+}
+
+/* ============================================================
+   Модальное окно выбора действия с ценой при совпадении парт-номера
+   ============================================================ */
+.price-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.45);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1100;
+    padding: 16px;
+}
+
+.price-modal {
+    background: #fff;
+    border-radius: 10px;
+    padding: 22px;
+    width: 100%;
+    max-width: 560px;
+    max-height: 90vh;
+    overflow-y: auto;
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.25);
+}
+
+.price-modal h3 {
+    margin: 0 0 12px;
+    font-size: 18px;
+}
+
+.price-modal-summary {
+    margin: 0 0 18px;
+    font-size: 14px;
+    color: #444;
+    background: #f6f9fc;
+    border: 1px solid #e3ecf3;
+    border-radius: 6px;
+    padding: 10px 12px;
+}
+
+.price-modal-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.price-option {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    text-align: left;
+    padding: 12px 14px;
+    border: 1px solid var(--border, #ccc);
+    border-radius: 8px;
+    background: #fff;
+    cursor: pointer;
+    transition: 0.15s;
+}
+
+.price-option:hover {
+    border-color: var(--accent, #007bff);
+    background: #fbfcfe;
+}
+
+.price-option-title {
+    font-weight: 600;
+    font-size: 14px;
+}
+
+.price-option-note {
+    font-size: 12px;
+    color: #777;
+}
+
+.price-modal-cancel {
+    margin-top: 16px;
+    width: 100%;
+    padding: 9px;
+    border: 1px solid var(--border, #ccc);
+    border-radius: 6px;
+    background: #fff;
+    cursor: pointer;
+    color: #555;
+}
+
+@media (max-width: 768px) {
+    .price-modal { padding: 16px; }
+    .price-modal h3 { font-size: 16px; }
+}
+
+/* Поле со справочными данными + кнопка «+» рядом для быстрого добавления записи */
+.field-with-add {
+    display: flex;
+    gap: 6px;
+    align-items: stretch;
+}
+
+.field-with-add .form-control {
+    flex: 1;
+    min-width: 0;
+}
+
+.btn-quick-add {
+    flex-shrink: 0;
+    width: 38px;
+    border: 1px solid var(--border, #ccc);
+    border-radius: 4px;
+    background: #fff;
+    color: var(--accent, #007bff);
+    font-size: 18px;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.btn-quick-add:hover {
+    background: #f6f9fc;
+    border-color: var(--accent, #007bff);
+}
+
+.quick-add-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 16px;
+}
+
+.quick-add-actions button {
+    padding: 8px 18px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: 500;
+    border: 1px solid var(--border, #ccc);
+    background: #fff;
+}
+
+.quick-add-actions button:last-child {
+    background: var(--accent, #007bff);
+    border-color: var(--accent, #007bff);
+    color: #fff;
+}
+
+.quick-add-actions button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
 }

@@ -36,7 +36,7 @@ public class EmailService : IEmailService
 
         // Создаем структуру письма
         var message = new MimeMessage();
-        message.From.Add(new MailboxAddress("Мотозапчасти", fromEmail));
+        message.From.Add(new MailboxAddress("DonorGarage", fromEmail));
         message.To.Add(new MailboxAddress("", toEmail));
         message.Subject = "Восстановление пароля";
 
@@ -45,7 +45,7 @@ public class EmailService : IEmailService
         {
             Text = $@"
                     <h3>Восстановление пароля</h3>
-                    <p>Для сброса пароля в магазине 'Мотозапчасти' перейдите по ссылке ниже:</p>
+                    <p>Для сброса пароля в магазине DonorGarage перейдите по ссылке ниже:</p>
                     <p><a href='{resetLink}' style='padding: 10px 20px; background-color: #007bff; color: white; text-decoration: none; border-radius: 5px;'>Сбросить пароль</a></p>
                     <p>Если вы не запрашивали сброс, просто проигнорируйте это письмо.</p>"
         };

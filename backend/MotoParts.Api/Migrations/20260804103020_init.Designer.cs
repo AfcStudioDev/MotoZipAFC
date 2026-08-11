@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using MotoParts.Api.Data;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace MotoParts.Api.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260804103020_init")]
+    partial class init
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -174,21 +177,6 @@ namespace MotoParts.Api.Migrations
                     b.ToTable("MotoModels");
                 });
 
-            modelBuilder.Entity("MotoParts.Api.Models.MotoSeries", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("SeriesName")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.HasKey("Id");
-
-                    b.ToTable("MotoSeries");
-                });
-
             modelBuilder.Entity("MotoParts.Api.Models.Operation", b =>
                 {
                     b.Property<short>("Id")
@@ -333,30 +321,6 @@ namespace MotoParts.Api.Migrations
                     b.ToTable("PartNumberApplicabilities");
                 });
 
-            modelBuilder.Entity("MotoParts.Api.Models.PartNumberSeriesApplicability", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<int>("PartNumId")
-                        .HasColumnType("integer");
-
-                    b.Property<Guid>("SeriesId")
-                        .HasColumnType("uuid");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("SeriesId");
-
-                    b.HasIndex("PartNumId", "SeriesId")
-                        .IsUnique();
-
-                    b.ToTable("PartNumberSeriesApplicabilities");
-                });
-
             modelBuilder.Entity("MotoParts.Api.Models.PriceHistory", b =>
                 {
                     b.Property<long>("Id")
@@ -475,9 +439,6 @@ namespace MotoParts.Api.Migrations
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
-
-                    b.Property<string>("Comment")
-                        .HasColumnType("text");
 
                     b.Property<decimal>("IncomeCost")
                         .HasColumnType("numeric");
@@ -689,25 +650,6 @@ namespace MotoParts.Api.Migrations
                     b.Navigation("PartNumber");
                 });
 
-            modelBuilder.Entity("MotoParts.Api.Models.PartNumberSeriesApplicability", b =>
-                {
-                    b.HasOne("MotoParts.Api.Models.PartNumber", "PartNumber")
-                        .WithMany("SeriesApplicability")
-                        .HasForeignKey("PartNumId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("MotoParts.Api.Models.MotoSeries", "Series")
-                        .WithMany("Applicability")
-                        .HasForeignKey("SeriesId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.Navigation("PartNumber");
-
-                    b.Navigation("Series");
-                });
-
             modelBuilder.Entity("MotoParts.Api.Models.PriceHistory", b =>
                 {
                     b.HasOne("MotoParts.Api.Models.Operation", "Operation")
@@ -801,11 +743,6 @@ namespace MotoParts.Api.Migrations
                     b.Navigation("Applicability");
                 });
 
-            modelBuilder.Entity("MotoParts.Api.Models.MotoSeries", b =>
-                {
-                    b.Navigation("Applicability");
-                });
-
             modelBuilder.Entity("MotoParts.Api.Models.Operation", b =>
                 {
                     b.Navigation("Logs");
@@ -828,8 +765,6 @@ namespace MotoParts.Api.Migrations
             modelBuilder.Entity("MotoParts.Api.Models.PartNumber", b =>
                 {
                     b.Navigation("Applicability");
-
-                    b.Navigation("SeriesApplicability");
 
                     b.Navigation("Zips");
                 });

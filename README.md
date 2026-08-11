@@ -65,6 +65,10 @@ npm install
 npm start                           # http://localhost:4200
 ```
 
+### Развёртывание в Docker (бэкенд + фронтенд + БД одной командой)
+
+Инструкция и разбор архитектуры — в [DEPLOY.md](DEPLOY.md).
+
 ## Настройка внешних сервисов
 
 Все ключи задаются в `backend/MotoParts.Api/appsettings.json` (для секретов используйте `dotnet user-secrets` или переменные окружения):

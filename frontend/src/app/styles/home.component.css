@@ -18,8 +18,7 @@
 .modal-content {
   background-color: #ffffff;
   /* Чисто белый фон для максимального контраста */
-  color: #212529;
-  /* Темно-серый (почти черный) цвет шрифта */
+  color: var(--text);
 
   width: 100%;
   max-width: 500px;
@@ -39,12 +38,11 @@
 .modal-content h3,
 .modal-content p,
 .modal-content label {
-  color: #212529;
+  color: var(--text);
 }
 
 .modal-content .text-muted {
-  color: #6c757d;
-  /* Немного приглушенный цвет для примечаний */
+  color: var(--muted);
 }
 
 .search-panel {
@@ -65,6 +63,17 @@
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
   gap: 10px;
+}
+
+/* Поле «Part number» с выпадающими подсказками.
+   Своя обёртка нужна, чтобы список позиционировался относительно самого поля,
+   а не всей строки фильтров. */
+.pn-field {
+  position: relative;
+}
+
+.pn-field input {
+  width: 100%;
 }
 
 .grid {
@@ -125,7 +134,7 @@
   right: 90px;
   /* Оставляем место под кнопку Найти */
   background: white;
-  border: 1px solid #ccc;
+  border: 1px solid var(--border);
   border-radius: 4px;
   list-style: none;
   padding: 0;
@@ -139,14 +148,16 @@
 .suggestions-dropdown li {
   padding: 10px 14px;
   cursor: pointer;
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid var(--border);
   display: flex;
   justify-content: space-between;
   align-items: center;
 }
 
 .suggestions-dropdown li:hover {
-  background: #f8f9fa;
+  /* Лёгкий оранжевый оттенок акцента вместо нейтрального серого — подсказка
+     заметно откликается на наведение, оставаясь в общей палитре. */
+  background: rgba(224, 107, 42, 0.08);
 }
 
 .suggestion-name {
@@ -157,6 +168,40 @@
   font-size: 0.85em;
 }
 
+/* Отступ справа в 90px у .suggestions-dropdown рассчитан на кнопку «Найти»
+   в строке поиска. У поля «Part number» кнопки нет, поэтому список тянется
+   на всю ширину поля. Селектор с двумя классами — чтобы правило не зависело
+   от порядка объявления в файле. */
+.pn-field .pn-dropdown {
+  right: 0;
+  /* Не уже поля ввода, но может подрасти под длинные названия.
+     Растёт влево (left: auto), а не вправо — иначе на крайней колонке
+     фильтров список вылез бы за правый край карточки. */
+  left: auto;
+  min-width: 100%;
+  width: max-content;
+  max-width: 340px;
+}
+
+/* Номер и название в одну строку: название сжимается и обрезается,
+   чтобы длинное имя не растягивало список за границы поля. */
+.pn-dropdown li {
+  gap: 12px;
+}
+
+.pn-dropdown .suggestion-name {
+  white-space: nowrap;
+}
+
+.pn-dropdown .suggestion-pn {
+  flex: 1;
+  min-width: 0;
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* Крестик для закрытия */
 .close-btn {
   position: absolute;
@@ -165,18 +210,24 @@
   background: none;
   border: none;
   font-size: 28px;
-  color: #6c757d;
+  color: var(--muted);
   cursor: pointer;
   line-height: 1;
 }
 
 .close-btn:hover {
-  color: #212529;
+  color: var(--text);
 }
 
 .item-details-modal {
   position: relative; /* Чтобы крестик абсолютно позиционировался внутри окна */
   max-width: 600px; /* Окно деталей можно сделать чуть шире */
+}
+
+/* Заметка о состоянии детали: текст произвольной длины, может содержать переносы */
+.zip-comment {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 /* Стили для галереи фотографий */
@@ -262,4 +313,45 @@
     color: #999;
     font-size: 13px;
     box-sizing: border-box;
+}
+/* ============================================================
+   Мобильная адаптация витрины
+   ============================================================ */
+@media (max-width: 768px) {
+  /* На узком экране 280px минимума не хватает: контейнер уже,
+     и карточка вылезала бы за край */
+  .grid {
+    grid-template-columns: 1fr;
+  }
+
+  .filters {
+    grid-template-columns: 1fr;
+  }
+
+  /* Поле поиска и кнопка — в столбик, иначе поле сжимается до нечитаемого */
+  .search-row {
+    flex-direction: column;
+  }
+
+  .modal-content {
+    max-width: 100%;
+    padding: 16px;
+    max-height: 90vh;
+    overflow-y: auto;
+  }
+
+  .item-details-modal {
+    max-width: 100%;
+  }
+
+  /* Галерея прокручивается внутри себя, не растягивая окно */
+  .gallery-img {
+    width: 120px;
+    height: 120px;
+  }
+
+  .zip-footer {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
 }

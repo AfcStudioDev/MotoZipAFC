@@ -46,4 +46,11 @@ export class CatalogService {
   years(): Observable<number[]> {
     return this.http.get<number[]>(`${this.api}/years`);
   }
+
+  /** Подсказки для поля «Part number»: только номера, по которым есть запчасти. */
+  partNumbers(query?: string): Observable<{ partNum: string; name: string }[]> {
+    let params = new HttpParams();
+    if (query) params = params.set('query', query);
+    return this.http.get<{ partNum: string; name: string }[]>(`${this.api}/part-numbers`, { params });
+  }
 }

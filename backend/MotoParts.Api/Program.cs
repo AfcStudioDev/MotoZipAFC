@@ -1,6 +1,5 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.FileProviders;
 using Microsoft.IdentityModel.Tokens;
 
 using MotoParts.Api.Data;
@@ -41,8 +40,12 @@ builder.Services
     });
 builder.Services.AddAuthorization();
 
+// ng serve по умолчанию слушает только localhost, поэтому localhost:4200 разрешён
+// наравне с сетевым адресом из Frontend:BaseUrl — иначе локальная разработка упирается в CORS.
 builder.Services.AddCors(options => options.AddDefaultPolicy(policy => policy
-    .WithOrigins(builder.Configuration["Frontend:BaseUrl"] ?? "http://192.168.88.122:4200")
+    .WithOrigins(
+        builder.Configuration["Frontend:BaseUrl"] ?? "http://192.168.88.122:4200",
+        "http://localhost:4200")
     .AllowAnyHeader()
     .AllowAnyMethod()));
 
@@ -67,23 +70,11 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseCors();
+// Фото запчастей лежат в wwwroot/ZipPhotos и отдаются этим же вызовом
+// (wwwroot — стандартный web root, поэтому файл доступен по /ZipPhotos/...).
 app.UseStaticFiles();
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
-
-
-var photosPath = Path.Combine(Directory.GetCurrentDirectory(), "..", "ZipPhotos"); // Настройте путь до вашей папки верхнего уровня
-
-if (!Directory.Exists(photosPath))
-{
-    Directory.CreateDirectory(photosPath); // Создаст папку, если её нет
-}
-
-app.UseStaticFiles(new StaticFileOptions
-{
-    FileProvider = new PhysicalFileProvider(photosPath),
-    RequestPath = "/ZipPhotos"
-});
 
 app.Run();
