@@ -121,6 +121,83 @@
     text-decoration: underline;
 }
 
+.applicability-section {
+    grid-column: 1 / -1;
+    margin-top: 15px;
+}
+
+.applicability-section label {
+    display: block;
+    margin-bottom: 6px;
+    font-weight: 500;
+    font-size: 13px;
+    color: #555;
+}
+
+.chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.chips-empty {
+    font-size: 13px;
+    color: #999;
+}
+
+.chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: #e0f7fa;
+    color: #00575e;
+    padding: 4px 6px 4px 10px;
+    border-radius: 14px;
+    font-size: 13px;
+}
+
+.chip button {
+    background: none;
+    border: none;
+    color: inherit;
+    cursor: pointer;
+    padding: 0 4px;
+    font-size: 12px;
+    line-height: 1;
+    opacity: 0.7;
+}
+
+.chip button:hover {
+    opacity: 1;
+}
+
+.chip-add-row {
+    display: flex;
+    gap: 8px;
+    align-items: flex-start;
+    flex-wrap: wrap;
+}
+
+.chip-add-field {
+    position: relative;
+    flex: 1 1 160px;
+    min-width: 140px;
+}
+
+.btn-chip-add {
+    padding: 8px 16px;
+    border: 1px solid var(--border, #ccc);
+    border-radius: 4px;
+    background: #fff;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.btn-chip-add:hover {
+    background: #f8f9fa;
+}
+
 .actions {
     display: flex;
     gap: 10px;
@@ -509,4 +586,60 @@
 @media (max-width: 768px) {
     .price-modal { padding: 16px; }
     .price-modal h3 { font-size: 16px; }
+}
+
+/* Поле со справочными данными + кнопка «+» рядом для быстрого добавления записи */
+.field-with-add {
+    display: flex;
+    gap: 6px;
+    align-items: stretch;
+}
+
+.field-with-add .form-control {
+    flex: 1;
+    min-width: 0;
+}
+
+.btn-quick-add {
+    flex-shrink: 0;
+    width: 38px;
+    border: 1px solid var(--border, #ccc);
+    border-radius: 4px;
+    background: #fff;
+    color: var(--accent, #007bff);
+    font-size: 18px;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.btn-quick-add:hover {
+    background: #f6f9fc;
+    border-color: var(--accent, #007bff);
+}
+
+.quick-add-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 16px;
+}
+
+.quick-add-actions button {
+    padding: 8px 18px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: 500;
+    border: 1px solid var(--border, #ccc);
+    background: #fff;
+}
+
+.quick-add-actions button:last-child {
+    background: var(--accent, #007bff);
+    border-color: var(--accent, #007bff);
+    color: #fff;
+}
+
+.quick-add-actions button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
 }

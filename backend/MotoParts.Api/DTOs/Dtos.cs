@@ -101,6 +101,11 @@ public record AdminOrderRequest(
 /// <summary>Привязка каталожной позиции к модели мотоцикла.</summary>
 public record AdminApplicabilityRequest(int PartNumId, int ModelId);
 
+public record AdminSeriesRequest(string SeriesName);
+
+/// <summary>Привязка каталожной позиции к серии — независимо от привязки к моделям.</summary>
+public record AdminSeriesApplicabilityRequest(int PartNumId, Guid SeriesId);
+
 /// <summary>Ручная коррекция остатка: Delta со знаком, причина обязательна.</summary>
 public record AdminCorrectionRequest(Guid ZipId, int Delta, string Comment);
 

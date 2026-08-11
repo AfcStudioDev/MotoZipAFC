@@ -1,6 +1,7 @@
 import { Component, OnInit, inject, signal, computed, ChangeDetectionStrategy } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { CommonModule } from '@angular/common';
+import { firstValueFrom } from 'rxjs';
 import { AdminService } from '../core/admin.service';
 import { environment } from '../../environments/environment';
 
@@ -19,13 +20,24 @@ interface FieldDef {
    * (например, «Масляный фильтр» и у Honda, и у Yamaha), и по одному названию
    * невозможно понять, какая именно деталь выбирается.
    */
-  type: 'text' | 'number' | 'checkbox' | 'select' | 'date' | 'zip-picker';
+  type: 'text' | 'number' | 'checkbox' | 'select' | 'date' | 'zip-picker' | 'catalog-picker' | 'stock';
   required?: boolean;
   refTable?: string;
   refLabelKey?: string;
   /** Поле принадлежит каталожной позиции (PartNumbers), а не самой записи — сохраняется отдельным запросом. */
   partNumberOwned?: boolean;
+  /**
+   * Для catalog-picker: по какому свойству PartNumber ищутся подсказки (парт-номер
+   * или наименование) — оба поля ищут по одному и тому же справочнику part-numbers,
+   * и выбор в любом из них подставляет оба значения (см. applyCatalogSuggestion).
+   */
+  catalogRole?: 'partNum' | 'name';
+  /** Кнопка «+» рядом с полем, открывающая модалку быстрого добавления записи в этот справочник. */
+  quickAdd?: 'part-number' | 'group' | 'incomemoto';
 }
+
+/** Что именно создаём в модалке быстрого добавления и как это применить к форме после сохранения. */
+type QuickAddKind = 'part-number' | 'group' | 'incomemoto';
 
 /** Поле строки поиска. Только содержательные колонки — без Id и внешних ключей. */
 interface SearchFieldDef {
@@ -44,6 +56,28 @@ interface TableDef {
 interface DynamicRow {
   id: any;
   [key: string]: any;
+}
+
+/**
+ * Одна строка применимости парт-номера к модели, выбранная/введённая в форме,
+ * но ещё не обязательно сохранённая. applicabilityId задан только для уже
+ * существующих связей (используется, чтобы отличить их от новых при сохранении).
+ * modelId/markId заданы, только если модель/марка выбраны из существующего справочника —
+ * иначе при сохранении их создаст syncApplicability по названию.
+ */
+interface StagedModelLink {
+  applicabilityId?: number;
+  modelId?: number;
+  markId?: number;
+  markName: string;
+  modelName: string;
+}
+
+/** То же самое для серий — независимая от моделей связка (см. syncApplicability). */
+interface StagedSeriesLink {
+  applicabilityId?: number;
+  seriesId?: string;
+  seriesName: string;
 }
 
 /** Расхождение цены с уже заведёнными запчастями того же парт-номера. */
@@ -167,6 +201,55 @@ interface PriceConflict {
                       </small>
                     }
                   }
+                  @else if (f.type === 'catalog-picker') {
+                    <!-- Парт-номер и наименование ищут по одному справочнику (part-numbers)
+                         и подставляют друг друга: выбор в любом из полей заполняет оба. -->
+                    <div class="field-with-add">
+                      <input
+                        type="text"
+                        class="form-control"
+                        [(ngModel)]="form[f.key]"
+                        [name]="f.key"
+                        (input)="onCatalogInput(f.key, f.catalogRole!, form[f.key])"
+                        (focus)="onCatalogInput(f.key, f.catalogRole!, form[f.key])"
+                        [required]="!!f.required"
+                        autocomplete="off"
+                      >
+                      @if (f.quickAdd) {
+                        <button type="button" class="btn-quick-add" (click)="openQuickAdd(f.quickAdd)" title="Добавить новую запись в справочник">+</button>
+                      }
+                    </div>
+                    @if (activeCatalogField() === f.key && catalogSuggestions().length > 0) {
+                      <ul class="suggestions-dropdown">
+                        @for (pn of catalogSuggestions(); track pn.id) {
+                          <li (click)="applyCatalogSuggestion(pn)">{{ pn.partNum }} — {{ pn.name }}</li>
+                        }
+                      </ul>
+                    }
+                    @if (f.partNumberOwned) {
+                      <small class="owned-hint">Поле парт-номера — изменение применится ко всем запчастям с ним</small>
+                    }
+                  }
+                  @else if (f.type === 'stock') {
+                    @if (selectedId()) {
+                      <!-- Прямая правка остатка при редактировании запрещена — она бы меняла
+                           склад в обход журнала операций. Для этого есть «Коррекция». -->
+                      <input type="text" class="form-control" [value]="currentPartNumStock() + ' шт.'" disabled readonly>
+                      <small class="owned-hint">
+                        Показана сумма остатков по всем партиям этого парт-номера. Изменить остаток можно только через «Коррекция».
+                      </small>
+                    } @else {
+                      <input
+                        type="number"
+                        step="any"
+                        class="form-control"
+                        [(ngModel)]="form[f.key]"
+                        [name]="f.key"
+                        [required]="!!f.required"
+                      >
+                      <small class="picker-hint">Уже в наличии по этому парт-номеру: {{ currentPartNumStock() }} шт.</small>
+                    }
+                  }
                   @else if (f.type === 'date') {
                     <!-- Бэкенд принимает и отдаёт DateOnly в формате YYYY-MM-DD —
                          это же значение нативно использует input[type=date]. -->
@@ -180,20 +263,25 @@ interface PriceConflict {
                   }
                   @else if (f.type === 'select') {
                     <!-- Новый функционал: Выпадающий список для связей -->
-                    <select
-                      class="form-control"
-                      [(ngModel)]="form[f.key]"
-                      [name]="f.key"
-                      (ngModelChange)="onSelectChange(table, f.key, $event)"
-                      [required]="!!f.required"
-                    >
-                      <option [ngValue]="null">— Выберите —</option>
-                      @for (opt of references()[f.refTable!] || []; track opt.id) {
-                        <option [ngValue]="opt.id">
-                          {{ opt[f.refLabelKey!] || opt.name || opt.id }}
-                        </option>
+                    <div class="field-with-add">
+                      <select
+                        class="form-control"
+                        [(ngModel)]="form[f.key]"
+                        [name]="f.key"
+                        (ngModelChange)="onSelectChange(table, f.key, $event)"
+                        [required]="!!f.required"
+                      >
+                        <option [ngValue]="null">— Выберите —</option>
+                        @for (opt of references()[f.refTable!] || []; track opt.id) {
+                          <option [ngValue]="opt.id">
+                            {{ opt[f.refLabelKey!] || opt.name || opt.id }}
+                          </option>
+                        }
+                      </select>
+                      @if (f.quickAdd) {
+                        <button type="button" class="btn-quick-add" (click)="openQuickAdd(f.quickAdd)" title="Добавить новую запись в справочник">+</button>
                       }
-                    </select>
+                    </div>
                     @if (f.partNumberOwned) {
                       <small class="owned-hint">Поле парт-номера — изменение применится ко всем запчастям с ним</small>
                     }
@@ -259,6 +347,11 @@ interface PriceConflict {
                     @if (selectedFiles().length >= 3) {
                       <small style="color: orange;">Достигнут лимит в 3 фотографии.</small>
                     }
+                  </div>
+                }
+                @if (table.endpoint === 'part-numbers') {
+                  <div class="applicability-section">
+                    <ng-container [ngTemplateOutlet]="applicabilityFields"></ng-container>
                   </div>
                 }
             </div>
@@ -412,6 +505,164 @@ interface PriceConflict {
           </div>
         </div>
       }
+
+      <!-- Быстрое добавление записи в справочник по кнопке «+» у поля -->
+      @if (quickAddKind(); as kind) {
+        <div class="price-modal-backdrop" (click)="closeQuickAdd()">
+          <div class="price-modal" (click)="$event.stopPropagation()">
+            <h3>{{ quickAddTitle(kind) }}</h3>
+
+            @if (quickAddError()) {
+              <div class="error">{{ quickAddError() }}</div>
+            }
+
+            @if (kind === 'part-number') {
+              <div class="form-field">
+                <label>Парт-номер *</label>
+                <input type="text" [(ngModel)]="quickAddForm['partNum']" name="qaPartNum" autocomplete="off">
+              </div>
+              <div class="form-field">
+                <label>Наименование *</label>
+                <input type="text" [(ngModel)]="quickAddForm['name']" name="qaName" autocomplete="off">
+              </div>
+              <div class="form-field">
+                <label>Группа запчастей</label>
+                <select [(ngModel)]="quickAddForm['groupId']" name="qaGroupId">
+                  <option [ngValue]="null">— Выберите —</option>
+                  @for (g of references()['groups'] || []; track g.id) {
+                    <option [ngValue]="g.id">{{ g.groupName }}</option>
+                  }
+                </select>
+              </div>
+              <div class="applicability-section">
+                <ng-container [ngTemplateOutlet]="applicabilityFields"></ng-container>
+              </div>
+            }
+
+            @if (kind === 'group') {
+              <div class="form-field">
+                <label>Название группы *</label>
+                <input type="text" [(ngModel)]="quickAddForm['groupName']" name="qaGroupName" autocomplete="off">
+              </div>
+            }
+
+            @if (kind === 'incomemoto') {
+              <div class="form-field">
+                <label>Описание *</label>
+                <input type="text" [(ngModel)]="quickAddForm['description']" name="qaDescription" autocomplete="off">
+              </div>
+              <div class="form-field">
+                <label>Поставщик</label>
+                <select [(ngModel)]="quickAddForm['userId']" name="qaUserId">
+                  <option [ngValue]="null">— Выберите —</option>
+                  @for (u of references()['users'] || []; track u.id) {
+                    <option [ngValue]="u.id">{{ u.fio }}</option>
+                  }
+                </select>
+              </div>
+            }
+
+            <div class="quick-add-actions">
+              <button type="button" (click)="closeQuickAdd()" [disabled]="quickAddBusy()">Отмена</button>
+              <button type="button" (click)="submitQuickAdd()" [disabled]="quickAddBusy()">Добавить</button>
+            </div>
+          </div>
+        </div>
+      }
+
+      <!-- Модели и серии парт-номера — общий фрагмент для формы вкладки «Парт-номера»
+           и для модалки быстрого добавления (кнопка «+» у поля «Парт-номер»/«Наименование»
+           на вкладке «Запчасти»), чтобы не дублировать разметку. -->
+      <ng-template #applicabilityFields>
+        <label>Модели</label>
+        <div class="chips">
+          @for (m of stagedModels(); track $index) {
+            <span class="chip">
+              {{ m.markName ? m.markName + ' ' : '' }}{{ m.modelName }}
+              <button type="button" (click)="removeStagedModel($index)">✕</button>
+            </span>
+          } @empty {
+            <span class="chips-empty">Модели не привязаны</span>
+          }
+        </div>
+        <div class="chip-add-row">
+          <div class="chip-add-field">
+            <input
+              type="text"
+              class="form-control"
+              placeholder="Марка"
+              [(ngModel)]="newModelMark"
+              name="newModelMark"
+              (input)="onMarkSuggestInput(newModelMark)"
+              (focus)="onMarkSuggestInput(newModelMark)"
+              autocomplete="off"
+            >
+            @if (activeMarkSuggest() && markSuggestions().length > 0) {
+              <ul class="suggestions-dropdown">
+                @for (mk of markSuggestions(); track mk.id) {
+                  <li (click)="selectMarkSuggestion(mk)">{{ mk.mark }}</li>
+                }
+              </ul>
+            }
+          </div>
+          <div class="chip-add-field">
+            <input
+              type="text"
+              class="form-control"
+              placeholder="Модель"
+              [(ngModel)]="newModelName"
+              name="newModelName"
+              (input)="onModelSuggestInput(newModelName)"
+              (focus)="onModelSuggestInput(newModelName)"
+              autocomplete="off"
+            >
+            @if (activeModelSuggest() && modelSuggestions().length > 0) {
+              <ul class="suggestions-dropdown">
+                @for (md of modelSuggestions(); track md.id) {
+                  <li (click)="selectModelSuggestion(md)">{{ md.mark ? md.mark + ' — ' : '' }}{{ md.model }}</li>
+                }
+              </ul>
+            }
+          </div>
+          <button type="button" class="btn-chip-add" (click)="addStagedModel()">Добавить</button>
+        </div>
+        <small class="owned-hint">Новые марка/модель будут созданы автоматически, если их ещё нет</small>
+
+        <label style="margin-top: 14px;">Серии</label>
+        <div class="chips">
+          @for (s of stagedSeries(); track $index) {
+            <span class="chip">
+              {{ s.seriesName }}
+              <button type="button" (click)="removeStagedSeries($index)">✕</button>
+            </span>
+          } @empty {
+            <span class="chips-empty">Серии не привязаны</span>
+          }
+        </div>
+        <div class="chip-add-row">
+          <div class="chip-add-field">
+            <input
+              type="text"
+              class="form-control"
+              placeholder="Серия"
+              [(ngModel)]="newSeriesName"
+              name="newSeriesName"
+              (input)="onSeriesSuggestInput(newSeriesName)"
+              (focus)="onSeriesSuggestInput(newSeriesName)"
+              autocomplete="off"
+            >
+            @if (activeSeriesSuggest() && seriesSuggestions().length > 0) {
+              <ul class="suggestions-dropdown">
+                @for (sr of seriesSuggestions(); track sr.id) {
+                  <li (click)="selectSeriesSuggestion(sr)">{{ sr.seriesName }}</li>
+                }
+              </ul>
+            }
+          </div>
+          <button type="button" class="btn-chip-add" (click)="addStagedSeries()">Добавить</button>
+        </div>
+        <small class="owned-hint">Новая серия будет создана автоматически, если её ещё нет</small>
+      </ng-template>
     </div>
   `,
   // ТЕ САМЫЕ СТИЛИ, КОТОРЫЕ БЫЛИ У ВАС ИЗНАЧАЛЬНО
@@ -448,6 +699,16 @@ export class AdminComponent implements OnInit {
       searchFields: [{ key: 'model', label: 'Модель' }]
     },
     {
+      // Серия не привязана к конкретной модели — независимая классификация
+      // (см. PartNumberSeriesApplicability ниже).
+      endpoint: 'series',
+      title: 'Серии',
+      fields: [
+        { key: 'seriesName', label: 'Название серии', type: 'text', required: true }
+      ],
+      searchFields: [{ key: 'seriesName', label: 'Название серии' }]
+    },
+    {
       endpoint: 'groups',
       title: 'Группы запчастей',
       fields: [
@@ -482,20 +743,49 @@ export class AdminComponent implements OnInit {
       ]
     },
     {
+      // Независимая от моделей привязка: у одного парт-номера может быть
+      // любое число моделей и любое число серий одновременно (см. server-side
+      // PartNumberSeriesApplicability — отдельная таблица со своей уникальностью).
+      endpoint: 'series-applicability',
+      title: 'Применимость к сериям',
+      fields: [
+        { key: 'partNumId', label: 'Парт-номер', type: 'select', refTable: 'part-numbers', refLabelKey: 'partNum', required: true },
+        { key: 'seriesId', label: 'Серия', type: 'select', refTable: 'series', refLabelKey: 'seriesName', required: true }
+      ],
+      searchFields: [
+        { key: 'partNum', label: 'Парт-номер' },
+        { key: 'series', label: 'Серия' }
+      ]
+    },
+    {
+      endpoint: 'incomemotos',
+      title: 'Доноры',
+      fields: [
+        { key: 'description', label: 'Описание', type: 'text', required: true },
+        { key: 'userId', label: 'Поставщик', type: 'select', refTable: 'users', refLabelKey: 'fio' }
+      ],
+      searchFields: [{ key: 'description', label: 'Описание' }]
+    },
+    {
       endpoint: 'zip',
       title: 'Запчасти (Приход)',
       fields: [
-        // Наименование и группа принадлежат парт-номеру: подставляются при его выборе
-        // и сохраняются отдельным запросом в PartNumbers.
-        { key: 'partNumId', label: 'Парт-номер', type: 'select', refTable: 'part-numbers', refLabelKey: 'partNum', required: true },
-        { key: 'name', label: 'Наименование', type: 'text', required: true, partNumberOwned: true },
-        { key: 'groupId', label: 'Группа запчастей', type: 'select', refTable: 'groups', refLabelKey: 'groupName', partNumberOwned: true },
+        // Парт-номер и наименование вводятся вручную с подсказками из справочника
+        // part-numbers; выбор подсказки в любом из полей заполняет оба (см. applyCatalogSuggestion).
+        // Группа принадлежит парт-номеру: подставляется при выборе и сохраняется
+        // отдельным запросом в PartNumbers.
+        { key: 'partNum', label: 'Парт-номер', type: 'catalog-picker', catalogRole: 'partNum', required: true, quickAdd: 'part-number' },
+        { key: 'name', label: 'Наименование', type: 'catalog-picker', catalogRole: 'name', required: true, partNumberOwned: true, quickAdd: 'part-number' },
+        { key: 'groupId', label: 'Группа запчастей', type: 'select', refTable: 'groups', refLabelKey: 'groupName', partNumberOwned: true, quickAdd: 'group' },
         { key: 'incomeCost', label: 'Закупочная цена', type: 'number', required: true },
         { key: 'sellCost', label: 'Цена продажи', type: 'number' },
-        { key: 'countStored', label: 'Остаток на складе', type: 'number', required: true },
+        // Число редактируется только при добавлении новой партии; при редактировании
+        // существующей запчасти поле показывает сумму по парт-номеру и заблокировано —
+        // см. type: 'stock'.
+        { key: 'countStored', label: 'Количество в приходе', type: 'stock', required: true },
         { key: 'year', label: 'Год выпуска (YYYY)', type: 'number' },
         { key: 'incomeDate', label: 'Дата поступления', type: 'date' },
-        { key: 'incomeMotoId', label: 'Донор (IncomeMoto)', type: 'select', refTable: 'incomemotos', refLabelKey: 'description', required: true },
+        { key: 'incomeMotoId', label: 'Донор (IncomeMoto)', type: 'select', refTable: 'incomemotos', refLabelKey: 'description', required: true, quickAdd: 'incomemoto' },
         { key: 'comment', label: 'Комментарий', type: 'text' }
       ],
       searchFields: [
@@ -566,6 +856,395 @@ export class AdminComponent implements OnInit {
 
   activeField = signal<string | null>(null);
   fieldSuggestions = signal<string[]>([]);
+
+  //#region [Быстрое добавление записи в справочник по кнопке «+»]
+
+  quickAddKind = signal<QuickAddKind | null>(null);
+  quickAddBusy = signal(false);
+  quickAddError = signal('');
+  quickAddForm: Record<string, any> = {};
+
+  quickAddTitle(kind: QuickAddKind): string {
+    switch (kind) {
+      case 'part-number': return 'Новый парт-номер';
+      case 'group': return 'Новая группа запчастей';
+      case 'incomemoto': return 'Новый донор';
+    }
+  }
+
+  openQuickAdd(kind: QuickAddKind) {
+    this.quickAddForm = {};
+    this.quickAddError.set('');
+    this.quickAddKind.set(kind);
+    // Модалка «Новый парт-номер» переиспользует те же Модели/Серии, что и вкладка
+    // «Парт-номера» — начинаем с чистого списка, а не с того, что могло остаться
+    // от редактирования в другом контексте.
+    if (kind === 'part-number') {
+      this.resetStagedApplicability();
+    }
+  }
+
+  closeQuickAdd() {
+    this.quickAddKind.set(null);
+    this.quickAddForm = {};
+    this.quickAddError.set('');
+  }
+
+  submitQuickAdd() {
+    const kind = this.quickAddKind();
+    if (!kind) return;
+
+    const spec = this.quickAddSpec(kind);
+    const validationError = spec.validate();
+    if (validationError) {
+      this.quickAddError.set(validationError);
+      return;
+    }
+
+    // Модели/серии — те, что успели добавить в модалке до сохранения.
+    const modelsToSync = this.stagedModels();
+    const seriesToSync = this.stagedSeries();
+
+    this.quickAddBusy.set(true);
+    this.quickAddError.set('');
+    this.admin.add(spec.endpoint, spec.payload).subscribe({
+      next: (res: any) => {
+        this.quickAddBusy.set(false);
+        this.applyQuickAddResult(kind, res);
+        this.loadAllReferences();
+        this.closeQuickAdd();
+
+        if (kind === 'part-number' && res?.id) {
+          // Новый парт-номер — удалять нечего, поэтому исходные списки связей пустые.
+          this.syncApplicability(res.id, modelsToSync, seriesToSync, [], []);
+        }
+        this.resetStagedApplicability();
+      },
+      error: (err) => {
+        this.quickAddBusy.set(false);
+        this.quickAddError.set(err.error?.message || err.message);
+      }
+    });
+  }
+
+  private quickAddSpec(kind: QuickAddKind): { endpoint: string; payload: any; validate: () => string | null } {
+    switch (kind) {
+      case 'part-number':
+        return {
+          endpoint: 'part-numbers',
+          payload: {
+            partNum: (this.quickAddForm['partNum'] ?? '').toString().trim(),
+            name: (this.quickAddForm['name'] ?? '').toString().trim(),
+            groupId: this.isEmpty(this.quickAddForm['groupId']) ? null : Number(this.quickAddForm['groupId'])
+          },
+          validate: () =>
+            !(this.quickAddForm['partNum'] ?? '').toString().trim() ? 'Укажите парт-номер' :
+            !(this.quickAddForm['name'] ?? '').toString().trim() ? 'Укажите наименование' : null
+        };
+      case 'group':
+        return {
+          endpoint: 'groups',
+          payload: { groupName: (this.quickAddForm['groupName'] ?? '').toString().trim() },
+          validate: () => !(this.quickAddForm['groupName'] ?? '').toString().trim() ? 'Укажите название группы' : null
+        };
+      case 'incomemoto':
+        return {
+          endpoint: 'incomemotos',
+          payload: {
+            description: (this.quickAddForm['description'] ?? '').toString().trim(),
+            userId: this.isEmpty(this.quickAddForm['userId']) ? null : Number(this.quickAddForm['userId'])
+          },
+          validate: () => !(this.quickAddForm['description'] ?? '').toString().trim() ? 'Укажите описание' : null
+        };
+    }
+  }
+
+  /** Подставляет только что созданную запись в поле формы, из которого была открыта модалка. */
+  private applyQuickAddResult(kind: QuickAddKind, res: any) {
+    if (kind === 'part-number') {
+      this.form['partNum'] = res.partNum;
+      this.form['name'] = res.name;
+      this.form['partNumId'] = res.id;
+      if (res.groupId != null) this.form['groupId'] = res.groupId;
+      this.refreshPartNumStock();
+    } else if (kind === 'group') {
+      this.form['groupId'] = res.id;
+    } else if (kind === 'incomemoto') {
+      this.form['incomeMotoId'] = res.id;
+    }
+  }
+
+  //#endregion
+
+  //#region [Применимость парт-номера к моделям и сериям прямо в форме]
+
+  /**
+   * Текущий (желаемый) состав связей. Заполняется существующими связями при
+   * редактировании (см. editRow) и пополняется через addStagedModel/addStagedSeries.
+   * Сохраняется вместе с парт-номером — см. syncApplicability.
+   */
+  stagedModels = signal<StagedModelLink[]>([]);
+  stagedSeries = signal<StagedSeriesLink[]>([]);
+
+  /** Связи, которые были у записи ДО открытия формы — нужны, чтобы понять, что удалено. */
+  private originalModelLinkIds: number[] = [];
+  private originalSeriesLinkIds: number[] = [];
+
+  newModelMark = '';
+  newModelName = '';
+  newSeriesName = '';
+
+  markSuggestions = signal<{ id: number; mark: string }[]>([]);
+  activeMarkSuggest = signal(false);
+  modelSuggestions = signal<{ id: number; model: string; markId: number | null; mark: string | null }[]>([]);
+  activeModelSuggest = signal(false);
+  seriesSuggestions = signal<{ id: string; seriesName: string }[]>([]);
+  activeSeriesSuggest = signal(false);
+
+  onMarkSuggestInput(value: string) {
+    this.newModelMark = value;
+    this.activeMarkSuggest.set(true);
+    const needle = (value ?? '').trim().toLowerCase();
+    const list = this.references()['marks'] || [];
+    const filtered = needle.length === 0 ? list : list.filter((m: any) => String(m.mark).toLowerCase().includes(needle));
+    this.markSuggestions.set(filtered.slice(0, 8));
+  }
+
+  selectMarkSuggestion(mk: { id: number; mark: string }) {
+    this.newModelMark = mk.mark;
+    this.activeMarkSuggest.set(false);
+    this.markSuggestions.set([]);
+  }
+
+  onModelSuggestInput(value: string) {
+    this.newModelName = value;
+    this.activeModelSuggest.set(true);
+    const needle = (value ?? '').trim().toLowerCase();
+    const list = this.references()['models'] || [];
+    const filtered = needle.length === 0 ? list : list.filter((m: any) => String(m.model).toLowerCase().includes(needle));
+    this.modelSuggestions.set(filtered.slice(0, 8));
+  }
+
+  /** Выбор подсказки модели заодно подставляет её марку — вводить её отдельно не нужно. */
+  selectModelSuggestion(md: { id: number; model: string; markId: number | null; mark: string | null }) {
+    this.newModelName = md.model;
+    if (md.mark) this.newModelMark = md.mark;
+    this.activeModelSuggest.set(false);
+    this.modelSuggestions.set([]);
+  }
+
+  /**
+   * Добавляет модель в локальный список. Если название совпадает с уже существующей
+   * маркой/моделью — запоминает их id (тогда при сохранении новых записей создавать
+   * не придётся), иначе id остаются не заданы, и syncApplicability заведёт их сама.
+   */
+  addStagedModel() {
+    const markName = this.newModelMark.trim();
+    const modelName = this.newModelName.trim();
+    if (!modelName) {
+      this.error.set('Введите название модели');
+      return;
+    }
+
+    const alreadyAdded = this.stagedModels().some(m =>
+      m.modelName.toLowerCase() === modelName.toLowerCase() &&
+      (m.markName || '').toLowerCase() === markName.toLowerCase());
+    if (alreadyAdded) {
+      this.newModelMark = '';
+      this.newModelName = '';
+      this.closeModelSuggestions();
+      return;
+    }
+
+    const existingMark = (this.references()['marks'] || [])
+      .find((m: any) => String(m.mark).toLowerCase() === markName.toLowerCase());
+    const existingModel = (this.references()['models'] || [])
+      .find((m: any) => String(m.model).toLowerCase() === modelName.toLowerCase()
+        && (!existingMark || m.markId === existingMark.id));
+
+    this.stagedModels.set([...this.stagedModels(), {
+      markId: existingMark?.id,
+      markName: existingMark?.mark ?? markName,
+      modelId: existingModel?.id,
+      modelName: existingModel?.model ?? modelName
+    }]);
+
+    this.newModelMark = '';
+    this.newModelName = '';
+    this.closeModelSuggestions();
+  }
+
+  removeStagedModel(index: number) {
+    const list = [...this.stagedModels()];
+    list.splice(index, 1);
+    this.stagedModels.set(list);
+  }
+
+  private closeModelSuggestions() {
+    this.activeMarkSuggest.set(false);
+    this.markSuggestions.set([]);
+    this.activeModelSuggest.set(false);
+    this.modelSuggestions.set([]);
+  }
+
+  onSeriesSuggestInput(value: string) {
+    this.newSeriesName = value;
+    this.activeSeriesSuggest.set(true);
+    const needle = (value ?? '').trim().toLowerCase();
+    const list = this.references()['series'] || [];
+    const filtered = needle.length === 0 ? list : list.filter((s: any) => String(s.seriesName).toLowerCase().includes(needle));
+    this.seriesSuggestions.set(filtered.slice(0, 8));
+  }
+
+  selectSeriesSuggestion(sr: { id: string; seriesName: string }) {
+    this.newSeriesName = sr.seriesName;
+    this.activeSeriesSuggest.set(false);
+    this.seriesSuggestions.set([]);
+  }
+
+  addStagedSeries() {
+    const seriesName = this.newSeriesName.trim();
+    if (!seriesName) {
+      this.error.set('Введите название серии');
+      return;
+    }
+
+    const alreadyAdded = this.stagedSeries().some(s => s.seriesName.toLowerCase() === seriesName.toLowerCase());
+    if (alreadyAdded) {
+      this.newSeriesName = '';
+      this.closeSeriesSuggestions();
+      return;
+    }
+
+    const existing = (this.references()['series'] || [])
+      .find((s: any) => String(s.seriesName).toLowerCase() === seriesName.toLowerCase());
+
+    this.stagedSeries.set([...this.stagedSeries(), {
+      seriesId: existing?.id,
+      seriesName: existing?.seriesName ?? seriesName
+    }]);
+
+    this.newSeriesName = '';
+    this.closeSeriesSuggestions();
+  }
+
+  removeStagedSeries(index: number) {
+    const list = [...this.stagedSeries()];
+    list.splice(index, 1);
+    this.stagedSeries.set(list);
+  }
+
+  private closeSeriesSuggestions() {
+    this.activeSeriesSuggest.set(false);
+    this.seriesSuggestions.set([]);
+  }
+
+  /** Заполняет список уже существующими связями редактируемого парт-номера. */
+  private loadStagedApplicabilityForEdit(partNumId: number) {
+    const models = (this.references()['applicability'] || [])
+      .filter((a: any) => a.partNumId === partNumId)
+      .map((a: any): StagedModelLink => ({
+        applicabilityId: a.id,
+        modelId: a.modelId,
+        markName: a.mark ?? '',
+        modelName: a.model
+      }));
+    this.stagedModels.set(models);
+    this.originalModelLinkIds = models.map(m => m.applicabilityId!);
+
+    const series = (this.references()['series-applicability'] || [])
+      .filter((a: any) => a.partNumId === partNumId)
+      .map((a: any): StagedSeriesLink => ({
+        applicabilityId: a.id,
+        seriesId: a.seriesId,
+        seriesName: a.series
+      }));
+    this.stagedSeries.set(series);
+    this.originalSeriesLinkIds = series.map(s => s.applicabilityId!);
+  }
+
+  private resetStagedApplicability() {
+    this.stagedModels.set([]);
+    this.stagedSeries.set([]);
+    this.originalModelLinkIds = [];
+    this.originalSeriesLinkIds = [];
+    this.newModelMark = '';
+    this.newModelName = '';
+    this.newSeriesName = '';
+    this.closeModelSuggestions();
+    this.closeSeriesSuggestions();
+  }
+
+  /**
+   * Приводит связи парт-номера к желаемому составу: недостающие марка/модель/серия
+   * создаются по названию, новые связи добавляются, убранные из списка — удаляются.
+   * Вызывается после успешного сохранения самого парт-номера (нужен его id).
+   */
+  private async syncApplicability(
+    partNumId: number,
+    models: StagedModelLink[],
+    series: StagedSeriesLink[],
+    originalModelLinkIds: number[],
+    originalSeriesLinkIds: number[]
+  ) {
+    try {
+      const keptModelLinkIds = new Set(models.filter(m => m.applicabilityId).map(m => m.applicabilityId));
+      for (const linkId of originalModelLinkIds.filter(id => !keptModelLinkIds.has(id))) {
+        await firstValueFrom(this.admin.delete('applicability', linkId));
+      }
+
+      for (const m of models) {
+        if (m.applicabilityId) continue; // связь уже существует
+
+        let markId = m.markId;
+        if (!markId && m.markName.trim()) {
+          const existingMark = (this.references()['marks'] || [])
+            .find((x: any) => String(x.mark).toLowerCase() === m.markName.trim().toLowerCase());
+          markId = existingMark
+            ? existingMark.id
+            : (await firstValueFrom(this.admin.add('marks', { mark: m.markName.trim() })) as any).id;
+        }
+
+        let modelId = m.modelId;
+        if (!modelId) {
+          const existingModel = (this.references()['models'] || [])
+            .find((x: any) => String(x.model).toLowerCase() === m.modelName.trim().toLowerCase()
+              && (markId == null || x.markId === markId));
+          modelId = existingModel
+            ? existingModel.id
+            : (await firstValueFrom(this.admin.add('models', { markId: markId ?? null, model: m.modelName.trim() })) as any).id;
+        }
+
+        await firstValueFrom(this.admin.add('applicability', { partNumId, modelId }));
+      }
+
+      const keptSeriesLinkIds = new Set(series.filter(s => s.applicabilityId).map(s => s.applicabilityId));
+      for (const linkId of originalSeriesLinkIds.filter(id => !keptSeriesLinkIds.has(id))) {
+        await firstValueFrom(this.admin.delete('series-applicability', linkId));
+      }
+
+      for (const s of series) {
+        if (s.applicabilityId) continue;
+
+        let seriesId = s.seriesId;
+        if (!seriesId) {
+          const existingSeries = (this.references()['series'] || [])
+            .find((x: any) => String(x.seriesName).toLowerCase() === s.seriesName.trim().toLowerCase());
+          seriesId = existingSeries
+            ? existingSeries.id
+            : (await firstValueFrom(this.admin.add('series', { seriesName: s.seriesName.trim() })) as any).id;
+        }
+
+        await firstValueFrom(this.admin.add('series-applicability', { partNumId, seriesId }));
+      }
+
+      this.loadAllReferences();
+    } catch (err: any) {
+      this.error.set('Парт-номер сохранён, но применимость обновить не удалось: ' + (err.error?.message || err.message));
+    }
+  }
+
+  //#endregion
 
   //#region [Выбор запчасти по парт-номеру]
 
@@ -639,7 +1318,11 @@ export class AdminComponent implements OnInit {
   }
 
   loadAllReferences() {
-    const refEndpoints = ['marks', 'models', 'groups', 'part-numbers', 'users', 'addressess', 'zip', 'incomemotos'];
+    const refEndpoints = [
+      'marks', 'models', 'series', 'groups', 'part-numbers', 'users', 'addressess', 'zip', 'incomemotos',
+      // Нужны, чтобы при редактировании парт-номера подставить его текущие связи (см. loadStagedApplicabilityForEdit).
+      'applicability', 'series-applicability'
+    ];
     const loadedRefs: Record<string, any[]> = {};
 
     refEndpoints.forEach(endpoint => {
@@ -754,9 +1437,6 @@ export class AdminComponent implements OnInit {
 
   onSelectChange(table: TableDef, key: string, value: any) {
     this.form[key] = value;
-    if (table.endpoint === 'zip' && key === 'partNumId') {
-      this.fillFromPartNumber(value);
-    }
   }
 
   /**
@@ -783,6 +1463,119 @@ export class AdminComponent implements OnInit {
     }
   }
 
+  //#region [Парт-номер и наименование вручную]
+
+  /** Поле (partNum/name), в котором сейчас открыт список подсказок. */
+  activeCatalogField = signal<string | null>(null);
+  catalogSuggestions = signal<{ id: number; partNum: string; name: string; groupId: number | null }[]>([]);
+
+  /** Сумма остатков по всем партиям текущего (введённого/выбранного) парт-номера. */
+  currentPartNumStock = signal<number>(0);
+
+  /** Пересчитывает currentPartNumStock по тексту в form['partNum'] — точное совпадение с part-numbers. */
+  private refreshPartNumStock() {
+    const partNumText = (this.form['partNum'] ?? '').toString().trim().toLowerCase();
+    if (!partNumText) {
+      this.currentPartNumStock.set(0);
+      return;
+    }
+
+    const match = (this.references()['part-numbers'] || [])
+      .find((p: any) => String(p.partNum).trim().toLowerCase() === partNumText);
+    if (!match) {
+      this.currentPartNumStock.set(0);
+      return;
+    }
+
+    const sum = (this.references()['zip'] || [])
+      .filter((z: any) => String(z.partNumId) === String(match.id))
+      .reduce((acc: number, z: any) => acc + (z.countStored ?? 0), 0);
+    this.currentPartNumStock.set(sum);
+  }
+
+  /** Подсказки ищутся по общему справочнику part-numbers — сразу за оба поля. */
+  onCatalogInput(key: string, role: 'partNum' | 'name', value: string) {
+    this.form[key] = value;
+    this.activeCatalogField.set(key);
+
+    const needle = (value ?? '').toString().trim().toLowerCase();
+    const list = this.references()['part-numbers'] || [];
+    const filtered = needle.length === 0
+      ? list
+      : list.filter((p: any) => String(p[role] ?? '').toLowerCase().includes(needle));
+
+    this.catalogSuggestions.set(filtered.slice(0, 8));
+    // Подсказка «уже в наличии» реагирует и на точное совпадение текста без клика по списку.
+    this.refreshPartNumStock();
+  }
+
+  /** Выбор подсказки в любом из полей подставляет оба значения и группу/цены. */
+  applyCatalogSuggestion(pn: { id: number; partNum: string; name: string; groupId: number | null }) {
+    this.form['partNum'] = pn.partNum;
+    this.form['name'] = pn.name;
+    this.form['partNumId'] = pn.id;
+    this.closeCatalogSuggestions();
+    this.fillFromPartNumber(pn.id);
+    this.refreshPartNumStock();
+  }
+
+  private closeCatalogSuggestions() {
+    this.activeCatalogField.set(null);
+    this.catalogSuggestions.set([]);
+  }
+
+  /**
+   * Связывает введённый текст парт-номера с записью в part-numbers перед сохранением
+   * запчасти: точное совпадение — переиспользуем её id, иначе заводим новую каталожную
+   * позицию (парт-номер вводится вручную, поэтому нового может ещё не быть в справочнике).
+   * partNumId всегда пересчитывается заново по тексту, а не по тому, что было
+   * подставлено при клике по подсказке — это позволяет спокойно донабрать/поправить
+   * текст после выбора, не оставляя рассинхронизированный id.
+   */
+  private resolvePartNumber(next: () => void) {
+    const partNumText = (this.form['partNum'] ?? '').toString().trim();
+    if (!partNumText) {
+      this.error.set('Парт-номер обязателен');
+      return;
+    }
+
+    const existing = (this.references()['part-numbers'] || [])
+      .find((p: any) => String(p.partNum).trim().toLowerCase() === partNumText.toLowerCase());
+
+    if (existing) {
+      this.form['partNum'] = existing.partNum;
+      this.form['partNumId'] = existing.id;
+      next();
+      return;
+    }
+
+    const nameText = (this.form['name'] ?? '').toString().trim();
+    if (!nameText) {
+      this.error.set('Для нового парт-номера нужно указать наименование');
+      return;
+    }
+
+    this.busy.set(true);
+    this.admin.add('part-numbers', {
+      partNum: partNumText,
+      name: nameText,
+      groupId: this.isEmpty(this.form['groupId']) ? null : Number(this.form['groupId'])
+    }).subscribe({
+      next: (pn: any) => {
+        this.form['partNumId'] = pn.id;
+        this.busy.set(false);
+        this.loadAllReferences();
+        next();
+      },
+      error: (err) => {
+        this.busy.set(false);
+        this.error.set('Не удалось создать парт-номер: ' + (err.error?.message || err.message));
+      }
+    });
+  }
+
+  //#endregion
+
   private isEmpty(v: any): boolean {
     return v === null || v === undefined || v === '';
   }
@@ -797,6 +1590,13 @@ export class AdminComponent implements OnInit {
     this.existingPhotos.set(Array.isArray(row.photos) ? row.photos : []);
     // Чтобы в заказе первым шагом сразу стоял парт-номер сохранённой запчасти.
     this.syncZipPickerFromForm();
+    this.refreshPartNumStock();
+
+    if (this.current()?.endpoint === 'part-numbers') {
+      this.loadStagedApplicabilityForEdit(row.id);
+    } else {
+      this.resetStagedApplicability();
+    }
   }
 
   cancelEdit() {
@@ -804,15 +1604,44 @@ export class AdminComponent implements OnInit {
     this.form = {};
     this.activeField.set(null);
     this.fieldSuggestions.set([]);
+    this.closeCatalogSuggestions();
+    this.currentPartNumStock.set(0);
     this.selectedFiles.set([]);
     this.existingPhotos.set([]);
     this.zipPartNumId.set(null);
+    this.resetStagedApplicability();
+
+    // Дата поступления по умолчанию — сегодня, чтобы не проставлять вручную
+    // на каждой новой запчасти. Только для добавления: при редактировании
+    // существующей записи форму заполняет editRow из данных самой записи.
+    if (this.current()?.endpoint === 'zip') {
+      this.form['incomeDate'] = this.todayIso();
+    }
+  }
+
+  /** Сегодняшняя дата в формате YYYY-MM-DD — том же, что нативно использует input[type=date]. */
+  private todayIso(): string {
+    const d = new Date();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${d.getFullYear()}-${mm}-${dd}`;
   }
 
   save(table: TableDef) {
     this.error.set('');
     this.message.set('');
 
+    // Парт-номер вводится вручную — сперва связываем текст с id существующей
+    // или новой каталожной позиции, и только потом продолжаем как раньше.
+    if (table.endpoint === 'zip') {
+      this.resolvePartNumber(() => this.continueSave(table));
+      return;
+    }
+
+    this.continueSave(table);
+  }
+
+  private continueSave(table: TableDef) {
     // Новая запчасть с уже существующим парт-номером и другой ценой продажи —
     // спрашиваем, что делать с ценами остальных, и продолжаем после ответа.
     const conflict = this.detectPriceConflict(table);
@@ -955,6 +1784,14 @@ export class AdminComponent implements OnInit {
   private saveRow(table: TableDef) {
     const id = this.selectedId();
 
+    // Применимость сохраняется отдельными запросами после того, как у парт-номера
+    // точно есть id — снимок делаем сейчас, до cancelEdit() в успешном колбэке.
+    const isPartNumbers = table.endpoint === 'part-numbers';
+    const modelsToSync = this.stagedModels();
+    const seriesToSync = this.stagedSeries();
+    const originalModelLinkIds = this.originalModelLinkIds;
+    const originalSeriesLinkIds = this.originalSeriesLinkIds;
+
     const request = id
       ? this.admin.update(table.endpoint, id, this.form, this.selectedFiles())
       : this.admin.add(table.endpoint, this.form, this.selectedFiles());
@@ -962,12 +1799,17 @@ export class AdminComponent implements OnInit {
     request.subscribe({
       next: (res: any) => {
         this.message.set(id ? 'Запись успешно обновлена!' : 'Запись успешно добавлена!');
+        const partNumId = id ?? res?.id;
         this.busy.set(false);
         this.cancelEdit();
         this.reload(table);
         this.loadAllReferences();
         // Выбранное в модальном окне действие «обновить цены для всех».
         this.applyBulkRepriceIfNeeded(res?.id);
+
+        if (isPartNumbers && partNumId) {
+          this.syncApplicability(partNumId, modelsToSync, seriesToSync, originalModelLinkIds, originalSeriesLinkIds);
+        }
       },
       error: (err) => {
         this.error.set('Ошибка сохранения: ' + (err.error?.message || err.message));

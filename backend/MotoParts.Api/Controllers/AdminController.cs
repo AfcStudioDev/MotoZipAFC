@@ -40,6 +40,39 @@ public class AdminController(AppDbContext db) : ControllerBase
         return Ok(new { mark.Id, mark.Mark });
     }
 
+    // ---------- MotoSeries ----------
+    [HttpGet("series")]
+    public async Task<IActionResult> Series() =>
+        Ok(await db.MotoSeries.OrderBy(s => s.SeriesName)
+            .Select(s => new { s.Id, s.SeriesName })
+            .ToListAsync());
+
+    [HttpPost("series")]
+    public async Task<IActionResult> AddSeries(AdminSeriesRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.SeriesName))
+            return BadRequest(new { message = "Название серии обязательно" });
+
+        var series = new MotoSeries { Id = Guid.NewGuid(), SeriesName = request.SeriesName.Trim() };
+        db.MotoSeries.Add(series);
+        await db.SaveChangesAsync();
+        return Ok(new { series.Id, series.SeriesName });
+    }
+
+    [HttpPut("series/{id:guid}")]
+    public async Task<IActionResult> UpdateSeries(Guid id, AdminSeriesRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.SeriesName))
+            return BadRequest(new { message = "Название серии обязательно" });
+
+        var series = await db.MotoSeries.FindAsync(id);
+        if (series == null) return NotFound(new { message = "Серия не найдена" });
+
+        series.SeriesName = request.SeriesName.Trim();
+        await db.SaveChangesAsync();
+        return Ok(new { series.Id, series.SeriesName });
+    }
+
     // ---------- MotoModels ----------
     [HttpGet("models")]
     public async Task<IActionResult> Models() =>
@@ -108,7 +141,7 @@ public class AdminController(AppDbContext db) : ControllerBase
         };
         db.PartNumbers.Add(pn);
         await db.SaveChangesAsync();
-        return Ok(new { pn.Id, pn.PartNum, pn.Name });
+        return Ok(new { pn.Id, pn.PartNum, pn.Name, pn.GroupId });
     }
 
     /// <summary>
@@ -169,6 +202,39 @@ public class AdminController(AppDbContext db) : ControllerBase
         db.PartNumberApplicabilities.Add(link);
         await db.SaveChangesAsync();
         return Ok(new { link.Id, link.PartNumId, link.ModelId });
+    }
+
+    // ---------- PartNumberSeriesApplicability ----------
+    // Независимая от моделей привязка: у одного парт-номера может быть
+    // любое число моделей и любое число серий одновременно.
+    [HttpGet("series-applicability")]
+    public async Task<IActionResult> SeriesApplicability() =>
+        Ok(await db.PartNumberSeriesApplicabilities.OrderBy(a => a.Id)
+            .Select(a => new
+            {
+                a.Id,
+                a.PartNumId,
+                PartNum = a.PartNumber.PartNum,
+                Name = a.PartNumber.Name,
+                a.SeriesId,
+                Series = a.Series.SeriesName
+            })
+            .ToListAsync());
+
+    [HttpPost("series-applicability")]
+    public async Task<IActionResult> AddSeriesApplicability(AdminSeriesApplicabilityRequest request)
+    {
+        if (!await db.PartNumbers.AnyAsync(p => p.Id == request.PartNumId))
+            return BadRequest(new { message = "Парт-номер не найден" });
+        if (!await db.MotoSeries.AnyAsync(s => s.Id == request.SeriesId))
+            return BadRequest(new { message = "Серия не найдена" });
+        if (await db.PartNumberSeriesApplicabilities.AnyAsync(a => a.PartNumId == request.PartNumId && a.SeriesId == request.SeriesId))
+            return Conflict(new { message = "Такая привязка уже существует" });
+
+        var link = new PartNumberSeriesApplicability { PartNumId = request.PartNumId, SeriesId = request.SeriesId };
+        db.PartNumberSeriesApplicabilities.Add(link);
+        await db.SaveChangesAsync();
+        return Ok(new { link.Id, link.PartNumId, link.SeriesId });
     }
 
     // ---------- Zip ----------
@@ -833,11 +899,14 @@ public class AdminController(AppDbContext db) : ControllerBase
     {
         if (string.IsNullOrWhiteSpace(dto.Description))
             return BadRequest(new { message = "Описание не может быть пустым" });
+        if (dto.UserId.HasValue && !await db.Users.AnyAsync(u => u.Id == dto.UserId))
+            return BadRequest(new { message = "Поставщик не найден" });
 
         var newDonor = new IncomeMoto
         {
             Id = Guid.NewGuid(), // Генерируем UUID (uuid)
-            Description = dto.Description
+            Description = dto.Description,
+            UserId = dto.UserId
         };
 
         db.IncomeMotos.Add(newDonor);
@@ -851,8 +920,11 @@ public class AdminController(AppDbContext db) : ControllerBase
     {
         var donor = await db.IncomeMotos.FindAsync(id);
         if (donor == null) return NotFound(new { message = "Донор не найден" });
+        if (dto.UserId.HasValue && !await db.Users.AnyAsync(u => u.Id == dto.UserId))
+            return BadRequest(new { message = "Поставщик не найден" });
 
         donor.Description = dto.Description;
+        donor.UserId = dto.UserId;
         await db.SaveChangesAsync();
 
         return Ok(donor);
@@ -927,6 +999,7 @@ public class AdminController(AppDbContext db) : ControllerBase
                     return Conflict(new { message = $"По этому парт-номеру заведено запчастей: {zipCount}. Сначала удалите их." });
 
                 await db.PartNumberApplicabilities.Where(a => a.PartNumId == partNumId).ExecuteDeleteAsync();
+                await db.PartNumberSeriesApplicabilities.Where(a => a.PartNumId == partNumId).ExecuteDeleteAsync();
 
                 db.PartNumbers.Remove(pn);
                 break;
@@ -938,6 +1011,28 @@ public class AdminController(AppDbContext db) : ControllerBase
                 var link = await db.PartNumberApplicabilities.FindAsync(linkId);
                 if (link == null) return NotFound();
                 db.PartNumberApplicabilities.Remove(link);
+                break;
+            }
+
+            case "series":
+            {
+                if (!Guid.TryParse(id, out var seriesGuid)) return BadRequest(new { message = "Неверный формат GUID" });
+                var series = await db.MotoSeries.FindAsync(seriesGuid);
+                if (series == null) return NotFound();
+
+                // Применимость к удаляемой серии смысла не имеет.
+                await db.PartNumberSeriesApplicabilities.Where(a => a.SeriesId == seriesGuid).ExecuteDeleteAsync();
+
+                db.MotoSeries.Remove(series);
+                break;
+            }
+
+            case "series-applicability":
+            {
+                if (!int.TryParse(id, out var seriesLinkId)) return BadRequest(new { message = "Неверный формат идентификатора" });
+                var seriesLink = await db.PartNumberSeriesApplicabilities.FindAsync(seriesLinkId);
+                if (seriesLink == null) return NotFound();
+                db.PartNumberSeriesApplicabilities.Remove(seriesLink);
                 break;
             }
 

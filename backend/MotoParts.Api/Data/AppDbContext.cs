@@ -9,6 +9,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<MotoMark> MotoMarks { get; set; }
     public DbSet<PartNumber> PartNumbers { get; set; }
     public DbSet<PartNumberApplicability> PartNumberApplicabilities { get; set; }
+    public DbSet<MotoSeries> MotoSeries { get; set; }
+    public DbSet<PartNumberSeriesApplicability> PartNumberSeriesApplicabilities { get; set; }
     public DbSet<ZipGroup> ZipGroups { get; set; }
     public DbSet<MotoModel> MotoModels { get; set; }
     public DbSet<Zip> Zips { get; set; }
@@ -79,6 +81,33 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         // Отдельный индекс под запрос «все детали, подходящие к этой модели».
         modelBuilder.Entity<PartNumberApplicability>()
             .HasIndex(a => a.ModelId);
+
+        // ----------------------------------------------------
+        // ПРИМЕНИМОСТЬ ПАРТ-НОМЕРА К СЕРИЯМ (многие-ко-многим, независимо от моделей)
+        // ----------------------------------------------------
+
+        // PartNumbers.id < PartNumberSeriesApplicability.PartNumId [ delete: cascade ]
+        modelBuilder.Entity<PartNumberSeriesApplicability>()
+            .HasOne(a => a.PartNumber)
+            .WithMany(p => p.SeriesApplicability)
+            .HasForeignKey(a => a.PartNumId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // MotoSeries.id < PartNumberSeriesApplicability.SeriesId [ delete: no action ]
+        modelBuilder.Entity<PartNumberSeriesApplicability>()
+            .HasOne(a => a.Series)
+            .WithMany(s => s.Applicability)
+            .HasForeignKey(a => a.SeriesId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        // Одна и та же пара «парт-номер + серия» не должна повторяться.
+        modelBuilder.Entity<PartNumberSeriesApplicability>()
+            .HasIndex(a => new { a.PartNumId, a.SeriesId })
+            .IsUnique();
+
+        // Отдельный индекс под запрос «все детали этой серии».
+        modelBuilder.Entity<PartNumberSeriesApplicability>()
+            .HasIndex(a => a.SeriesId);
 
         // ----------------------------------------------------
         // ЗАПЧАСТИ

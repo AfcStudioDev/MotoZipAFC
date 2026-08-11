@@ -96,6 +96,7 @@ public class PartNumber
 
     public ICollection<Zip> Zips { get; set; } = new HashSet<Zip>();
     public ICollection<PartNumberApplicability> Applicability { get; set; } = new HashSet<PartNumberApplicability>();
+    public ICollection<PartNumberSeriesApplicability> SeriesApplicability { get; set; } = new HashSet<PartNumberSeriesApplicability>();
 }
 
 /// <summary>Применимость каталожной позиции к моделям мотоциклов (многие-ко-многим).</summary>
@@ -109,6 +110,34 @@ public class PartNumberApplicability
 
     public int ModelId { get; set; }
     public MotoModel Model { get; set; } = null!;
+}
+
+/// <summary>Серия мотоциклов — классификация, не привязанная к конкретной модели (например, поколение по годам).</summary>
+public class MotoSeries
+{
+    [Key]
+    public Guid Id { get; set; }
+
+    [Required]
+    public string SeriesName { get; set; } = null!;
+
+    public ICollection<PartNumberSeriesApplicability> Applicability { get; set; } = new HashSet<PartNumberSeriesApplicability>();
+}
+
+/// <summary>
+/// Применимость каталожной позиции к сериям (многие-ко-многим), независимая от PartNumberApplicability:
+/// у одного парт-номера может быть любое число моделей и любое число серий одновременно.
+/// </summary>
+public class PartNumberSeriesApplicability
+{
+    [Key]
+    public int Id { get; set; }
+
+    public int PartNumId { get; set; }
+    public PartNumber PartNumber { get; set; } = null!;
+
+    public Guid SeriesId { get; set; }
+    public MotoSeries Series { get; set; } = null!;
 }
 
 /// <summary>Конкретная физическая деталь, снятая с донора.</summary>
