@@ -20,7 +20,7 @@ interface FieldDef {
    * (например, «Масляный фильтр» и у Honda, и у Yamaha), и по одному названию
    * невозможно понять, какая именно деталь выбирается.
    */
-  type: 'text' | 'number' | 'checkbox' | 'select' | 'date' | 'zip-picker' | 'catalog-picker' | 'stock';
+  type: 'text' | 'number' | 'checkbox' | 'select' | 'date' | 'zip-picker' | 'catalog-picker' | 'group-picker' | 'stock';
   required?: boolean;
   refTable?: string;
   refLabelKey?: string;
@@ -232,6 +232,39 @@ interface PriceConflict {
                           <li (click)="applyCatalogSuggestion(pn)">{{ pn.partNum }} — {{ pn.name }}</li>
                         }
                       </ul>
+                    } @else if (activeCatalogField() === f.key && catalogSuggestions().length === 0 && !isEmpty(form[f.key])) {
+                      <small class="picker-hint picker-hint-warn">Такого не найдено. Можно создать</small>
+                    }
+                    @if (f.partNumberOwned) {
+                      <small class="owned-hint">Поле парт-номера — изменение применится ко всем запчастям с ним</small>
+                    }
+                  }
+                  @else if (f.type === 'group-picker') {
+                    <!-- Группа вводится текстом с подсказками, как парт-номер: точное совпадение
+                         переиспользуется, иначе новая группа заводится при сохранении (см. resolveGroup). -->
+                    <div class="field-with-add">
+                      <input
+                        type="text"
+                        class="form-control"
+                        [(ngModel)]="form['groupName']"
+                        [name]="f.key"
+                        (input)="onGroupInput(form['groupName'])"
+                        (focus)="onGroupInput(form['groupName'])"
+                        [required]="!!f.required"
+                        autocomplete="off"
+                      >
+                      @if (f.quickAdd) {
+                        <button type="button" class="btn-quick-add" (click)="openQuickAdd(f.quickAdd)" title="Добавить новую запись в справочник">+</button>
+                      }
+                    </div>
+                    @if (activeGroupPicker() && groupSuggestions().length > 0) {
+                      <ul class="suggestions-dropdown">
+                        @for (g of groupSuggestions(); track g.id) {
+                          <li (click)="applyGroupSuggestion(g)">{{ g.groupName }}</li>
+                        }
+                      </ul>
+                    } @else if (activeGroupPicker() && groupSuggestions().length === 0 && !isEmpty(form['groupName'])) {
+                      <small class="picker-hint picker-hint-warn">Такого не найдено. Можно создать</small>
                     }
                     @if (f.partNumberOwned) {
                       <small class="owned-hint">Поле парт-номера — изменение применится ко всем запчастям с ним</small>
@@ -535,14 +568,25 @@ interface PriceConflict {
               <div class="form-field">
                 <label>Группа запчастей</label>
                 <div class="field-with-add">
-                  <select [(ngModel)]="quickAddForm['groupId']" name="qaGroupId">
-                    <option [ngValue]="null">— Выберите —</option>
-                    @for (g of references()['groups'] || []; track g.id) {
-                      <option [ngValue]="g.id">{{ g.groupName }}</option>
-                    }
-                  </select>
+                  <input
+                    type="text"
+                    [(ngModel)]="quickAddForm['groupName']"
+                    name="qaGroupName"
+                    (input)="onQuickAddGroupInput(quickAddForm['groupName'])"
+                    (focus)="onQuickAddGroupInput(quickAddForm['groupName'])"
+                    autocomplete="off"
+                  >
                   <button type="button" class="btn-quick-add" (click)="openGroupQuickAdd()" title="Добавить новую группу">+</button>
                 </div>
+                @if (activeQuickAddGroupPicker() && quickAddGroupSuggestions().length > 0) {
+                  <ul class="suggestions-dropdown">
+                    @for (g of quickAddGroupSuggestions(); track g.id) {
+                      <li (click)="applyQuickAddGroupSuggestion(g)">{{ g.groupName }}</li>
+                    }
+                  </ul>
+                } @else if (activeQuickAddGroupPicker() && quickAddGroupSuggestions().length === 0 && !isEmpty(quickAddForm['groupName'])) {
+                  <small class="picker-hint picker-hint-warn">Такого не найдено. Можно создать</small>
+                }
               </div>
               <div class="applicability-section">
                 <ng-container [ngTemplateOutlet]="applicabilityFields"></ng-container>
@@ -810,7 +854,7 @@ export class AdminComponent implements OnInit {
         // отдельным запросом в PartNumbers.
         { key: 'partNum', label: 'Парт-номер', type: 'catalog-picker', catalogRole: 'partNum', required: true, quickAdd: 'part-number' },
         { key: 'name', label: 'Наименование', type: 'catalog-picker', catalogRole: 'name', required: true, partNumberOwned: true, quickAdd: 'part-number' },
-        { key: 'groupId', label: 'Группа запчастей', type: 'select', refTable: 'groups', refLabelKey: 'groupName', partNumberOwned: true, quickAdd: 'group' },
+        { key: 'groupId', label: 'Группа запчастей', type: 'group-picker', refTable: 'groups', refLabelKey: 'groupName', partNumberOwned: true, quickAdd: 'group' },
         { key: 'incomeCost', label: 'Закупочная цена', type: 'number', required: true },
         { key: 'sellCost', label: 'Цена продажи', type: 'number' },
         // Число редактируется только при добавлении новой партии; при редактировании
@@ -913,6 +957,7 @@ export class AdminComponent implements OnInit {
     this.quickAddForm = {};
     this.quickAddError.set('');
     this.quickAddKind.set(kind);
+    this.closeQuickAddGroupSuggestions();
     // Модалка «Новый парт-номер» переиспользует те же Модели/Серии, что и вкладка
     // «Парт-номера» — начинаем с чистого списка, а не с того, что могло остаться
     // от редактирования в другом контексте.
@@ -925,12 +970,23 @@ export class AdminComponent implements OnInit {
     this.quickAddKind.set(null);
     this.quickAddForm = {};
     this.quickAddError.set('');
+    this.closeQuickAddGroupSuggestions();
   }
 
   submitQuickAdd() {
     const kind = this.quickAddKind();
     if (!kind) return;
 
+    // Группа вводится текстом — сперва связываем её с id, как и парт-номер на основной форме.
+    if (kind === 'part-number') {
+      this.resolveQuickAddGroup(() => this.continueSubmitQuickAdd(kind));
+      return;
+    }
+
+    this.continueSubmitQuickAdd(kind);
+  }
+
+  private continueSubmitQuickAdd(kind: QuickAddKind) {
     const spec = this.quickAddSpec(kind);
     const validationError = spec.validate();
     if (validationError) {
@@ -1002,10 +1058,17 @@ export class AdminComponent implements OnInit {
       this.form['partNum'] = res.partNum;
       this.form['name'] = res.name;
       this.form['partNumId'] = res.id;
-      if (res.groupId != null) this.form['groupId'] = res.groupId;
+      if (res.groupId != null) {
+        this.form['groupId'] = res.groupId;
+        // Группа на форме Запчасти — текстовое поле (group-picker), поэтому кроме id
+        // нужно подставить и отображаемое название.
+        const group = (this.references()['groups'] || []).find((g: any) => String(g.id) === String(res.groupId));
+        if (group) this.form['groupName'] = group.groupName;
+      }
       this.refreshPartNumStock();
     } else if (kind === 'group') {
       this.form['groupId'] = res.id;
+      this.form['groupName'] = res.groupName;
     } else if (kind === 'incomemoto') {
       this.form['incomeMotoId'] = res.id;
     }
@@ -1050,7 +1113,9 @@ export class AdminComponent implements OnInit {
       next: (res: any) => {
         this.groupQuickAddBusy.set(false);
         // Записываем в форму модалки «Новый парт-номер», которая осталась открытой.
+        // Группа там — текстовое поле, поэтому кроме id подставляем и название.
         this.quickAddForm['groupId'] = res.id;
+        this.quickAddForm['groupName'] = res.groupName;
         this.loadAllReferences();
         this.closeGroupQuickAdd();
       },
@@ -1580,6 +1645,7 @@ export class AdminComponent implements OnInit {
 
     this.form['name'] = pn.name ?? '';
     this.form['groupId'] = pn.groupId ?? null;
+    this.form['groupName'] = pn.group ?? '';
 
     // Цены берём с последней заведённой запчасти с этим же парт-номером — как подсказку.
     const sameZip = (this.references()['zip'] || [])
@@ -1590,6 +1656,107 @@ export class AdminComponent implements OnInit {
       if (this.isEmpty(this.form['sellCost'])) this.form['sellCost'] = sameZip.sellCost;
     }
   }
+
+  //#region [Группа запчастей вручную]
+
+  activeGroupPicker = signal(false);
+  groupSuggestions = signal<{ id: number; groupName: string }[]>([]);
+
+  /** Подсказки ищутся по справочнику groups; form['groupId'] пересчитывается только при сохранении (см. resolveGroup). */
+  onGroupInput(value: string) {
+    this.form['groupName'] = value;
+    this.activeGroupPicker.set(true);
+
+    const needle = (value ?? '').toString().trim().toLowerCase();
+    const list = this.references()['groups'] || [];
+    const filtered = needle.length === 0
+      ? list
+      : list.filter((g: any) => String(g.groupName ?? '').toLowerCase().includes(needle));
+
+    this.groupSuggestions.set(filtered.slice(0, 8));
+  }
+
+  applyGroupSuggestion(g: { id: number; groupName: string }) {
+    this.form['groupName'] = g.groupName;
+    this.form['groupId'] = g.id;
+    this.closeGroupSuggestions();
+  }
+
+  private closeGroupSuggestions() {
+    this.activeGroupPicker.set(false);
+    this.groupSuggestions.set([]);
+  }
+
+  /**
+   * То же самое, но для поля «Группа запчастей» внутри модалки «Новый парт-номер»
+   * (открывается кнопкой «+» у Парт-номера/Наименования) — своё состояние, так как
+   * модалка оперирует quickAddForm, а не form.
+   */
+  activeQuickAddGroupPicker = signal(false);
+  quickAddGroupSuggestions = signal<{ id: number; groupName: string }[]>([]);
+
+  onQuickAddGroupInput(value: string) {
+    this.quickAddForm['groupName'] = value;
+    this.activeQuickAddGroupPicker.set(true);
+
+    const needle = (value ?? '').toString().trim().toLowerCase();
+    const list = this.references()['groups'] || [];
+    const filtered = needle.length === 0
+      ? list
+      : list.filter((g: any) => String(g.groupName ?? '').toLowerCase().includes(needle));
+
+    this.quickAddGroupSuggestions.set(filtered.slice(0, 8));
+  }
+
+  applyQuickAddGroupSuggestion(g: { id: number; groupName: string }) {
+    this.quickAddForm['groupName'] = g.groupName;
+    this.quickAddForm['groupId'] = g.id;
+    this.closeQuickAddGroupSuggestions();
+  }
+
+  private closeQuickAddGroupSuggestions() {
+    this.activeQuickAddGroupPicker.set(false);
+    this.quickAddGroupSuggestions.set([]);
+  }
+
+  /**
+   * Связывает введённый текст группы (quickAddForm) с записью в groups перед
+   * созданием парт-номера — тот же принцип, что и resolveGroup для основной формы.
+   */
+  private resolveQuickAddGroup(next: () => void) {
+    const groupText = (this.quickAddForm['groupName'] ?? '').toString().trim();
+    if (!groupText) {
+      this.quickAddForm['groupId'] = null;
+      next();
+      return;
+    }
+
+    const existing = (this.references()['groups'] || [])
+      .find((g: any) => String(g.groupName).trim().toLowerCase() === groupText.toLowerCase());
+
+    if (existing) {
+      this.quickAddForm['groupName'] = existing.groupName;
+      this.quickAddForm['groupId'] = existing.id;
+      next();
+      return;
+    }
+
+    this.quickAddBusy.set(true);
+    this.admin.add('groups', { groupName: groupText }).subscribe({
+      next: (g: any) => {
+        this.quickAddForm['groupId'] = g.id;
+        this.quickAddBusy.set(false);
+        this.loadAllReferences();
+        next();
+      },
+      error: (err) => {
+        this.quickAddBusy.set(false);
+        this.quickAddError.set('Не удалось создать группу: ' + (err.error?.message || err.message));
+      }
+    });
+  }
+
+  //#endregion
 
   //#region [Парт-номер и наименование вручную]
 
@@ -1653,6 +1820,45 @@ export class AdminComponent implements OnInit {
   }
 
   /**
+   * Связывает введённый текст группы с записью в groups перед сохранением запчасти:
+   * точное совпадение — переиспользуем её id, иначе заводим новую группу. Пустой текст
+   * снимает привязку. Выполняется перед resolvePartNumber, так как groupId нужен уже
+   * при заведении нового парт-номера.
+   */
+  private resolveGroup(next: () => void) {
+    const groupText = (this.form['groupName'] ?? '').toString().trim();
+    if (!groupText) {
+      this.form['groupId'] = null;
+      next();
+      return;
+    }
+
+    const existing = (this.references()['groups'] || [])
+      .find((g: any) => String(g.groupName).trim().toLowerCase() === groupText.toLowerCase());
+
+    if (existing) {
+      this.form['groupName'] = existing.groupName;
+      this.form['groupId'] = existing.id;
+      next();
+      return;
+    }
+
+    this.busy.set(true);
+    this.admin.add('groups', { groupName: groupText }).subscribe({
+      next: (g: any) => {
+        this.form['groupId'] = g.id;
+        this.busy.set(false);
+        this.loadAllReferences();
+        next();
+      },
+      error: (err) => {
+        this.busy.set(false);
+        this.error.set('Не удалось создать группу: ' + (err.error?.message || err.message));
+      }
+    });
+  }
+
+  /**
    * Связывает введённый текст парт-номера с записью в part-numbers перед сохранением
    * запчасти: точное совпадение — переиспользуем её id, иначе заводим новую каталожную
    * позицию (парт-номер вводится вручную, поэтому нового может ещё не быть в справочнике).
@@ -1704,7 +1910,7 @@ export class AdminComponent implements OnInit {
 
   //#endregion
 
-  private isEmpty(v: any): boolean {
+  protected isEmpty(v: any): boolean {
     return v === null || v === undefined || v === '';
   }
 
@@ -1721,6 +1927,12 @@ export class AdminComponent implements OnInit {
     // смещением) — input[type=date] понимает только YYYY-MM-DD, обрезаем.
     if (this.current()?.endpoint === 'orders' && typeof this.form['orderDateTime'] === 'string') {
       this.form['orderDateTime'] = this.form['orderDateTime'].slice(0, 10);
+    }
+
+    // Группа вводится текстом (group-picker) — подставляем название для отображения,
+    // отдельно от groupId, который остаётся числовым идентификатором.
+    if (this.current()?.endpoint === 'zip') {
+      this.form['groupName'] = row.group ?? '';
     }
 
     // Чтобы в заказе первым шагом сразу стоял парт-номер сохранённой запчасти.
@@ -1740,6 +1952,7 @@ export class AdminComponent implements OnInit {
     this.activeField.set(null);
     this.fieldSuggestions.set([]);
     this.closeCatalogSuggestions();
+    this.closeGroupSuggestions();
     this.currentPartNumStock.set(0);
     this.selectedFiles.set([]);
     this.existingPhotos.set([]);
@@ -1769,10 +1982,10 @@ export class AdminComponent implements OnInit {
     this.error.set('');
     this.message.set('');
 
-    // Парт-номер вводится вручную — сперва связываем текст с id существующей
-    // или новой каталожной позиции, и только потом продолжаем как раньше.
+    // Группа и парт-номер вводятся вручную — сперва связываем введённый текст
+    // с id существующей записи или заводим новую, и только потом продолжаем как раньше.
     if (table.endpoint === 'zip') {
-      this.resolvePartNumber(() => this.continueSave(table));
+      this.resolveGroup(() => this.resolvePartNumber(() => this.continueSave(table)));
       return;
     }
 
