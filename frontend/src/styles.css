@@ -69,7 +69,7 @@ input:focus, select:focus, textarea:focus {
 .success { color: #1a8f3c; font-size: 14px; margin: 8px 0; }
 .muted { color: var(--muted); }
 
-.form-field { margin-bottom: 14px; }
+.form-field { margin-bottom: 14px; position: relative; }
 .form-field label { display: block; margin-bottom: 4px; font-size: 14px; color: var(--muted); }
 
 table.data {
