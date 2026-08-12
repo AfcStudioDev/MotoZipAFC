@@ -604,13 +604,21 @@ export class HomeComponent implements OnInit {
     this.resetZoom();
   }
 
-  /** Стрелки — листание, Escape — закрыть; активно, только пока лайтбокс открыт. */
+  /**
+   * Стрелки — листание фото, Escape — закрыть верхний открытый слой: сначала
+   * лайтбокс (если открыт), иначе карточку товара под ним.
+   */
   @HostListener('window:keydown', ['$event'])
-  handleLightboxKeydown(event: KeyboardEvent) {
-    if (!this.expandedImage()) return;
-    if (event.key === 'ArrowLeft') this.prevImage();
-    else if (event.key === 'ArrowRight') this.nextImage();
-    else if (event.key === 'Escape') this.closeImage();
+  handleModalKeydown(event: KeyboardEvent) {
+    if (this.expandedImage()) {
+      if (event.key === 'ArrowLeft') this.prevImage();
+      else if (event.key === 'ArrowRight') this.nextImage();
+      else if (event.key === 'Escape') this.closeImage();
+      return;
+    }
+    if (event.key === 'Escape' && this.selectedZip()) {
+      this.closeDetails();
+    }
   }
 
   // Дополнительное приближение открытой картинки на 50%
