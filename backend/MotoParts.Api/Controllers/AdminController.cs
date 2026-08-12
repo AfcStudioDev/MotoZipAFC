@@ -5,6 +5,7 @@ using MotoParts.Api.Data;
 using MotoParts.Api.DTOs;
 using MotoParts.Api.Models;
 using MotoParts.Api.Services;
+using PdfGeneration.Services;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.Formats.Webp;
 
@@ -681,7 +682,7 @@ public class AdminController(AppDbContext db) : ControllerBase
         if (!await db.Users.AnyAsync(u => u.Id == request.UserId))
             return BadRequest(new { message = "Покупатель не найден" });
 
-        var zip = await db.Zips.Include(z => z.PartNumber).FirstOrDefaultAsync(z => z.Id == request.ZipId);
+        var zip = await db.Zips.Include(z => z.PartNumber).Include(z => z.IncomeMoto).FirstOrDefaultAsync(z => z.Id == request.ZipId);
         if (zip == null) return BadRequest(new { message = "Запчасть не найдена" });
 
         await using var tx = await db.Database.BeginTransactionAsync();
@@ -735,6 +736,9 @@ public class AdminController(AppDbContext db) : ControllerBase
 
         await db.SaveChangesAsync();
         await tx.CommitAsync();
+
+        QrCodePdfService qrCodePdfService = new QrCodePdfService();
+        qrCodePdfService.GenerateQrCodePdf(zip.Id.ToString(), zip.PartNumber.Name, zip.IncomeMoto.Description);
 
         return Ok(new { order.Id, order.OrderNumber });
     }
