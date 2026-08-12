@@ -1,0 +1,409 @@
+/* Затемненный фон позади окна */
+.modal-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background-color: rgba(0, 0, 0, 0.7);
+  /* Полупрозрачный черный фон */
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1050;
+  /* Чтобы окно было поверх всех остальных элементов */
+}
+
+/* Само окно формы */
+.modal-content {
+  background-color: #ffffff;
+  /* Чисто белый фон для максимального контраста */
+  color: var(--text);
+
+  width: 100%;
+  max-width: 500px;
+  padding: 24px;
+  border-radius: 8px;
+  /* Скругленные углы */
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+  /* Легкая тень для объема */
+
+  max-height: 90vh;
+  /* Ограничиваем высоту, чтобы окно влезало в экран */
+  overflow-y: auto;
+  /* Добавляем прокрутку, если экран маленький */
+}
+
+/* Делаем заголовки и текст внутри формы контрастными */
+.modal-content h3,
+.modal-content p,
+.modal-content label {
+  color: var(--text);
+}
+
+.modal-content .text-muted {
+  color: var(--muted);
+}
+
+.search-panel {
+  margin-bottom: 24px;
+}
+
+.search-row {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.search-row input {
+  flex: 1;
+}
+
+.filters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 10px;
+}
+
+/* Поле «Part number» с выпадающими подсказками.
+   Своя обёртка нужна, чтобы список позиционировался относительно самого поля,
+   а не всей строки фильтров. */
+.pn-field {
+  position: relative;
+}
+
+.pn-field input {
+  width: 100%;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+}
+
+.zip-card h3 {
+  font-size: 16px;
+  margin-bottom: 8px;
+}
+
+.pn {
+  font-family: monospace;
+  font-size: 13px;
+}
+
+.zip-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 12px;
+}
+
+.price {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, .4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+.modal {
+  width: 420px;
+  max-width: 92vw;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+/* ДОБАВЛЕНО: Стили для выпадающего списка предложений */
+.suggestions-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 90px;
+  /* Оставляем место под кнопку Найти */
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  list-style: none;
+  padding: 0;
+  margin: 4px 0 0 0;
+  z-index: 1000;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  max-height: 250px;
+  overflow-y: auto;
+}
+
+.suggestions-dropdown li {
+  padding: 10px 14px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.suggestions-dropdown li:hover {
+  /* Лёгкий оранжевый оттенок акцента вместо нейтрального серого — подсказка
+     заметно откликается на наведение, оставаясь в общей палитре. */
+  background: rgba(224, 107, 42, 0.08);
+}
+
+.suggestion-name {
+  font-weight: 500;
+}
+
+.suggestion-pn {
+  font-size: 0.85em;
+}
+
+/* Отступ справа в 90px у .suggestions-dropdown рассчитан на кнопку «Найти»
+   в строке поиска. У поля «Part number» кнопки нет, поэтому список тянется
+   на всю ширину поля. Селектор с двумя классами — чтобы правило не зависело
+   от порядка объявления в файле. */
+.pn-field .pn-dropdown {
+  right: 0;
+  /* Не уже поля ввода, но может подрасти под длинные названия.
+     Растёт влево (left: auto), а не вправо — иначе на крайней колонке
+     фильтров список вылез бы за правый край карточки. */
+  left: auto;
+  min-width: 100%;
+  width: max-content;
+  max-width: 340px;
+}
+
+/* Номер и название в одну строку: название сжимается и обрезается,
+   чтобы длинное имя не растягивало список за границы поля. */
+.pn-dropdown li {
+  gap: 12px;
+}
+
+.pn-dropdown .suggestion-name {
+  white-space: nowrap;
+}
+
+.pn-dropdown .suggestion-pn {
+  flex: 1;
+  min-width: 0;
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Крестик для закрытия */
+.close-btn {
+  position: absolute;
+  top: 15px;
+  right: 15px;
+  background: none;
+  border: none;
+  font-size: 28px;
+  color: var(--muted);
+  cursor: pointer;
+  line-height: 1;
+}
+
+.close-btn:hover {
+  color: var(--text);
+}
+
+.item-details-modal {
+  position: relative; /* Чтобы крестик абсолютно позиционировался внутри окна */
+  max-width: 600px; /* Окно деталей можно сделать чуть шире */
+}
+
+/* Заметка о состоянии детали: текст произвольной длины, может содержать переносы */
+.zip-comment {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* Стили для галереи фотографий */
+.gallery-img {
+  width: 160px;
+  height: 160px;
+  object-fit: cover; /* Фотографии будут обрезаться ровными квадратами без искажения пропорций */
+  border-radius: 8px;
+  border: 1px solid #dee2e6;
+  background-color: #f8f9fa;
+}
+
+/* Стили для полноэкранного просмотра фото (Lightbox) */
+.image-lightbox-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background-color: rgba(0, 0, 0, 0.85); /* Полупрозрачный черный фон */
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 9999; /* Должно быть больше, чем у обычного модального окна */
+  cursor: zoom-out; /* Курсор-лупа с минусом */
+  overflow: hidden;
+}
+
+.lightbox-img {
+  max-width: 90vw;
+  max-height: 90vh;
+  object-fit: contain; /* Сохраняет пропорции */
+  border-radius: 8px;
+  box-shadow: 0 5px 25px rgba(0,0,0,0.5);
+  cursor: default;
+  transition: transform 0.2s ease-out;
+  cursor: zoom-in;
+}
+
+.lightbox-img.zoomed {
+  transform: scale(2);
+
+  cursor: zoom-out;
+}
+
+.lightbox-close-btn {
+  position: absolute;
+  top: 20px;
+  right: 40px;
+  font-size: 45px;
+  color: white;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  z-index: 10000;
+  transition: color 0.2s;
+}
+
+.lightbox-close-btn:hover {
+  color: #ff4d4d;
+}
+
+/* Стрелки листания между фото открытого товара */
+.lightbox-nav-btn {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 56px;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 40px;
+  line-height: 1;
+  color: white;
+  background: rgba(0, 0, 0, 0.35);
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+  z-index: 10000;
+  transition: background 0.2s, color 0.2s;
+}
+
+.lightbox-nav-btn:hover {
+  background: rgba(0, 0, 0, 0.6);
+  color: #ff4d4d;
+}
+
+.lightbox-prev-btn { left: 20px; }
+.lightbox-next-btn { right: 20px; }
+
+.lightbox-counter {
+  position: absolute;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  color: white;
+  font-size: 15px;
+  background: rgba(0, 0, 0, 0.35);
+  padding: 4px 14px;
+  border-radius: 14px;
+  z-index: 10000;
+}
+
+@media (max-width: 600px) {
+  .lightbox-nav-btn {
+    width: 44px;
+    height: 44px;
+    font-size: 30px;
+  }
+  .lightbox-prev-btn { left: 8px; }
+  .lightbox-next-btn { right: 8px; }
+}
+
+/* Небольшой эффект при наведении на миниатюру */
+.gallery-img:hover {
+  opacity: 0.85;
+  transform: scale(1.02);
+  transition: all 0.2s ease-in-out;
+}
+
+.product-image {
+    width: 100%;
+    height: 150px; /* или любая другая желаемая высота */
+    object-fit: cover; /* чтобы картинка обрезалась красиво и не сплющивалась */
+    border-radius: 4px;
+    margin-bottom: 10px;
+}
+
+.product-image-placeholder {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #f1f1f1;
+    color: #999;
+    font-size: 13px;
+    box-sizing: border-box;
+}
+/* ============================================================
+   Мобильная адаптация витрины
+   ============================================================ */
+@media (max-width: 768px) {
+  /* На узком экране 280px минимума не хватает: контейнер уже,
+     и карточка вылезала бы за край */
+  .grid {
+    grid-template-columns: 1fr;
+  }
+
+  .filters {
+    grid-template-columns: 1fr;
+  }
+
+  /* Поле поиска и кнопка — в столбик, иначе поле сжимается до нечитаемого */
+  .search-row {
+    flex-direction: column;
+  }
+
+  .modal-content {
+    max-width: 100%;
+    padding: 16px;
+    max-height: 90vh;
+    overflow-y: auto;
+  }
+
+  .item-details-modal {
+    max-width: 100%;
+  }
+
+  /* Галерея прокручивается внутри себя, не растягивая окно */
+  .gallery-img {
+    width: 120px;
+    height: 120px;
+  }
+
+  .zip-footer {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+}

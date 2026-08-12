@@ -31,7 +31,7 @@ import { AuthService } from '../core/auth.service';
 })
 export class ForgotPasswordComponent {
   private auth = inject(AuthService);
-
+  
   email = '';
   message = signal('');
   error = signal('');

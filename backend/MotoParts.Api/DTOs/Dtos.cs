@@ -9,18 +9,26 @@ public record ForgotPasswordRequest(string Email);
 public record ResetPasswordRequest(string Email, string Token, string NewPassword);
 public record AuthResponse(string Token, UserDto User);
 
-public record UserDto(int Id, string Email, string FIO, string? PhoneNumber, bool IsAdmin, bool IsRegistrar , bool IsSender);
+public record UserDto(int Id, string Email, string FIO, string? PhoneNumber, bool IsAdmin, bool IsRegistrar, bool IsSender);
 
 // ---------- Catalog ----------
 public record ZipDto(
     Guid Id,
     string Name,
     decimal IncomeCost,
+    decimal? SellCost,
     string? PartNum,
-    string? Mark,
-    string? Model,
+    /// <summary>Марки, к которым применима деталь — через PartNumberApplicability.</summary>
+    List<string> Marks,
+    /// <summary>Модели, к которым применима деталь — через PartNumberApplicability.</summary>
+    List<string> Models,
     string? Group,
-    int? Year);
+    short? Year,
+    Guid IncomeMotoId,
+    int CountStored,
+    List<string> Photos,
+    /// <summary>Заметка о состоянии конкретной детали — заполняется в админке.</summary>
+    string? Comment);
 
 public record PagedResult<T>(IReadOnlyList<T> Items, int Total, int Page, int PageSize)
 {
@@ -37,9 +45,23 @@ public record OrderDto(
     string? ZipName,
     decimal? ZipCost,
     string Address,
-    string? PaymentStatus);
+    //string? PaymentStatus,
+    decimal? SellCost,
+    decimal? Discount);
 
-// ---------- Addresses ----------
+public record GuestCreateOrderRequest(
+    Guid ZipId,
+    int Count,
+    string Fio,
+    string Email,
+    string Phone,
+    string? Password,
+    string Address,
+    string? PostCode,
+    decimal? Promo
+    );
+
+// ---------- Adresses ----------
 public record CreateAddressRequest(string Address, string? PostCode);
 public record AddressDto(int Id, string Address, string? PostCode);
 
@@ -51,14 +73,60 @@ public record CreatePaymentResponse(string PaymentId, string ConfirmationUrl);
 public record AdminMarkRequest(string Mark);
 public record AdminModelRequest(int MarkId, string Model);
 public record AdminGroupRequest(string GroupName);
-public record AdminPartNumberRequest(string PartNumber);
-public record AdminZipRequest(string Name, decimal IncomeCost, int? PartNumberId, int? MarkId, int? ModelId, int? GroupId, int CountStored, int? Year);
+public record AdminPartNumberRequest(string PartNum, string Name, int? GroupId);
+public record AdminZipRequest(
+    decimal IncomeCost,
+    decimal? SellCost,
+    int PartNumId,
+    int CountStored,
+    short? Year,
+    Guid IncomeMotoId,
+    DateOnly? IncomeDate,
+    string? Comment);
 public record AdminUserRequest(string Email, string FIO, string? PhoneNumber, bool IsAdmin, bool IsRegistrar, bool IsSender, string? Password);
 public record AdminAddressRequest(string Address, string? PostCode, int? UserId);
-public record AdminOrderRequest(string OrderNumber, int CountOrdered, Guid? NomenclatureId, int AddressId, DateTimeOffset? OrderDateTime);
+public record AdminOrderRequest(
+    string? OrderNumber,
+    int CountOrdered,
+    Guid ZipId,
+    int AddressId,
+    DateTimeOffset? OrderDateTime,
+    decimal SellCost,
+    short? OperationId,
+    decimal? Discount,
+    int UserId,
+    short? DeliveryStatusId
+);
+
+/// <summary>Привязка каталожной позиции к модели мотоцикла.</summary>
+public record AdminApplicabilityRequest(int PartNumId, int ModelId);
+
+public record AdminSeriesRequest(string SeriesName);
+
+/// <summary>Привязка каталожной позиции к серии — независимо от привязки к моделям.</summary>
+public record AdminSeriesApplicabilityRequest(int PartNumId, Guid SeriesId);
+
+/// <summary>Ручная коррекция остатка: Delta со знаком, причина обязательна.</summary>
+public record AdminCorrectionRequest(Guid ZipId, int Delta, string Comment);
+
+/// <summary>Изменение цены продажи с записью в историю переоценки.</summary>
+public record AdminRepriceRequest(Guid ZipId, decimal NewCost, string? Comment);
+
+/// <summary>
+/// Массовая переоценка всех запчастей одного парт-номера.
+/// Используется, когда при заведении запчасти оператор выбрал вариант
+/// «обновить цены для всех существующих».
+/// </summary>
+public record AdminRepricePartNumRequest(int PartNumId, decimal NewCost, Guid? ExceptZipId, string? Comment);
 
 public class UpdateUserRolesRequest
 {
     public bool IsSender { get; set; }
     public bool IsRegistrar { get; set; }
+}
+
+public class ZipPhotoDto
+{ 
+    public long Id { get; set; }
+    public string Name { get; set; } = null!;
 }

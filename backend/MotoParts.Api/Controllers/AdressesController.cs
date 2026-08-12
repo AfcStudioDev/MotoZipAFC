@@ -9,7 +9,7 @@ using MotoParts.Api.Models;
 namespace MotoParts.Api.Controllers;
 
 [ApiController]
-[Route("api/addresses")]
+[Route("api/addressess")]
 [Authorize]
 public class AddressesController(AppDbContext db) : ControllerBase
 {
@@ -19,7 +19,7 @@ public class AddressesController(AppDbContext db) : ControllerBase
     public async Task<ActionResult<List<AddressDto>>> List()
     {
         var userId = CurrentUserId;
-        return Ok(await db.DeliveryAdressess
+        return Ok(await db.DeliveryAddressess
             .Where(a => a.UserId == userId)
             .Select(a => new AddressDto(a.Id, a.Address, a.PostCode))
             .ToListAsync());
@@ -37,7 +37,7 @@ public class AddressesController(AppDbContext db) : ControllerBase
             PostCode = request.PostCode,
             UserId = CurrentUserId,
         };
-        db.DeliveryAdressess.Add(address);
+        db.DeliveryAddressess.Add(address);
         await db.SaveChangesAsync();
 
         return Ok(new AddressDto(address.Id, address.Address, address.PostCode));

@@ -1,0 +1,12 @@
+# Скрипты, которые исполняются ВНУТРИ Linux-контейнеров, обязаны иметь LF —
+# CRLF ломает shebang ("/bin/sh^M: not found") при сборке на Windows.
+# Без этого правила git может перевести окончания строк в CRLF при чекауте
+# на Windows (в зависимости от core.autocrlf), и Docker-сборка перестанет
+# запускаться без единого изменения в самом содержимом файла.
+*.sh text eol=lf
+docker-entrypoint* text eol=lf
+
+# Остальные файлы конфигурации для Linux-контейнеров — по той же причине.
+Dockerfile text eol=lf
+nginx.conf text eol=lf
+Caddyfile text eol=lf

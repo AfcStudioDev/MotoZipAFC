@@ -19,8 +19,8 @@ import { AuthService } from '../core/auth.service';
           <input type="email" name="email" [(ngModel)]="email" required />
         </div>
         <div class="form-field">
-          <label>Телефон (необязательно)</label>
-          <input type="tel" name="phone" [(ngModel)]="phone" />
+          <label>Телефон</label>
+          <input type="tel" name="phone" [(ngModel)]="phone" required/>
         </div>
         <div class="form-field">
           <label>Пароль (минимум 6 символов)</label>

@@ -26,43 +26,59 @@ public class CatalogController(AppDbContext db) : ControllerBase
         page = Math.Max(1, page);
         pageSize = Math.Clamp(pageSize, 1, 100);
 
+        // Классификация живёт на каталожной позиции, применимость к моделям — в PartNumberApplicability.
         var zips = db.Zips
-            .Include(z => z.Mark)
-            .Include(z => z.Model)
-            .Include(z => z.Group)
-            .Include(z => z.PartNumber)
+            .Include(z => z.PartNumber).ThenInclude(p => p.Group)
+            .Include(z => z.PartNumber).ThenInclude(p => p.Applicability).ThenInclude(a => a.Model).ThenInclude(m => m.Mark)
+            .Include(z => z.Photos)
             .AsQueryable();
 
         if (!string.IsNullOrWhiteSpace(query))
         {
             var q = query.Trim();
             zips = zips.Where(z =>
-                EF.Functions.ILike(z.Name, $"%{q}%") ||
-                (z.PartNumber != null && EF.Functions.ILike(z.PartNumber.PartNum, $"%{q}%")) ||
-                (z.Mark != null && EF.Functions.ILike(z.Mark.Mark, $"%{q}%")) ||
-                (z.Model != null && EF.Functions.ILike(z.Model.Model, $"%{q}%")));
+                EF.Functions.ILike(z.PartNumber.Name, $"%{q}%") ||
+                EF.Functions.ILike(z.PartNumber.PartNum, $"%{q}%") ||
+                z.PartNumber.Applicability.Any(a =>
+                    EF.Functions.ILike(a.Model.Model, $"%{q}%") ||
+                    (a.Model.Mark != null && EF.Functions.ILike(a.Model.Mark.Mark, $"%{q}%"))));
         }
 
-        if (markId.HasValue) zips = zips.Where(z => z.MarkId == markId);
-        if (modelId.HasValue) zips = zips.Where(z => z.ModelId == modelId);
-        if (groupId.HasValue) zips = zips.Where(z => z.GroupId == groupId);
-        if (year.HasValue) zips = zips.Where(z => z.Year != null && z.Year.Value.Year == year);
+        // Деталь подходит к нескольким моделям, поэтому фильтры идут через Any — дублей строк не возникает.
+        if (markId.HasValue)
+            zips = zips.Where(z => z.PartNumber.Applicability.Any(a => a.Model.MarkId == markId));
+        if (modelId.HasValue)
+            zips = zips.Where(z => z.PartNumber.Applicability.Any(a => a.ModelId == modelId));
+        if (groupId.HasValue) zips = zips.Where(z => z.PartNumber.GroupId == groupId);
+        if (year.HasValue) zips = zips.Where(z => z.Year != null && z.Year.Value == year);
         if (!string.IsNullOrWhiteSpace(partNumber))
-            zips = zips.Where(z => z.PartNumber != null && EF.Functions.ILike(z.PartNumber.PartNum, $"%{partNumber.Trim()}%"));
+            zips = zips.Where(z => EF.Functions.ILike(z.PartNumber.PartNum, $"%{partNumber.Trim()}%"));
 
         var total = await zips.CountAsync();
         var items = await zips
-            .OrderBy(z => z.Name)
+            .OrderBy(z => z.PartNumber.Name)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .Select(z => new ZipDto(
-                z.Id, z.Name, z.IncomeCost,
-                z.PartNumber != null ? z.PartNumber.PartNum : null,
-                z.Mark != null ? z.Mark.Mark : null,
-                z.Model != null ? z.Model.Model : null,
-                z.Group != null ? z.Group.GroupName : null,
-                z.Year != null ? z.Year.Value.Year : null))
-            .ToListAsync(); 
+                z.Id,
+                z.PartNumber.Name,
+                z.IncomeCost,
+                z.SellCost,
+                z.PartNumber.PartNum,
+                z.PartNumber.Applicability
+                    .Where(a => a.Model.Mark != null)
+                    .Select(a => a.Model.Mark!.Mark)
+                    .Distinct()
+                    .ToList(),
+                z.PartNumber.Applicability.Select(a => a.Model.Model).Distinct().ToList(),
+                z.PartNumber.Group != null ? z.PartNumber.Group.GroupName : null,
+                z.Year,
+                z.IncomeMotoId,
+                z.Stored != null ? z.Stored.Count : 0,
+                z.Photos.Select(p => p.FileName).ToList(),
+                z.Comment
+            ))
+            .ToListAsync();
 
         return Ok(new PagedResult<ZipDto>(items, total, page, pageSize));
     }
@@ -86,5 +102,30 @@ public class CatalogController(AppDbContext db) : ControllerBase
     [HttpGet("years")]
     public async Task<IActionResult> Years() =>
         Ok(await db.Zips.Where(z => z.Year != null)
-            .Select(z => z.Year!.Value.Year).Distinct().OrderByDescending(y => y).ToListAsync());
+            .Select(z => z.Year!.Value).Distinct().OrderByDescending(y => y).ToListAsync());
+
+    /// <summary>
+    /// Подсказки для поля «Part number» в фильтрах каталога.
+    /// Отдаются только парт-номера, по которым реально заведены запчасти —
+    /// иначе подсказка приводила бы к пустой выдаче.
+    /// </summary>
+    [HttpGet("part-numbers")]
+    public async Task<IActionResult> PartNumberSuggestions([FromQuery] string? query, [FromQuery] int limit = 10)
+    {
+        limit = Math.Clamp(limit, 1, 50);
+
+        var partNumbers = db.PartNumbers.Where(p => p.Zips.Any());
+
+        if (!string.IsNullOrWhiteSpace(query))
+        {
+            var q = query.Trim();
+            partNumbers = partNumbers.Where(p => EF.Functions.ILike(p.PartNum, $"%{q}%"));
+        }
+
+        return Ok(await partNumbers
+            .OrderBy(p => p.PartNum)
+            .Take(limit)
+            .Select(p => new { p.PartNum, p.Name })
+            .ToListAsync());
+    }
 }

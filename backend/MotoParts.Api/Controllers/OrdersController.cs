@@ -1,10 +1,14 @@
-using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+
 using MotoParts.Api.Data;
 using MotoParts.Api.DTOs;
 using MotoParts.Api.Models;
+using MotoParts.Api.Services;
+
+using System.Linq;
+using System.Security.Claims;
 
 namespace MotoParts.Api.Controllers;
 
@@ -33,10 +37,11 @@ public class OrdersController(AppDbContext db) : ControllerBase
             .Take(pageSize)
             .Select(o => new OrderDto(
                 o.Id, o.OrderNumber, o.CountOrdered, o.OrderDateTime,
-                o.Nomenclature != null ? o.Nomenclature.Name : null,
-                o.Nomenclature != null ? o.Nomenclature.IncomeCost : null,
+                o.Zip.PartNumber.Name,
+                o.Zip.IncomeCost,
                 o.Address.Address,
-                o.Payment != null ? o.Payment.Status : null))
+                //o.Payment != null ? o.Payment.Status : null,
+                o.SellCost, o.Discount))
             .ToListAsync();
 
         return Ok(new PagedResult<OrderDto>(items, total, page, pageSize));
@@ -45,38 +50,180 @@ public class OrdersController(AppDbContext db) : ControllerBase
     [HttpPost]
     public async Task<ActionResult<OrderDto>> Create(CreateOrderRequest request)
     {
-        if (request.Count <= 0)
-            return BadRequest(new { message = "Количество должно быть больше нуля" });
+        var zip = await db.Zips.Include(z => z.PartNumber).FirstOrDefaultAsync(z => z.Id == request.ZipId);
+        if (zip == null) return NotFound(new { message = "Запчасть не найдена" });
 
-        var userId = CurrentUserId;
-        var address = await db.DeliveryAdressess
-            .FirstOrDefaultAsync(a => a.Id == request.AddressId && a.UserId == userId);
-        if (address is null)
-            return BadRequest(new { message = "Адрес доставки не найден" });
+        var storedItem = await db.Stored.FirstOrDefaultAsync(s => s.ZipId == request.ZipId);
 
-        var zip = await db.Zips.FindAsync(request.ZipId);
-        if (zip is null)
-            return NotFound(new { message = "Запчасть не найдена" });
-            //todo: сделать поиск остатков по таблице склада и переделать проверку
-        //if (zip.CountStored < request.Count)
-        //    return BadRequest(new { message = $"На складе только {zip.CountStored} шт." });
+        if (storedItem == null || storedItem.Count < request.Count)
+        {
+            return BadRequest(new { message = "Недостаточно товара на складе. Доступно: " + (storedItem?.Count ?? 0) });
+        }
+
+        // Списание остатка и запись движения должны быть атомарны.
+        await using var tx = await db.Database.BeginTransactionAsync();
+
+        storedItem.Count -= request.Count;
 
         var order = new Order
         {
             Id = Guid.NewGuid(),
-            OrderNumber = $"ORD-{DateTime.UtcNow:yyyyMMdd}-{Random.Shared.Next(100000, 999999)}",
+            OrderNumber = "ORD-" + DateTimeOffset.Now.ToUnixTimeSeconds(),
             CountOrdered = request.Count,
-            NomenclatureId = zip.Id,
-            AddressId = address.Id,
+            ZipId = request.ZipId,
+            AddressId = request.AddressId,
             OrderDateTime = DateTimeOffset.UtcNow,
+            SellCost = request.SellCost,
+            UserId = CurrentUserId,
+            OperationId = (short)OperationEnum.Sale,
+            DeliveryStatusId = (short)DeliveryStatusEnum.created
         };
-        //zip.CountStored -= request.Count;
 
         db.Orders.Add(order);
+
+        db.Logs.Add(new Log
+        {
+            CreatedAt = DateTimeOffset.UtcNow,
+            OperationId = (short)OperationEnum.Sale,
+            OrderId = order.Id,
+            ZipId = zip.Id,
+            UserId = order.UserId,
+            Qty = -request.Count,
+            UnitCost = zip.IncomeCost,
+            SellCost = request.SellCost,
+            Description = $"Заказ {order.OrderNumber}: {zip.PartNumber.Name} × {request.Count}"
+        });
+
+        await db.SaveChangesAsync();
+        await tx.CommitAsync();
+
+        return Ok(order);
+    }
+
+    [HttpDelete("orders/{id}")]
+    public async Task<IActionResult> DeleteOrder(Guid id)
+    {
+        var order = await db.Orders
+            // Если у вас есть связанные оплаты, EF Core удалит их каскадно (если настроено)
+            // или их нужно будет включить и удалить явно, например: .Include(o => o.Payment)
+            .FirstOrDefaultAsync(o => o.Id == id);
+
+        if (order == null) return NotFound(new { message = "Заказ не найден" });
+
+        db.Orders.Remove(order);
         await db.SaveChangesAsync();
 
-        return Ok(new OrderDto(
-            order.Id, order.OrderNumber, order.CountOrdered, order.OrderDateTime,
-            zip.Name, request.SellCost, address.Address, null));
+        return Ok(new { message = "Заказ успешно удален" });
+    }
+
+    // Оформление без регистрации: на контроллере висит [Authorize], поэтому
+    // анонимный доступ открывается точечно, иначе гостевой заказ отдаёт 401.
+    [AllowAnonymous]
+    [HttpPost("guest-order")]
+    public async Task<ActionResult<OrderDto>> CreateGuestOrder([FromBody] GuestCreateOrderRequest req)
+    {
+        // 1. Ищем запчасть
+        var zip = await db.Zips.Include(z => z.PartNumber).FirstOrDefaultAsync(z => z.Id == req.ZipId);
+        if (zip == null) return NotFound(new { message = "Запчасть не найдена" });
+
+        var storedItem = await db.Stored.FirstOrDefaultAsync(s => s.ZipId == req.ZipId);
+        if (storedItem == null || storedItem.Count < req.Count)
+            return BadRequest(new { message = "Недостаточно товара на складе. Доступно: " + (storedItem?.Count ?? 0) });
+
+        // 2. Проверяем пользователя по номеру телефона
+        var user = await db.Users
+            .Include(u => u.DeliveryAddresses)
+            .FirstOrDefaultAsync(u => u.PhoneNumber == req.Phone);
+
+        if (user == null)
+        {
+            // Пользователь не найден -> создаем нового
+            user = new User
+            {
+                Email = req.Email,
+                PhoneNumber = req.Phone,
+                FIO = req.Fio,
+                PasswordHash = !string.IsNullOrEmpty(req.Password)
+                    ? PasswordHasher.Hash(req.Password) // Используйте ваш сервис хэширования
+                    : "", // Или сгенерируйте случайный пароль
+                DeliveryAddresses = new List<DeliveryAddress>()
+            };
+            db.Users.Add(user);
+        }
+
+        // 3. Проверяем адрес пользователя
+        var address = user.DeliveryAddresses?
+            .FirstOrDefault(a => a.Address == req.Address && a.PostCode == req.PostCode);
+
+        if (address == null)
+        {
+            // Если адреса нет, создаем его
+            address = new DeliveryAddress
+            {
+                Address = req.Address,
+                PostCode = req.PostCode,
+                User = user
+            };
+            db.DeliveryAddressess.Add(address);
+        }
+
+        // Сохраняем изменения, чтобы получить сгенерированные ID для пользователя и адреса
+        await db.SaveChangesAsync();
+        user = await db.Users
+            .FirstOrDefaultAsync(u => u.PhoneNumber == req.Phone);
+        // 4. Создаем заказ с операцией расхода
+        await using var tx = await db.Database.BeginTransactionAsync();
+
+        storedItem.Count -= req.Count;
+
+        var order = new Order
+        {
+            Id = Guid.NewGuid(),
+            OrderNumber = $"ORD-{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}",
+            CountOrdered = req.Count,
+            ZipId = zip.Id,
+            AddressId = address.Id,
+            OrderDateTime = DateTimeOffset.UtcNow,
+            SellCost = zip.SellCost ?? 0m,
+            Discount = req.Promo,
+            UserId = user.Id,
+            OperationId = (short)OperationEnum.Sale
+        };
+        db.Orders.Add(order);
+
+        var incomeMoto = await db.IncomeMotos.FirstOrDefaultAsync(x => x.Id == zip.IncomeMotoId);
+
+        // 5. Добавляем запись в таблицу Log
+        db.Logs.Add(new Log
+        {
+            CreatedAt = DateTimeOffset.UtcNow,
+            OperationId = (short)OperationEnum.Sale,
+            OrderId = order.Id,
+            ZipId = zip.Id,
+            UserId = user.Id,
+            Qty = -req.Count,
+            UnitCost = zip.IncomeCost,
+            SellCost = order.SellCost,
+            Description = $"Заказ {order.OrderNumber} для {user.PhoneNumber}:{user.FIO}. " +
+                          $"Деталь {zip.PartNumber.Name} взята с мотоцикла {incomeMoto?.Description ?? "—"}"
+        });
+
+        await db.SaveChangesAsync();
+        await tx.CommitAsync();
+
+        // Формируем ответ (аналогичный существующему методу создания)
+        var dto = new OrderDto(
+            order.Id,
+            order.OrderNumber,
+            order.CountOrdered,
+            order.OrderDateTime,
+            zip.PartNumber.Name,
+            zip.IncomeCost,
+            address.Address,
+            order.SellCost,
+            order.Discount
+        );
+
+        return Ok(dto);
     }
 }
