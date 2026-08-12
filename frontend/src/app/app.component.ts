@@ -9,7 +9,7 @@ import { AuthService } from './core/auth.service';
     <header class="header">
       <div class="container header-inner">
         <a routerLink="/" class="logo">
-          <img src="/logo.svg" alt="" class="logo-img" />
+          <img src="/Black_DG.png" alt="" class="logo-img" />
           Donor<span>Garage</span>
         </a>
         <nav class="nav">

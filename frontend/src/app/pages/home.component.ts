@@ -1,4 +1,4 @@
-import { Component, OnInit, inject, signal, ChangeDetectionStrategy } from '@angular/core';
+import { Component, OnInit, inject, signal, computed, HostListener, ChangeDetectionStrategy } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { CurrencyPipe } from '@angular/common';
 import { Router } from '@angular/router';
@@ -276,6 +276,11 @@ import { ChangeDetectorRef } from '@angular/core';
       @if (expandedImage(); as imgUrl) {
         <div class="image-lightbox-backdrop" (click)="closeImage()" (mousemove)="onMouseMove($event)">
           <button class="lightbox-close-btn" (click)="closeImage()">&times;</button>
+          @if (currentGalleryPhotos().length > 1) {
+            <button class="lightbox-nav-btn lightbox-prev-btn" (click)="prevImage($event)" title="Предыдущее фото">&#8249;</button>
+            <button class="lightbox-nav-btn lightbox-next-btn" (click)="nextImage($event)" title="Следующее фото">&#8250;</button>
+            <div class="lightbox-counter">{{ (expandedPhotoIndex() ?? 0) + 1 }} / {{ currentGalleryPhotos().length }}</div>
+          }
           <img [src]="imgUrl" class="lightbox-img" [class.zoomed]="isZoomed()" [style.transform-origin]="zoomOrigin()" (click)="toggleZoom($event)" alt="Крупное фото">
         </div>
       }
@@ -288,7 +293,21 @@ export class HomeComponent implements OnInit {
   public photoBaseUrl = `${environment.apiUrl.replace('/api', '')}/ZipPhotos/`;
   // ДОБАВЛЕНО: Сигнал и сабжект для автопредложений
   suggestions = signal<ZipDto[]>([]);
-  expandedImage = signal<string | null>(null);
+
+  /** Индекс открытой в лайтбоксе фотографии среди фото текущего товара (selectedZip). */
+  expandedPhotoIndex = signal<number | null>(null);
+
+  /** Фото текущего открытого товара — базис для листания в лайтбоксе. */
+  currentGalleryPhotos = computed(() => {
+    const zip = this.selectedZip();
+    return zip ? this.getZipPhotos(zip) : [];
+  });
+
+  expandedImage = computed(() => {
+    const idx = this.expandedPhotoIndex();
+    const photos = this.currentGalleryPhotos();
+    return idx !== null && idx >= 0 && idx < photos.length ? photos[idx] : null;
+  });
 
   /** Подсказки для поля «Part number» в фильтрах. */
   partNumSuggestions = signal<{ partNum: string; name: string }[]>([]);
@@ -564,12 +583,35 @@ export class HomeComponent implements OnInit {
   }
 
   openImage(photoUrl: string) {
-    this.expandedImage.set(photoUrl);
+    const idx = this.currentGalleryPhotos().indexOf(photoUrl);
+    this.expandedPhotoIndex.set(idx >= 0 ? idx : 0);
   }
 
-  // closeImage() {
-  //   this.expandedImage.set(null);
-  // }
+  /** Листание фото в лайтбоксе по кругу — с последнего на первое и наоборот. */
+  prevImage(event?: Event) {
+    event?.stopPropagation();
+    const total = this.currentGalleryPhotos().length;
+    if (total === 0) return;
+    this.expandedPhotoIndex.update(idx => ((idx ?? 0) - 1 + total) % total);
+    this.resetZoom();
+  }
+
+  nextImage(event?: Event) {
+    event?.stopPropagation();
+    const total = this.currentGalleryPhotos().length;
+    if (total === 0) return;
+    this.expandedPhotoIndex.update(idx => ((idx ?? 0) + 1) % total);
+    this.resetZoom();
+  }
+
+  /** Стрелки — листание, Escape — закрыть; активно, только пока лайтбокс открыт. */
+  @HostListener('window:keydown', ['$event'])
+  handleLightboxKeydown(event: KeyboardEvent) {
+    if (!this.expandedImage()) return;
+    if (event.key === 'ArrowLeft') this.prevImage();
+    else if (event.key === 'ArrowRight') this.nextImage();
+    else if (event.key === 'Escape') this.closeImage();
+  }
 
   // Дополнительное приближение открытой картинки на 50%
   // Метод для клика по самой картинке
@@ -598,10 +640,14 @@ export class HomeComponent implements OnInit {
     this.zoomOrigin.set(`${x}% ${y}%`);
   }
 
-  // Обновите ваш метод закрытия картинки, чтобы сбрасывать зум
-  closeImage() {
-    this.expandedImage.set(null); // У вас может называться иначе
+  private resetZoom() {
     this.isZoomed.set(false);
     this.zoomOrigin.set('50% 50%');
+  }
+
+  // Обновите ваш метод закрытия картинки, чтобы сбрасывать зум
+  closeImage() {
+    this.expandedPhotoIndex.set(null);
+    this.resetZoom();
   }
 }
