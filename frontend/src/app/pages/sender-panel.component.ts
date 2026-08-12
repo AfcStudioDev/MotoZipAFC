@@ -1,12 +1,14 @@
 import { Component, OnInit, inject, signal, computed, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule, DatePipe } from '@angular/common';
+import { FormsModule } from '@angular/forms';
 import { AdminService } from '../core/admin.service'; // или ваш сервис
 import { AuthService } from '../core/auth.service';
+import { environment } from '../../environments/environment';
 
 @Component({
     selector: 'app-sender-panel',
     standalone: true,
-    imports: [CommonModule, DatePipe],
+    imports: [CommonModule, DatePipe, FormsModule],
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `
     <div class="sender-panel">
@@ -22,8 +24,51 @@ import { AuthService } from '../core/auth.service';
             <button [class.active]="activeTab() === 'completed'" (click)="switchTab('completed')">
                 Завершены ({{ completedOrders().length }})
             </button>
+            <button [class.active]="activeTab() === 'check'" (click)="switchTab('check')">
+                Проверка товара
+            </button>
         </div>
 
+        @if (activeTab() === 'check') {
+            <div class="check-panel">
+                <div class="check-input-row">
+                    <input
+                        type="text"
+                        class="check-input"
+                        [(ngModel)]="checkGuid"
+                        (keyup.enter)="checkZip()"
+                        placeholder="Введите GUID запчасти"
+                        autocomplete="off"
+                    >
+                    <button class="btn-act btn-primary" [disabled]="checkBusy()" (click)="checkZip()">Проверить</button>
+                </div>
+
+                @if (checkError()) {
+                    <div class="check-error">{{ checkError() }}</div>
+                }
+
+                @if (checkResult(); as zip) {
+                    <div class="check-result">
+                        <p><strong>Наименование:</strong> {{ zip.name }}</p>
+                        <p><strong>Парт-номер:</strong> {{ zip.partNum }}</p>
+                        <p><strong>Мотоцикл донор:</strong> {{ zip.incomeMoto || 'Не указан' }}</p>
+
+                        <p class="check-photos-label"><strong>Фотографии:</strong></p>
+                        @if (zip.photos && zip.photos.length > 0) {
+                            <div class="check-photos">
+                                @for (photo of zip.photos; track photo) {
+                                    <img [src]="photoBaseUrl + photo" alt="Фото {{ zip.name }}" class="check-photo">
+                                }
+                            </div>
+                        } @else {
+                            <p class="text-muted">Фотографий нет</p>
+                        }
+                    </div>
+                }
+            </div>
+        }
+
+        @if (activeTab() !== 'check') {
         <div class="table-wrap">
             <table class="orders-table">
                 <thead>
@@ -68,6 +113,7 @@ import { AuthService } from '../core/auth.service';
                 </tbody>
             </table>
         </div>
+        }
     </div>
   `,
     styles: [`
@@ -83,6 +129,43 @@ import { AuthService } from '../core/auth.service';
       font-weight: 500;
       transition: 0.2s;
     }
+    .check-panel {
+      background: #fff;
+      border: 1px solid var(--border, #eee);
+      border-radius: 8px;
+      padding: 20px;
+    }
+
+    .check-input-row { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+    .check-input {
+      flex: 1;
+      min-width: 240px;
+      padding: 8px 12px;
+      border: 1px solid var(--border, #ccc);
+      border-radius: 4px;
+      font-size: 14px;
+    }
+
+    .check-error {
+      color: #dc3545;
+      background: #fdecea;
+      border: 1px solid #f5c2c7;
+      border-radius: 4px;
+      padding: 8px 12px;
+      margin-bottom: 16px;
+    }
+
+    .check-result p { margin: 6px 0; }
+    .check-photos-label { margin-top: 12px; }
+    .check-photos { display: flex; gap: 10px; flex-wrap: wrap; }
+    .check-photo {
+      width: 140px;
+      height: 140px;
+      object-fit: cover;
+      border-radius: 6px;
+      border: 1px solid var(--border, #eee);
+    }
+
     .tabs button.active {
       background: var(--accent, #007bff);
       border-color: var(--accent, #007bff);
@@ -185,9 +268,16 @@ export class SenderPanelComponent implements OnInit {
     isAdmin = this.authService.isAdmin;
 
     orders = signal<any[]>([]);
-    activeTab = signal<'created' | 'sent' | 'completed'>('created');
+    activeTab = signal<'created' | 'sent' | 'completed' | 'check'>('created');
     // хранит ID выбранного заказа
     selectedOrderId = signal<string | null>(null);
+
+    // Проверка товара по GUID
+    photoBaseUrl = `${environment.apiUrl.replace('/api', '')}/ZipPhotos/`;
+    checkGuid = '';
+    checkResult = signal<any | null>(null);
+    checkError = signal('');
+    checkBusy = signal(false);
 
     // Вычисляемые сигналы для фильтрации по вкладкам
     createdOrders = computed(() => this.orders().filter(o => o.deliveryStatus === 'created'));
@@ -203,9 +293,32 @@ export class SenderPanelComponent implements OnInit {
     });
 
     // Переключение вкладок со сбросом выделения
-    switchTab(tab: 'created' | 'sent' | 'completed') {
+    switchTab(tab: 'created' | 'sent' | 'completed' | 'check') {
         this.activeTab.set(tab);
         this.selectedOrderId.set(null);
+    }
+
+    checkZip() {
+        const guid = this.checkGuid.trim();
+        this.checkError.set('');
+        this.checkResult.set(null);
+
+        if (!guid) {
+            this.checkError.set('Введите GUID запчасти');
+            return;
+        }
+
+        this.checkBusy.set(true);
+        this.adminService.getSenderZipInfo(guid).subscribe({
+            next: (zip) => {
+                this.checkBusy.set(false);
+                this.checkResult.set(zip);
+            },
+            error: (err) => {
+                this.checkBusy.set(false);
+                this.checkError.set(err.error?.message || 'Запчасть не найдена');
+            }
+        });
     }
 
     ngOnInit() {
