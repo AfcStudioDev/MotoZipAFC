@@ -1631,6 +1631,16 @@ export class AdminComponent implements OnInit {
     this.error.set('');
     this.message.set('');
 
+    // Нативный required у select/zip-picker не спасает: Angular пишет в value
+    // синтетический id даже для [ngValue]="null", так что браузер не видит
+    // пустой выбор как невалидный, и форма уходит на бэкенд с null в обязательном
+    // поле — тот падает на десериализации ещё до контроллера, с нечитаемым 400.
+    const missing = table.fields.filter(f => f.required && this.isEmpty(this.form[f.key]));
+    if (missing.length > 0) {
+      this.error.set('Не заполнены обязательные поля: ' + missing.map(f => f.label).join(', '));
+      return;
+    }
+
     // Парт-номер вводится вручную — сперва связываем текст с id существующей
     // или новой каталожной позиции, и только потом продолжаем как раньше.
     if (table.endpoint === 'zip') {
