@@ -27,4 +27,13 @@
     <ProjectReference Include="..\..\QRCodeGenerator\PdfGeneration.csproj" />
   </ItemGroup>
 
+  <!-- Логотип для водяного знака не под wwwroot, поэтому SDK не публикует его сам по себе —
+       без этого он остаётся только в исходниках и пропадает при publish (в т.ч. в Docker-образе). -->
+  <ItemGroup>
+    <Content Include="Images\watermark.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+  </ItemGroup>
+
 </Project>
