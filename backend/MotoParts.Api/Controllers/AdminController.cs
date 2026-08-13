@@ -7,6 +7,7 @@ using MotoParts.Api.Models;
 using MotoParts.Api.Services;
 using PdfGeneration.Services;
 using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.Formats.Png;
 using SixLabors.ImageSharp.Formats.Webp;
 
 using System.Security.Claims;
@@ -438,7 +439,60 @@ public class AdminController(AppDbContext db) : ControllerBase
         using var image = await Image.LoadAsync(stream);
         await image.SaveAsync(filePath, new WebpEncoder { Quality = 80 });
 
+        await ApplyWatermarkAsync(filePath);
+
         return uniqueFileName;
+    }
+
+    private static async Task ApplyWatermarkAsync(string filePath)
+    {
+        string dir = Path.GetDirectoryName(filePath)!;
+        string baseName = Path.GetFileNameWithoutExtension(filePath);
+        string sourcePngPath = Path.Combine(dir, $"{baseName}_wm_src.png");
+        string logoStagePath = Path.Combine(dir, $"{baseName}_wm_logo.png");
+        string finalStagePath = Path.Combine(dir, $"{baseName}_wm_final.png");
+        string logoPath = Path.Combine(Directory.GetCurrentDirectory(), "Images", "watermark.png");
+
+        try
+        {
+            using (var source = await Image.LoadAsync(filePath))
+                await source.SaveAsync(sourcePngPath, new PngEncoder());
+
+            var logoResult = await WatermarkService.ApplyImageWatermarkAsync(
+                baseImagePath: sourcePngPath,
+                watermarkImagePath: logoPath,
+                outputPath: logoStagePath,
+                position: WatermarkPosition.TopLeft,
+                opacity: 0.4f,
+                scale: 0.3f,
+                padding: 0.02f);
+
+            string textBasePath = logoResult.Success ? logoStagePath : sourcePngPath;
+
+            var textResult = await WatermarkService.ApplyTextWatermarkAsync(
+                baseImagePath: textBasePath,
+                outputPath: finalStagePath,
+                text: "DonorGarage.ru",
+                fontFamily: "Arial",
+                fontSize: 0.05f,
+                position: WatermarkPosition.BottomRight,
+                opacity: 0.4f,
+                color: System.Drawing.Color.White,
+                padding: 0.05f,
+                rotation: -15f);
+
+            // На случай, если GDI+ так же молча обрубит и PNG, — не доверяем "успеху" вслепую.
+            if (textResult.Success && new FileInfo(finalStagePath).Length > 512)
+            {
+                using var watermarked = await Image.LoadAsync(finalStagePath);
+                await watermarked.SaveAsync(filePath, new WebpEncoder { Quality = 80 });
+            }
+        }
+        finally
+        {
+            foreach (var temp in new[] { sourcePngPath, logoStagePath, finalStagePath })
+                if (System.IO.File.Exists(temp)) System.IO.File.Delete(temp);
+        }
     }
 
     [HttpDelete("zip-photos/{photoId:int}")]
