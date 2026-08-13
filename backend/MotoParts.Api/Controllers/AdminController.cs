@@ -450,7 +450,11 @@ public class AdminController(AppDbContext db) : ControllerBase
         string sourcePngPath = Path.Combine(dir, $"{baseName}_wm_src.png");
         string logoStagePath = Path.Combine(dir, $"{baseName}_wm_logo.png");
         string finalStagePath = Path.Combine(dir, $"{baseName}_wm_final.png");
-        string logoPath = Path.Combine(Directory.GetCurrentDirectory(), "Images", "watermark.png");
+        // AppContext.BaseDirectory — папка самого приложения, а не «текущая директория» процесса:
+        // при dotnet run/из Visual Studio она случайно совпадает с исходниками (где Images/watermark.png
+        // и лежит), но в Docker (publish + запуск из /app) файла там уже нет — из-за этого расхождения
+        // логотип водяного знака в контейнере не находился.
+        string logoPath = Path.Combine(AppContext.BaseDirectory, "Images", "watermark.png");
 
         try
         {
