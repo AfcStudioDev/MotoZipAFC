@@ -362,7 +362,7 @@ interface PriceConflict {
                         @for (photo of existingPhotos(); track photo.id) {
                           <div class="photo-preview-item">
                             <img
-                              [src]="photoBaseUrl + photo.fileName"
+                              [src]="photoBaseUrl + photo.fileName + '?v=' + photo.id"
                               [alt]="photo.fileName"
                             >
                             <button type="button" (click)="deleteExistingPhoto(photo)">
