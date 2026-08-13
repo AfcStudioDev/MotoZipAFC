@@ -1,11 +1,12 @@
-﻿using SixLabors.ImageSharp.Formats;
+using SixLabors.Fonts;
+using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.Drawing.Processing;
+using SixLabors.ImageSharp.PixelFormats;
+using SixLabors.ImageSharp.Processing;
 using System;
-using System.Collections.Generic;
-using System.Drawing;
-using System.Drawing.Drawing2D;
-using System.Drawing.Imaging;
+using System.IO;
 using System.Linq;
-using System.Text;
+using System.Numerics;
 using System.Threading.Tasks;
 
 namespace MotoParts.Api.Services
@@ -14,9 +15,9 @@ namespace MotoParts.Api.Services
     public class WatermarkResult
     {
         public bool Success { get; set; }
-        public string Message { get; set; }
-        public string OutputPath { get; set; }
-        public Exception Exception { get; set; }
+        public string Message { get; set; } = "";
+        public string? OutputPath { get; set; }
+        public Exception? Exception { get; set; }
     }
 
     public enum WatermarkPosition
@@ -28,9 +29,63 @@ namespace MotoParts.Api.Services
         Center
     }
 
-    public class WatermarkService
+    /// <summary>
+    /// Наложение водяных знаков на ImageSharp — кроссплатформенно, в т.ч. в Linux-контейнере
+    /// (в отличие от System.Drawing/GDI+, который на Linux без libgdiplus не работает вообще).
+    /// </summary>
+    public static class WatermarkService
     {
-        public static WatermarkResult ApplyImageWatermark(
+        /// <summary>
+        /// Шрифт для текстового водяного знака берём в первую очередь из системных (на случай,
+        /// если запрошенное имя реально установлено), а если его нет — из LatoFont, который
+        /// пакет QuestPDF копирует в выходную папку при каждой сборке (см. QuestPDF.targets),
+        /// поэтому он гарантированно есть рядом с exe и в Docker-образе на Linux, где системных
+        /// шрифтов (включая Arial) обычно нет вовсе.
+        /// </summary>
+        private static readonly Lazy<FontFamily?> FallbackFontFamily = new(() =>
+        {
+            var path = Path.Combine(AppContext.BaseDirectory, "LatoFont", "Lato-Bold.ttf");
+            if (!File.Exists(path)) return null;
+
+            try
+            {
+                var collection = new FontCollection();
+                return collection.Add(path);
+            }
+            catch
+            {
+                return null;
+            }
+        });
+
+        private static Font ResolveFont(string fontFamily, float size, FontStyle style)
+        {
+            if (SystemFonts.TryGet(fontFamily, out var family))
+                return family.CreateFont(size, style);
+
+            var fallback = FallbackFontFamily.Value;
+            if (fallback is not null)
+                return fallback.Value.CreateFont(size, FontStyle.Regular); // файл уже содержит начертание Bold
+
+            throw new InvalidOperationException(
+                $"Шрифт '{fontFamily}' не найден, а резервный LatoFont отсутствует по пути '{Path.Combine(AppContext.BaseDirectory, "LatoFont")}'.");
+        }
+
+        private static Point ResolveLocation(
+            WatermarkPosition position, int canvasWidth, int canvasHeight,
+            int contentWidth, int contentHeight, int paddingX, int paddingY)
+        {
+            return position switch
+            {
+                WatermarkPosition.TopLeft => new Point(paddingX, paddingY),
+                WatermarkPosition.TopRight => new Point(canvasWidth - contentWidth - paddingX, paddingY),
+                WatermarkPosition.BottomLeft => new Point(paddingX, canvasHeight - contentHeight - paddingY),
+                WatermarkPosition.Center => new Point((canvasWidth - contentWidth) / 2, (canvasHeight - contentHeight) / 2),
+                WatermarkPosition.BottomRight or _ => new Point(canvasWidth - contentWidth - paddingX, canvasHeight - contentHeight - paddingY),
+            };
+        }
+
+        public static async Task<WatermarkResult> ApplyImageWatermarkAsync(
             string baseImagePath,
             string watermarkImagePath,
             string outputPath,
@@ -41,63 +96,20 @@ namespace MotoParts.Api.Services
         {
             try
             {
-                using var baseImage = Image.FromFile(baseImagePath);
-                using var watermark = Image.FromFile(watermarkImagePath);
-                using var result = new Bitmap(baseImage.Width, baseImage.Height, PixelFormat.Format32bppArgb);
-                using var g = Graphics.FromImage(result);
-                g.SmoothingMode = SmoothingMode.AntiAlias;
-                g.InterpolationMode = InterpolationMode.HighQualityBicubic;
-                g.PixelOffsetMode = PixelOffsetMode.HighQuality;
-
-                g.DrawImage(baseImage, 0, 0, baseImage.Width, baseImage.Height);
+                using var baseImage = await Image.LoadAsync<Rgba32>(baseImagePath);
+                using var watermark = await Image.LoadAsync<Rgba32>(watermarkImagePath);
 
                 int wmWidth = (int)(baseImage.Width * scale);
                 int wmHeight = (int)(watermark.Height * (wmWidth / (float)watermark.Width));
+                watermark.Mutate(ctx => ctx.Resize(wmWidth, wmHeight));
 
                 int paddingX = (int)(baseImage.Width * padding);
                 int paddingY = (int)(baseImage.Height * padding);
+                var location = ResolveLocation(position, baseImage.Width, baseImage.Height, wmWidth, wmHeight, paddingX, paddingY);
 
-                int x, y;
-                switch (position)
-                {
-                    case WatermarkPosition.TopLeft:
-                        x = paddingX;
-                        y = paddingY;
-                        break;
-                    case WatermarkPosition.TopRight:
-                        x = baseImage.Width - wmWidth - paddingX;
-                        y = paddingY;
-                        break;
-                    case WatermarkPosition.BottomLeft:
-                        x = paddingX;
-                        y = baseImage.Height - wmHeight - paddingY;
-                        break;
-                    case WatermarkPosition.Center:
-                        x = (baseImage.Width - wmWidth) / 2;
-                        y = (baseImage.Height - wmHeight) / 2;
-                        break;
-                    case WatermarkPosition.BottomRight:
-                    default:
-                        x = baseImage.Width - wmWidth - paddingX;
-                        y = baseImage.Height - wmHeight - paddingY;
-                        break;
-                }
+                baseImage.Mutate(ctx => ctx.DrawImage(watermark, location, opacity));
 
-                using var attributes = new ImageAttributes();
-                var colorMatrix = new ColorMatrix
-                {
-                    Matrix00 = 1f,
-                    Matrix11 = 1f,
-                    Matrix22 = 1f,
-                    Matrix33 = opacity,
-                    Matrix44 = 1f
-                };
-                attributes.SetColorMatrix(colorMatrix, ColorMatrixFlag.Default, ColorAdjustType.Bitmap);
-
-                var destRect = new Rectangle(x, y, wmWidth, wmHeight);
-                g.DrawImage(watermark, destRect, 0, 0, watermark.Width, watermark.Height, GraphicsUnit.Pixel, attributes);
-
-                result.Save(outputPath, GetImageFormat(outputPath));
+                await baseImage.SaveAsync(outputPath);
 
                 return new WatermarkResult
                 {
@@ -118,19 +130,6 @@ namespace MotoParts.Api.Services
             }
         }
 
-        public static async Task<WatermarkResult> ApplyImageWatermarkAsync(
-            string baseImagePath,
-            string watermarkImagePath,
-            string outputPath,
-            WatermarkPosition position = WatermarkPosition.BottomRight,
-            float opacity = 0.3f,
-            float scale = 0.2f,
-            float padding = 0.02f)
-        {
-            return await Task.Run(() =>
-                ApplyImageWatermark(baseImagePath, watermarkImagePath, outputPath, position, opacity, scale, padding));
-        }
-
         public static WatermarkResult ApplyTextWatermark(
             string baseImagePath,
             string outputPath,
@@ -145,71 +144,36 @@ namespace MotoParts.Api.Services
         {
             try
             {
-                using var baseImage = Image.FromFile(baseImagePath);
-                using var result = new Bitmap(baseImage.Width, baseImage.Height, PixelFormat.Format32bppArgb);
-                using var g = Graphics.FromImage(result);
-                g.SmoothingMode = SmoothingMode.AntiAlias;
-                g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias;
-
-                g.DrawImage(baseImage, 0, 0, baseImage.Width, baseImage.Height);
+                using var baseImage = Image.Load<Rgba32>(baseImagePath);
 
                 float actualFontSize = fontSize < 1f ? baseImage.Height * fontSize : fontSize;
-                using var font = new Font(fontFamily, actualFontSize, FontStyle.Bold);
+                var font = ResolveFont(fontFamily, actualFontSize, FontStyle.Bold);
 
-                var textSize = g.MeasureString(text, font);
-                int textWidth = (int)textSize.Width;
-                int textHeight = (int)textSize.Height;
+                var textOptions = new RichTextOptions(font);
+                var textSize = TextMeasurer.MeasureSize(text, textOptions);
+                int textWidth = (int)Math.Ceiling(textSize.Width);
+                int textHeight = (int)Math.Ceiling(textSize.Height);
 
                 int paddingX = (int)(baseImage.Width * padding);
                 int paddingY = (int)(baseImage.Height * padding);
+                var location = ResolveLocation(position, baseImage.Width, baseImage.Height, textWidth, textHeight, paddingX, paddingY);
 
-                float x, y;
-                switch (position)
-                {
-                    case WatermarkPosition.TopLeft:
-                        x = paddingX;
-                        y = paddingY;
-                        break;
-                    case WatermarkPosition.TopRight:
-                        x = baseImage.Width - textWidth - paddingX;
-                        y = paddingY;
-                        break;
-                    case WatermarkPosition.BottomLeft:
-                        x = paddingX;
-                        y = baseImage.Height - textHeight - paddingY;
-                        break;
-                    case WatermarkPosition.Center:
-                        x = (baseImage.Width - textWidth) / 2f;
-                        y = (baseImage.Height - textHeight) / 2f;
-                        break;
-                    case WatermarkPosition.BottomRight:
-                    default:
-                        x = baseImage.Width - textWidth - paddingX;
-                        y = baseImage.Height - textHeight - paddingY;
-                        break;
-                }
-
-                var textColor = color ?? Color.White;
-                var brush = new SolidBrush(Color.FromArgb(
-                    (int)(opacity * 255),
-                    textColor.R,
-                    textColor.G,
-                    textColor.B
-                ));
+                var baseColor = color ?? Color.White;
+                var rgba = baseColor.ToPixel<Rgba32>();
+                var fillColor = Color.FromRgba(rgba.R, rgba.G, rgba.B, (byte)(opacity * 255));
 
                 if (rotation != 0f)
                 {
-                    g.TranslateTransform(x + textWidth / 2f, y + textHeight / 2f);
-                    g.RotateTransform(rotation);
-                    g.DrawString(text, font, brush, -textWidth / 2f, -textHeight / 2f);
-                    g.ResetTransform();
+                    var center = new PointF(location.X + textWidth / 2f, location.Y + textHeight / 2f);
+                    var matrix = Matrix3x2Extensions.CreateRotationDegrees(rotation, center);
+                    baseImage.Mutate(ctx => ctx.SetDrawingTransform(matrix).DrawText(text, font, fillColor, location));
                 }
                 else
                 {
-                    g.DrawString(text, font, brush, x, y);
+                    baseImage.Mutate(ctx => ctx.DrawText(text, font, fillColor, location));
                 }
 
-                result.Save(outputPath, GetImageFormat(outputPath));
+                baseImage.Save(outputPath);
 
                 return new WatermarkResult
                 {
@@ -244,40 +208,6 @@ namespace MotoParts.Api.Services
         {
             return await Task.Run(() =>
                 ApplyTextWatermark(baseImagePath, outputPath, text, fontFamily, fontSize, position, opacity, color, padding, rotation));
-        }
-
-        private static ImageFormat GetImageFormat(string path)
-        {
-            var ext = Path.GetExtension(path).ToLowerInvariant();
-            return ext switch
-            {
-                ".jpg" or ".jpeg" => ImageFormat.Jpeg,
-                ".png" => ImageFormat.Png,
-                ".gif" => ImageFormat.Gif,
-                ".bmp" => ImageFormat.Bmp,
-                ".tiff" or ".tif" => ImageFormat.Tiff,
-                ".webp" => ImageFormat.Webp,
-                _ => ImageFormat.Png
-            };
-        }
-
-        private static EncoderParameters GetJpegEncoderParameters(int quality = 90)
-        {
-            var jpegEncoder = GetEncoder(ImageFormat.Jpeg);
-            var qualityEncoder = System.Drawing.Imaging.Encoder.Quality;
-            var encoderParameters = new EncoderParameters(1);
-            encoderParameters.Param[0] = new EncoderParameter(qualityEncoder, quality);
-            return encoderParameters;
-        }
-
-        private static ImageCodecInfo GetEncoder(ImageFormat format)
-        {
-            foreach (var codec in ImageCodecInfo.GetImageEncoders())
-            {
-                if (codec.FormatID == format.Guid)
-                    return codec;
-            }
-            return null;
         }
     }
 }
