@@ -3,6 +3,7 @@ using QuestPDF.Fluent;
 using QuestPDF.Helpers;
 using QuestPDF.Infrastructure;
 using System;
+using System.IO;
 
 namespace PdfGeneration.Services 
 {
@@ -22,18 +23,24 @@ namespace PdfGeneration.Services
             QuestPDF.Settings.License = LicenseType.Community;
         }
 
-        public void GenerateQrCodePdf(
+        /// <summary>Возвращает путь к сгенерированному файлу — вызывающему коду он нужен, чтобы отдать PDF клиенту.</summary>
+        public string GenerateQrCodePdf(
             string partNumber = "000-00000-00",
             string partName = "",
             string donorInfo = "",
-            int qrCodeSize = 20)
+            int qrCodeSize = 20,
+            string outputFolder = null)
         {
             ValidateInput(partNumber);
 
             var qrCodeImage = GenerateQrCode(partNumber, qrCodeSize);
             var document = BuildDocument(qrCodeImage, partName, donorInfo);
 
-            document.GeneratePdf(partNumber + ".pdf");
+            string fileName = partNumber + ".pdf";
+            string outputPath = string.IsNullOrEmpty(outputFolder) ? fileName : Path.Combine(outputFolder, fileName);
+            document.GeneratePdf(outputPath);
+
+            return outputPath;
         }
 
         private byte[] GenerateQrCode(string partNumber, int size)
@@ -63,16 +70,16 @@ namespace PdfGeneration.Services
                             column.Item()
                                   .PaddingTop(-35)
                                   .Text(partName)
-                                  .FontSize(12)
+                                  .FontSize(40)
                                   .AlignCenter();
                         }
 
                         if (!string.IsNullOrWhiteSpace(donorInfo))
                         {
                             column.Item()
-                                  .PaddingTop(-20)
+                                  .PaddingTop(0)
                                   .Text(donorInfo)
-                                  .FontSize(12)
+                                  .FontSize(40)
                                   .AlignCenter();
                         }
                     });

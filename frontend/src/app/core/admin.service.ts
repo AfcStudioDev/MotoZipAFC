@@ -87,6 +87,11 @@ export class AdminService {
     return this.http.delete(`${this.api}/zip-photos/${photoId}`);
   }
 
+  /** PDF с QR-кодом запчасти. Blob, а не прямой window.open — так к запросу подцепляется Bearer-токен. */
+  printQrLabel(zipId: string) {
+    return this.http.get(`${this.api}/zip/${zipId}/qr-label`, { responseType: 'blob' });
+  }
+
   /** Правка каталожной позиции: наименование и группа общие для всех запчастей с этим парт-номером. */
   updatePartNumber(id: number, data: { partNum: string; name: string; groupId: number | null }) {
     return this.http.put(`${this.api}/part-numbers/${id}`, data);

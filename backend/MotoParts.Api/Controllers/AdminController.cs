@@ -683,7 +683,7 @@ public class AdminController(AppDbContext db) : ControllerBase
         if (!await db.Users.AnyAsync(u => u.Id == request.UserId))
             return BadRequest(new { message = "Покупатель не найден" });
 
-        var zip = await db.Zips.Include(z => z.PartNumber).Include(z => z.IncomeMoto).FirstOrDefaultAsync(z => z.Id == request.ZipId);
+        var zip = await db.Zips.FirstOrDefaultAsync(z => z.Id == request.ZipId);
         if (zip == null) return BadRequest(new { message = "Запчасть не найдена" });
 
         await using var tx = await db.Database.BeginTransactionAsync();
@@ -726,10 +726,40 @@ public class AdminController(AppDbContext db) : ControllerBase
         await db.SaveChangesAsync();
         await tx.CommitAsync();
 
-        QrCodePdfService qrCodePdfService = new QrCodePdfService();
-        qrCodePdfService.GenerateQrCodePdf(zip.Id.ToString(), zip.PartNumber.Name, zip.IncomeMoto.Description);
-
         return Ok(new { order.Id, order.OrderNumber });
+    }
+
+    /// <summary>
+    /// Отдаёт PDF-этикетку с QR-кодом запчасти. Генерация PDF живёт только здесь (не в AddOrder) —
+    /// печатают его явно, по кнопке в «Печать QR-кода», а не автоматически при каждом заказе.
+    /// Доступны только запчасти, по которым уже был хотя бы один заказ (фронт фильтрует список).
+    /// </summary>
+    [HttpGet("zip/{id:guid}/qr-label")]
+    public async Task<IActionResult> GetZipQrLabel(Guid id)
+    {
+        if (!await db.Orders.AnyAsync(o => o.ZipId == id))
+            return BadRequest(new { message = "По этой запчасти ещё не было заказов" });
+
+        var zip = await db.Zips.Include(z => z.PartNumber).Include(z => z.IncomeMoto).FirstOrDefaultAsync(z => z.Id == id);
+        if (zip == null) return BadRequest(new { message = "Запчасть не найдена" });
+
+        string pdfPath = GenerateZipQrLabel(zip);
+        return PhysicalFile(pdfPath, "application/pdf");
+    }
+
+    /// <summary>Генерирует PDF-этикетку с QR-кодом запчасти в wwwroot/Labels, заменяя прежний файл, если он уже был, и возвращает путь к файлу.</summary>
+    private static string GenerateZipQrLabel(Zip zip)
+    {
+        string labelFolder = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "Labels");
+        Directory.CreateDirectory(labelFolder);
+
+        string existingPath = Path.Combine(labelFolder, $"{zip.Id}.pdf");
+        if (System.IO.File.Exists(existingPath))
+            System.IO.File.Delete(existingPath);
+
+        using var qrCodePdfService = new QrCodePdfService();
+        return qrCodePdfService.GenerateQrCodePdf(
+            zip.Id.ToString(), zip.PartNumber.Name, zip.IncomeMoto.Description, outputFolder: labelFolder);
     }
 
     [HttpPut("{table}/{id}")]
