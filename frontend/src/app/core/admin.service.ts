@@ -155,4 +155,8 @@ export class AdminService {
   updateOrderStatus(id: string, status: string): Observable<any> {
     return this.http.put(`${environment.apiUrl}/sender/orders/${id}/status`, { status });
   }
+
+  getSenderZipInfo(id: string): Observable<any> {
+    return this.http.get(`${environment.apiUrl}/sender/zip/${id}`);
+  }
 }

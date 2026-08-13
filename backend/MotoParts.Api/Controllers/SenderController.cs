@@ -37,6 +37,30 @@ namespace MotoParts.Api.Controllers
             return Ok(orders);
         }
 
+        /// <summary>
+        /// Проверка товара по GUID запчасти (сканирование/ввод перед отправкой) —
+        /// отдаёт минимум для визуальной сверки: название, парт-номер, фото, донора.
+        /// </summary>
+        [HttpGet("zip/{id:guid}")]
+        public async Task<IActionResult> GetZipInfo(Guid id)
+        {
+            var zip = await db.Zips
+                .Where(z => z.Id == id)
+                .Select(z => new
+                {
+                    z.Id,
+                    Name = z.PartNumber.Name,
+                    PartNum = z.PartNumber.PartNum,
+                    IncomeMoto = z.IncomeMoto != null ? z.IncomeMoto.Description : null,
+                    Photos = z.Photos.Select(p => p.FileName).ToList()
+                })
+                .FirstOrDefaultAsync();
+
+            if (zip == null) return NotFound(new { message = "Запчасть с таким GUID не найдена" });
+
+            return Ok(zip);
+        }
+
         [HttpPut("orders/{id}/status")]
         public async Task<IActionResult> UpdateStatus(Guid id, [FromBody] UpdateStatusDto request)
         {
