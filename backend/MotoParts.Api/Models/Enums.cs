@@ -2,16 +2,23 @@
 
 namespace MotoParts.Api.Models;
 
+/// <summary>
+/// Значения соответствуют реальным Id из таблицы DeliveryStatuses (см. DbSeeder — created=1,
+/// sent=2, completed=3, canceled=4). Раньше enum был 0-based и не совпадал с сидом: код,
+/// использующий (short)DeliveryStatusEnum.created, писал 0 — значение, которого в таблице
+/// не существует (FK либо падал, либо статус молча оставался null и заказ пропадал из
+/// списка отправлений). Не меняйте нумерацию без синхронизации с DbSeeder.
+/// </summary>
 public enum DeliveryStatusEnum
 {
     [Description("created")]
-    created = 0,
+    created = 1,
     [Description("sent")]
-    sent = 1,
+    sent = 2,
     [Description("completed")]
-    completed = 2,
+    completed = 3,
     [Description("canceled")]
-    canceled = 3
+    canceled = 4
 }
 
 public enum PaymentStatusEnum
