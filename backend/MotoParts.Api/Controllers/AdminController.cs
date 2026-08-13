@@ -775,7 +775,9 @@ public class AdminController(AppDbContext db) : ControllerBase
             SellCost = request.SellCost,
             Discount = request.Discount,
             OperationId = request.OperationId ?? (short)OperationEnum.Sale,
-            DeliveryStatusId = request.DeliveryStatusId
+            // Форма в админке не даёт выбрать статус доставки — без дефолта заказ оставался
+            // с DeliveryStatusId = null и не попадал ни в одну вкладку «Отправлений».
+            DeliveryStatusId = request.DeliveryStatusId ?? (short)DeliveryStatusEnum.created
         };
         db.Orders.Add(order);
 
