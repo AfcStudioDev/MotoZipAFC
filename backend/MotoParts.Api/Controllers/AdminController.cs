@@ -477,7 +477,7 @@ public class AdminController(AppDbContext db) : ControllerBase
                 fontSize: 0.05f,
                 position: WatermarkPosition.BottomRight,
                 opacity: 0.4f,
-                color: System.Drawing.Color.White,
+                color: Color.White,
                 padding: 0.05f,
                 rotation: -15f);
 
