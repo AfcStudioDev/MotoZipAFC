@@ -124,13 +124,16 @@ interface PriceConflict {
 
       <div class="tabs">
         @for (t of tables; track t.endpoint) {
-          <button 
-            [class.active]="current()?.endpoint === t.endpoint" 
+          <button
+            [class.active]="current()?.endpoint === t.endpoint"
             (click)="select(t)"
           >
             {{ t.title }}
           </button>
         }
+        <button [class.active]="qrLabelTabActive()" (click)="openQrLabelTab()">
+          Печать QR-кода
+        </button>
       </div>
 
       @if (current(); as table) {
@@ -507,6 +510,78 @@ interface PriceConflict {
                 }
               </tbody>
             </table>
+          </div>
+        </div>
+
+      } @else if (qrLabelTabActive()) {
+
+        <!-- Печать QR-кода: не CRUD-таблица, а утилита над уже существующей запчастью —
+             генерирует PDF-этикетку и открывает её в новой вкладке. -->
+        <div class="card">
+          <h3 style="margin-top: 0;">Печать QR-кода</h3>
+
+          <div class="form-grid">
+            <div class="form-group" style="position: relative;">
+              <label>Запчасть <span style="color: red;">*</span></label>
+              <select
+                class="form-control"
+                [ngModel]="qrLabelPartNumId()"
+                name="qrLabelPartNum"
+                (ngModelChange)="onQrLabelPartNumChange($event)"
+              >
+                <option [ngValue]="null">— Выберите парт-номер —</option>
+                @for (pn of qrLabelPartNumbers(); track pn.partNumId) {
+                  <option [ngValue]="pn.partNumId">{{ pn.partNum }} — {{ pn.name }}</option>
+                }
+              </select>
+
+              @if (qrLabelCandidates().length > 1) {
+                <select
+                  class="form-control zip-picker-second"
+                  [ngModel]="qrLabelZipId()"
+                  name="qrLabelZip"
+                  (ngModelChange)="qrLabelZipId.set($event)"
+                >
+                  <option [ngValue]="null">— Выберите запчасть —</option>
+                  @for (z of qrLabelCandidates(); track z.id) {
+                    <option [ngValue]="z.id">{{ zipOptionLabel(z) }}</option>
+                  }
+                </select>
+                <small class="picker-hint">
+                  Под этим парт-номером заведено {{ qrLabelCandidates().length }} шт. — уточните, какая именно
+                </small>
+              } @else if (qrLabelCandidates().length === 1) {
+                <small class="picker-hint picker-hint-ok">
+                  Подставлено автоматически: {{ zipOptionLabel(qrLabelCandidates()[0]) }}
+                </small>
+              }
+            </div>
+
+            <div class="form-group">
+              <label>Id</label>
+              <input type="text" class="form-control" [value]="qrLabelZipId() ?? ''" disabled readonly>
+            </div>
+
+            <div class="form-group">
+              <label>Парт-номер</label>
+              <input type="text" class="form-control" [value]="qrLabelSelectedZip()?.partNum ?? ''" disabled readonly>
+            </div>
+
+            <div class="form-group">
+              <label>Наименование</label>
+              <input type="text" class="form-control" [value]="qrLabelSelectedZip()?.name ?? ''" disabled readonly>
+            </div>
+          </div>
+
+          <div class="actions">
+            <button
+              type="button"
+              [disabled]="!qrLabelZipId() || qrLabelBusy()"
+              (click)="printQrLabel()"
+              style="padding: 8px 16px; cursor: pointer;"
+            >
+              Печать QR-кода
+            </button>
           </div>
         </div>
 
@@ -1466,6 +1541,90 @@ export class AdminComponent implements OnInit {
 
   //#endregion
 
+  //#region [Печать QR-кода]
+
+  /** Утилита, а не CRUD-таблица — активна вместо current(), не среди tables. */
+  qrLabelTabActive = signal(false);
+  qrLabelPartNumId = signal<number | null>(null);
+  qrLabelZipId = signal<string | null>(null);
+  qrLabelBusy = signal(false);
+
+  /** Печать доступна только для запчастей, по которым уже был хотя бы один заказ. */
+  orderedZipIds = computed(() => {
+    const ids = new Set<string>();
+    for (const o of this.references()['orders'] ?? []) {
+      if (o['zipId']) ids.add(String(o['zipId']));
+    }
+    return ids;
+  });
+
+  /** Парт-номера, под которыми есть хотя бы одна уже заказанная запчасть. */
+  qrLabelPartNumbers = computed(() => {
+    const ordered = this.orderedZipIds();
+    const seen = new Map<number, { partNumId: number; partNum: string; name: string }>();
+    for (const z of this.references()['zip'] ?? []) {
+      if (z.partNumId != null && ordered.has(String(z.id)) && !seen.has(z.partNumId)) {
+        seen.set(z.partNumId, { partNumId: z.partNumId, partNum: z.partNum, name: z.name });
+      }
+    }
+    return Array.from(seen.values()).sort((a, b) => a.partNum.localeCompare(b.partNum));
+  });
+
+  qrLabelCandidates = computed(() => {
+    const pn = this.qrLabelPartNumId();
+    if (pn === null || pn === undefined) return [];
+    const ordered = this.orderedZipIds();
+    return (this.references()['zip'] ?? []).filter(z => z.partNumId === pn && ordered.has(String(z.id)));
+  });
+
+  qrLabelSelectedZip = computed(() => {
+    const id = this.qrLabelZipId();
+    if (!id) return null;
+    return (this.references()['zip'] ?? []).find(z => String(z.id) === String(id)) ?? null;
+  });
+
+  openQrLabelTab() {
+    this.current.set(null);
+    this.qrLabelTabActive.set(true);
+    this.error.set('');
+    this.message.set('');
+    this.qrLabelPartNumId.set(null);
+    this.qrLabelZipId.set(null);
+  }
+
+  onQrLabelPartNumChange(partNumId: number | null) {
+    this.qrLabelPartNumId.set(partNumId);
+    const candidates = this.qrLabelCandidates();
+    this.qrLabelZipId.set(candidates.length === 1 ? String(candidates[0].id) : null);
+  }
+
+  /**
+   * Открываем пустую вкладку синхронно по клику — иначе браузер расценит её как
+   * попап и заблокирует, если подставлять PDF в новую вкладку уже после ответа сервера.
+   */
+  printQrLabel() {
+    const zipId = this.qrLabelZipId();
+    if (!zipId) return;
+
+    this.error.set('');
+    this.qrLabelBusy.set(true);
+    const tab = window.open('', '_blank');
+
+    this.admin.printQrLabel(zipId).subscribe({
+      next: (blob) => {
+        this.qrLabelBusy.set(false);
+        if (tab) tab.location.href = URL.createObjectURL(blob);
+      },
+      error: (err) => {
+        this.qrLabelBusy.set(false);
+        tab?.close();
+        this.error.set('Не удалось получить PDF: ' + (err.error?.message || err.message));
+      }
+    });
+  }
+
+  //#endregion
+
   // --- Поиск по таблице ---
   /** Введённые значения по каждому поисковому полю. */
   searchValues: Record<string, string> = {};
@@ -1489,7 +1648,9 @@ export class AdminComponent implements OnInit {
     const refEndpoints = [
       'marks', 'models', 'series', 'groups', 'part-numbers', 'users', 'addressess', 'zip', 'incomemotos',
       // Нужны, чтобы при редактировании парт-номера подставить его текущие связи (см. loadStagedApplicabilityForEdit).
-      'applicability', 'series-applicability'
+      'applicability', 'series-applicability',
+      // Нужны, чтобы в «Печать QR-кода» показывать только уже заказанные запчасти (см. orderedZipIds).
+      'orders'
     ];
     const loadedRefs: Record<string, any[]> = {};
 
@@ -1578,6 +1739,7 @@ export class AdminComponent implements OnInit {
   }
 
   select(t: TableDef) {
+    this.qrLabelTabActive.set(false);
     this.current.set(t);
     this.cancelEdit();
     // Условия поиска относятся к конкретной таблице — при смене вкладки они не имеют смысла.
