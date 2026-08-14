@@ -60,8 +60,19 @@ namespace MotoParts.Api.Services
 
         private static Font ResolveFont(string fontFamily, float size, FontStyle style)
         {
-            if (SystemFonts.TryGet(fontFamily, out var family))
-                return family.CreateFont(size, style);
+            // В "голом" Linux-контейнере системных шрифтов/каталогов fontconfig обычно нет вовсе —
+            // на некоторых платформах TryGet в такой ситуации не просто возвращает false, а бросает
+            // исключение при попытке перечислить несуществующие каталоги. Не даём этому обрушить
+            // весь fallback на LatoFont.
+            try
+            {
+                if (SystemFonts.TryGet(fontFamily, out var family))
+                    return family.CreateFont(size, style);
+            }
+            catch
+            {
+                // ignore — падаем на гарантированный LatoFont ниже
+            }
 
             var fallback = FallbackFontFamily.Value;
             if (fallback is not null)
