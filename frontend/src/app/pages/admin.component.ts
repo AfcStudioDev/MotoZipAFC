@@ -41,6 +41,8 @@ interface FieldDef {
    * одного своего адреса — показывается полный список, чтобы поле не оставалось пустым.
    */
   filterByUserId?: boolean;
+  /** Поле выводится только для чтения — значение проставляет код, а не пользователь. */
+  readonly?: boolean;
 }
 
 /** Что именно создаём в модалке быстрого добавления и как это применить к форме после сохранения. */
@@ -160,15 +162,23 @@ interface PriceConflict {
                     >
                   } 
                   @else if (f.type === 'number') {
-                    <input 
-                      type="number" 
-                      step="any"
-                      class="form-control" 
-                      [(ngModel)]="form[f.key]" 
-                      [name]="f.key"
-                      [required]="!!f.required"
-                    >
-                  } 
+                    @if (f.readonly) {
+                      <!-- disabled + ngModel в Angular конфликтуют (варнинг в консоли и риск
+                           рассинхронизации), поэтому для полей только для чтения — как и у
+                           «Количество в приходе» — используем однонаправленный [value]. -->
+                      <input type="text" class="form-control" [value]="form[f.key] ?? ''" disabled readonly>
+                    } @else {
+                      <input
+                        type="number"
+                        step="any"
+                        class="form-control"
+                        [ngModel]="form[f.key]"
+                        (ngModelChange)="onNumberFieldChange(table, f.key, $event)"
+                        [name]="f.key"
+                        [required]="!!f.required"
+                      >
+                    }
+                  }
                   @else if (f.type === 'zip-picker') {
                     <!-- Шаг 1: парт-номер. Наименование в списке — подсказка, что это за деталь. -->
                     <select
@@ -920,7 +930,13 @@ export class AdminComponent implements OnInit, OnDestroy {
         { key: 'userId', label: 'Покупатель', type: 'select', refTable: 'users', refLabelKey: 'fio', required: true },
         { key: 'addressId', label: 'Адрес доставки', type: 'select', refTable: 'addressess', refLabelKey: 'address', required: true, filterByUserId: true },
         { key: 'sellCost', label: 'Цена продажи', type: 'number', required: true },
-        { key: 'discount', label: 'Скидка', type: 'number' },
+        // Прайс-цена подставляется вместе с ценой продажи (см. applyZipSellCost) и дальше
+        // не редактируется вручную — это опорная точка, от которой считается скидка.
+        { key: 'priceCost', label: 'Прайс цена', type: 'number', readonly: true },
+        // Скидка и скидка в % — не ручной ввод, а автоматический пересчёт разницы между
+        // прайс-ценой и ценой продажи (см. recalcOrderDiscount), поэтому тоже только для чтения.
+        { key: 'discount', label: 'Скидка', type: 'number', readonly: true },
+        { key: 'discountPercent', label: 'Скидка в %', type: 'number', readonly: true },
         { key: 'orderDateTime', label: 'Дата заказа', type: 'date' },
         { key: 'orderNumber', label: 'Комментарий заказа', type: 'text' }
       ],
@@ -1583,13 +1599,46 @@ export class AdminComponent implements OnInit, OnDestroy {
     this.applyZipSellCost(zipId);
   }
 
-  /** Цена продажи заказа подставляется из цены выбранной запчасти. */
+  /**
+   * Цена продажи и прайс-цена заказа подставляются из цены выбранной запчасти — обе сразу
+   * равны, поэтому скидка на этот момент нулевая. Прайс-цена дальше не меняется (readonly),
+   * а цену продажи админ может поправить вручную — тогда пересчитается скидка (см. onNumberFieldChange).
+   */
   private applyZipSellCost(zipId: any) {
     if (this.isEmpty(zipId)) return;
     const zip = (this.references()['zip'] ?? []).find(z => String(z.id) === String(zipId));
     if (zip && zip.sellCost != null) {
       this.form['sellCost'] = zip.sellCost;
+      this.form['priceCost'] = zip.sellCost;
+      this.recalcOrderDiscount();
     }
+  }
+
+  /** Правки числовых полей формы; для «Цены продажи» заказа дополнительно пересчитывает скидку. */
+  onNumberFieldChange(table: TableDef, key: string, value: any) {
+    this.form[key] = value;
+    if (table.endpoint === 'orders' && key === 'sellCost') {
+      this.recalcOrderDiscount();
+    }
+  }
+
+  /**
+   * Скидка = разница между прайс-ценой и ценой продажи, скидка в % — та же разница
+   * относительно прайс-цены, округлённая до десятых долей процента.
+   */
+  private recalcOrderDiscount() {
+    const priceCost = Number(this.form['priceCost']);
+    const sellCost = Number(this.form['sellCost']);
+
+    if (!Number.isFinite(priceCost) || priceCost === 0 || !Number.isFinite(sellCost)) {
+      this.form['discount'] = null;
+      this.form['discountPercent'] = null;
+      return;
+    }
+
+    const diff = priceCost - sellCost;
+    this.form['discount'] = Math.round(diff * 100) / 100;
+    this.form['discountPercent'] = Math.round((diff / priceCost) * 1000) / 10;
   }
 
   /** Восстанавливает первый шаг по уже сохранённой в заказе запчасти. */

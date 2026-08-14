@@ -19,8 +19,12 @@ public class Order
     public DateTimeOffset OrderDateTime { get; set; }
 
     public decimal SellCost { get; set; }
+    /// <summary>Цена по прайсу на момент заказа — опорная точка для расчёта скидки. Не меняется после заведения заказа.</summary>
+    public decimal? PriceCost { get; set; }
     public short? OperationId { get; set; }
     public decimal? Discount { get; set; }
+    /// <summary>Скидка в процентах от PriceCost, округлена до десятых долей.</summary>
+    public decimal? DiscountPercent { get; set; }
     public int UserId { get; set; }
     public short? DeliveryStatusId { get; set; }
 

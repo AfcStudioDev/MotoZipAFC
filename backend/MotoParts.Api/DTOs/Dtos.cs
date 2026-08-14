@@ -92,8 +92,10 @@ public record AdminOrderRequest(
     int AddressId,
     DateTimeOffset? OrderDateTime,
     decimal SellCost,
+    decimal? PriceCost,
     short? OperationId,
     decimal? Discount,
+    decimal? DiscountPercent,
     int UserId,
     short? DeliveryStatusId
 );

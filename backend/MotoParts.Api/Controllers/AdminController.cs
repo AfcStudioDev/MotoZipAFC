@@ -664,8 +664,10 @@ public class AdminController(AppDbContext db) : ControllerBase
                 o.AddressId,
                 o.OrderDateTime,
                 o.SellCost,
+                o.PriceCost,
                 o.OperationId,
                 o.Discount,
+                o.DiscountPercent,
                 o.UserId,
                 UserFio = o.User.FIO,
                 o.DeliveryStatusId,
@@ -714,7 +716,9 @@ public class AdminController(AppDbContext db) : ControllerBase
                 ? new DateTimeOffset(request.OrderDateTime.Value.Date, TimeSpan.Zero)
                 : DateTimeOffset.UtcNow,
             SellCost = request.SellCost,
+            PriceCost = request.PriceCost,
             Discount = request.Discount,
+            DiscountPercent = request.DiscountPercent,
             OperationId = request.OperationId ?? (short)OperationEnum.Sale,
             // Форма в админке не даёт выбрать статус доставки — без дефолта заказ оставался
             // с DeliveryStatusId = null и не попадал ни в одну вкладку «Отправлений».
@@ -1153,8 +1157,13 @@ public class AdminController(AppDbContext db) : ControllerBase
                     });
                 }
 
-                // Записи журнала по этому заказу уходят вместе с ним (кроме только что добавленной — она не привязана к OrderId).
-                await db.Logs.Where(l => l.OrderId == orderGuid).ExecuteDeleteAsync();
+                // Журнал — история движения товара, а не приложение к заказу: строку продажи
+                // затирать нельзя, иначе в «Истории по детали» продажа подменялась бы возвратом.
+                // Поэтому вместо удаления просто снимаем ссылку на исчезающий заказ (OrderId
+                // допускает null, FK стоит на Restrict) — записи остаются, привязка к детали
+                // через ZipId сохраняется, а номер заказа виден в Description.
+                await db.Logs.Where(l => l.OrderId == orderGuid)
+                    .ExecuteUpdateAsync(s => s.SetProperty(l => l.OrderId, (Guid?)null));
 
                 db.Orders.Remove(order);
                 break;
