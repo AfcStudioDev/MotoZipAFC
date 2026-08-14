@@ -159,4 +159,22 @@ export class AdminService {
   getSenderZipInfo(id: string): Observable<any> {
     return this.http.get(`${environment.apiUrl}/sender/zip/${id}`);
   }
+
+  // ---------- Черновики форм ----------
+  // Незавершённый ввод хранится на сервере, а не в localStorage, чтобы переживать
+  // очистку браузера и открываться с другого устройства.
+
+  /** Черновик формы или null, если его нет. */
+  getDraft(formKey: string): Observable<{ formKey: string; content: string; updatedAt: string } | null> {
+    return this.http.get<{ formKey: string; content: string; updatedAt: string } | null>(
+      `${environment.apiUrl}/drafts/${formKey}`);
+  }
+
+  saveDraft(formKey: string, content: string): Observable<any> {
+    return this.http.put(`${environment.apiUrl}/drafts/${formKey}`, { content });
+  }
+
+  deleteDraft(formKey: string): Observable<any> {
+    return this.http.delete(`${environment.apiUrl}/drafts/${formKey}`);
+  }
 }

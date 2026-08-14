@@ -1,7 +1,8 @@
-import { Component, OnInit, inject, signal, computed, ChangeDetectionStrategy } from '@angular/core';
+import { Component, OnInit, OnDestroy, inject, signal, computed, ChangeDetectionStrategy } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { CommonModule } from '@angular/common';
-import { firstValueFrom } from 'rxjs';
+import { Subject, firstValueFrom } from 'rxjs';
+import { debounceTime, takeUntil } from 'rxjs/operators';
 import { AdminService } from '../core/admin.service';
 import { environment } from '../../environments/environment';
 
@@ -139,7 +140,9 @@ interface PriceConflict {
         <div class="card">
           <h3 style="margin-top: 0;">{{ selectedId() ? 'Редактировать запись' : 'Добавить запись' }}</h3>
           
-          <form (ngSubmit)="save(table)">
+          <!-- input/change всплывают со всех полей формы, поэтому одного обработчика на <form>
+               хватает, чтобы поймать любой ручной ввод и поставить черновик в очередь на сохранение. -->
+          <form (ngSubmit)="save(table)" (input)="scheduleDraftSave()" (change)="scheduleDraftSave()">
             <div class="form-grid">
               @for (f of table.fields; track f.key) {
                 <div class="form-group" style="position: relative;">
@@ -404,6 +407,12 @@ interface PriceConflict {
                 <button type="button" (click)="cancelEdit()" style="padding: 8px 16px; cursor: pointer;">
                   Отмена
                 </button>
+              }
+              @if (!selectedId() && draftSavedAt()) {
+                <span class="draft-hint">
+                  Черновик сохранён {{ draftSavedAt() | date:'dd.MM.yyyy HH:mm' }}
+                  <button type="button" class="draft-clear-btn" (click)="clearDraft()">Очистить</button>
+                </span>
               }
             </div>
           </form>
@@ -748,7 +757,7 @@ interface PriceConflict {
 
   `]
 })
-export class AdminComponent implements OnInit {
+export class AdminComponent implements OnInit, OnDestroy {
   private admin = inject(AdminService);
   // Сигнал или обычный массив для хранения выбранных файлов
   selectedFiles = signal<File[]>([]);
@@ -938,6 +947,130 @@ export class AdminComponent implements OnInit {
   activeField = signal<string | null>(null);
   fieldSuggestions = signal<string[]>([]);
 
+  //#region [Черновики форм]
+
+  /**
+   * Незавершённый ввод на формах «Заказы» и «Запчасти (Приход)» сохраняется на сервере
+   * (таблица UserDrafts), а не в localStorage: черновик должен переживать очистку браузера
+   * и открываться с другого устройства. Черновик привязан к пользователю из токена.
+   *
+   * Ограничение: выбранные фотографии — это File-объекты браузера, их нельзя сериализовать
+   * в JSON, поэтому в черновик попадают только значения полей. Файлы придётся выбрать заново.
+   */
+  private static readonly DRAFT_ENDPOINTS = ['orders', 'zip'];
+
+  /** Показывается под формой, когда в ней есть восстановленный/сохранённый черновик. */
+  draftSavedAt = signal<Date | null>(null);
+
+  private draftSave$ = new Subject<string>();
+  private destroy$ = new Subject<void>();
+
+  /** Черновик ведём только для новой записи: при правке существующей строки источник истины — сама строка. */
+  private get draftFormKey(): string | null {
+    const endpoint = this.current()?.endpoint;
+    if (!endpoint || this.selectedId()) return null;
+    return AdminComponent.DRAFT_ENDPOINTS.includes(endpoint) ? endpoint : null;
+  }
+
+  /**
+   * Ставит черновик в очередь на сохранение. Реальный запрос уходит после паузы в вводе
+   * (debounce), чтобы не бить по API на каждое нажатие клавиши.
+   */
+  scheduleDraftSave() {
+    const formKey = this.draftFormKey;
+    if (!formKey) return;
+    this.draftSave$.next(formKey);
+  }
+
+  private setupDraftAutosave() {
+    this.draftSave$
+      .pipe(debounceTime(800), takeUntil(this.destroy$))
+      .subscribe((formKey) => {
+        // Пока шёл debounce, пользователь мог переключить вкладку. Ввод той формы уже
+        // досохранён синхронно в select(), а применять отложенное сохранение к новой
+        // (ещё пустой) форме нельзя — иначе оно затрёт её черновик как пустой.
+        if (formKey !== this.draftFormKey) return;
+        this.flushDraftSave();
+      });
+  }
+
+  private flushDraftSave() {
+    const formKey = this.draftFormKey;
+    if (!formKey) return;
+
+    const payload = this.collectDraftPayload();
+
+    // Пустую форму не храним — иначе после сохранения записи всплывал бы пустой черновик.
+    if (Object.keys(payload.form).length === 0) {
+      this.discardDraft(formKey);
+      return;
+    }
+
+    this.admin.saveDraft(formKey, JSON.stringify(payload)).subscribe({
+      next: () => this.draftSavedAt.set(new Date()),
+      error: () => { /* потеря черновика не должна мешать работе с формой */ }
+    });
+  }
+
+  /**
+   * Снимок формы для черновика. Поля с пустыми значениями отбрасываются, чтобы дата «по
+   * умолчанию сегодня» (её проставляет cancelEdit) сама по себе не считалась черновиком.
+   */
+  private collectDraftPayload(): { form: Record<string, any>; zipPartNumId: number | null } {
+    const form: Record<string, any> = {};
+    Object.entries(this.form).forEach(([key, value]) => {
+      if (!this.isEmpty(value)) form[key] = value;
+    });
+
+    // Первый шаг zip-picker'а живёт в отдельном сигнале, в form его нет — сохраняем отдельно,
+    // иначе при восстановлении заказа не будет выбран парт-номер.
+    return { form, zipPartNumId: this.zipPartNumId() };
+  }
+
+  /** Подтягивает черновик текущей формы и подставляет его, если пользователь ещё ничего не ввёл. */
+  private restoreDraft(endpoint: string) {
+    if (!AdminComponent.DRAFT_ENDPOINTS.includes(endpoint)) {
+      this.draftSavedAt.set(null);
+      return;
+    }
+
+    this.admin.getDraft(endpoint).subscribe({
+      next: (draft) => {
+        // Пока шёл запрос, пользователь мог уйти на другую вкладку или начать править строку.
+        if (!draft?.content || this.current()?.endpoint !== endpoint || this.selectedId()) return;
+
+        try {
+          const payload = JSON.parse(draft.content) as { form?: Record<string, any>; zipPartNumId?: number | null };
+          if (!payload?.form) return;
+
+          this.form = { ...this.form, ...payload.form };
+          if (payload.zipPartNumId != null) this.zipPartNumId.set(payload.zipPartNumId);
+
+          this.refreshPartNumStock();
+          this.draftSavedAt.set(draft.updatedAt ? new Date(draft.updatedAt) : new Date());
+        } catch {
+          // Битый черновик просто игнорируем — форма останется пустой.
+        }
+      },
+      error: () => { /* нет черновика или сервер недоступен — работаем с пустой формой */ }
+    });
+  }
+
+  private discardDraft(formKey: string) {
+    this.draftSavedAt.set(null);
+    this.admin.deleteDraft(formKey).subscribe({ error: () => { } });
+  }
+
+  /** Явно очистить черновик и форму по кнопке. */
+  clearDraft() {
+    const endpoint = this.current()?.endpoint;
+    if (!endpoint) return;
+    this.discardDraft(endpoint);
+    this.cancelEdit();
+  }
+
+  //#endregion
+
   //#region [Быстрое добавление записи в справочник по кнопке «+»]
 
   quickAddKind = signal<QuickAddKind | null>(null);
@@ -1072,6 +1205,9 @@ export class AdminComponent implements OnInit {
     } else if (kind === 'incomemoto') {
       this.form['incomeMotoId'] = res.id;
     }
+
+    // Значения проставлены из модалки, минуя input/change основной формы.
+    this.scheduleDraftSave();
   }
 
   //#endregion
@@ -1479,10 +1615,18 @@ export class AdminComponent implements OnInit {
   error = signal<string>('');
 
   ngOnInit() {
+    this.setupDraftAutosave();
     this.loadAllReferences();
     if (this.tables.length > 0) {
       this.select(this.tables[0]);
     }
+  }
+
+  ngOnDestroy() {
+    // Уходя со страницы, дописываем последний ввод: он мог не дожить до конца debounce.
+    this.flushDraftSave();
+    this.destroy$.next();
+    this.destroy$.complete();
   }
 
   loadAllReferences() {
@@ -1578,11 +1722,16 @@ export class AdminComponent implements OnInit {
   }
 
   select(t: TableDef) {
+    // Незавершённый ввод предыдущей вкладки досохраняем до сброса формы.
+    this.flushDraftSave();
+
+    this.qrLabelTabActive.set(false);
     this.current.set(t);
     this.cancelEdit();
     // Условия поиска относятся к конкретной таблице — при смене вкладки они не имеют смысла.
     this.resetSearch();
     this.reload(t);
+    this.restoreDraft(t.endpoint);
   }
 
   reload(t: TableDef) {
@@ -1680,6 +1829,8 @@ export class AdminComponent implements OnInit {
     this.form['groupName'] = g.groupName;
     this.form['groupId'] = g.id;
     this.closeGroupSuggestions();
+    // Клик по подсказке не порождает input/change на форме — ставим черновик в очередь вручную.
+    this.scheduleDraftSave();
   }
 
   private closeGroupSuggestions() {
@@ -1812,6 +1963,8 @@ export class AdminComponent implements OnInit {
     this.closeCatalogSuggestions();
     this.fillFromPartNumber(pn.id);
     this.refreshPartNumStock();
+    // Клик по подсказке не порождает input/change на форме — ставим черновик в очередь вручную.
+    this.scheduleDraftSave();
   }
 
   private closeCatalogSuggestions() {
@@ -2152,6 +2305,8 @@ export class AdminComponent implements OnInit {
         this.message.set(id ? 'Запись успешно обновлена!' : 'Запись успешно добавлена!');
         const partNumId = id ?? res?.id;
         this.busy.set(false);
+        // Данные доехали до основной таблицы — черновик больше не нужен.
+        this.discardDraft(table.endpoint);
         this.cancelEdit();
         this.reload(table);
         this.loadAllReferences();
@@ -2208,6 +2363,8 @@ export class AdminComponent implements OnInit {
     this.form[key] = value;
     this.activeField.set(null);
     this.fieldSuggestions.set([]);
+    // Клик по подсказке не порождает input/change на форме — ставим черновик в очередь вручную.
+    this.scheduleDraftSave();
   }
   //#endregion
 
