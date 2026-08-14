@@ -41,6 +41,8 @@ interface FieldDef {
    * одного своего адреса — показывается полный список, чтобы поле не оставалось пустым.
    */
   filterByUserId?: boolean;
+  /** Поле выводится только для чтения — значение проставляет код, а не пользователь. */
+  readonly?: boolean;
 }
 
 /** Что именно создаём в модалке быстрого добавления и как это применить к форме после сохранения. */
@@ -163,15 +165,23 @@ interface PriceConflict {
                     >
                   } 
                   @else if (f.type === 'number') {
-                    <input 
-                      type="number" 
-                      step="any"
-                      class="form-control" 
-                      [(ngModel)]="form[f.key]" 
-                      [name]="f.key"
-                      [required]="!!f.required"
-                    >
-                  } 
+                    @if (f.readonly) {
+                      <!-- disabled + ngModel в Angular конфликтуют (варнинг в консоли и риск
+                           рассинхронизации), поэтому для полей только для чтения — как и у
+                           «Количество в приходе» — используем однонаправленный [value]. -->
+                      <input type="text" class="form-control" [value]="form[f.key] ?? ''" disabled readonly>
+                    } @else {
+                      <input
+                        type="number"
+                        step="any"
+                        class="form-control"
+                        [ngModel]="form[f.key]"
+                        (ngModelChange)="onNumberFieldChange(table, f.key, $event)"
+                        [name]="f.key"
+                        [required]="!!f.required"
+                      >
+                    }
+                  }
                   @else if (f.type === 'zip-picker') {
                     <!-- Шаг 1: парт-номер. Наименование в списке — подсказка, что это за деталь. -->
                     <select
@@ -994,8 +1004,14 @@ export class AdminComponent implements OnInit, OnDestroy {
         { key: 'countOrdered', label: 'Кол-во', type: 'number', required: true },
         { key: 'userId', label: 'Покупатель', type: 'select', refTable: 'users', refLabelKey: 'fio', required: true },
         { key: 'addressId', label: 'Адрес доставки', type: 'select', refTable: 'addressess', refLabelKey: 'address', required: true, filterByUserId: true },
+        // Цена продажи, Скидка и Скидка в % — три связанных поля: правка любого из них
+        // пересчитывает два других от прайс-цены (см. onNumberFieldChange/recalcOrderPricing).
         { key: 'sellCost', label: 'Цена продажи', type: 'number', required: true },
+        // Прайс-цена подставляется вместе с ценой продажи (см. applyZipSellCost) и дальше
+        // не редактируется вручную — это единственная опорная точка, от которой считаются скидки.
+        { key: 'priceCost', label: 'Прайс цена', type: 'number', readonly: true },
         { key: 'discount', label: 'Скидка', type: 'number' },
+        { key: 'discountPercent', label: 'Скидка в %', type: 'number' },
         { key: 'orderDateTime', label: 'Дата заказа', type: 'date' },
         { key: 'orderNumber', label: 'Комментарий заказа', type: 'text' }
       ],
@@ -1658,13 +1674,77 @@ export class AdminComponent implements OnInit, OnDestroy {
     this.applyZipSellCost(zipId);
   }
 
-  /** Цена продажи заказа подставляется из цены выбранной запчасти. */
+  /**
+   * Цена продажи и прайс-цена заказа подставляются из цены выбранной запчасти — обе сразу
+   * равны, поэтому скидка на этот момент нулевая. Прайс-цена дальше не меняется (readonly)
+   * и служит единственной опорной точкой для пересчёта Цены продажи / Скидки / Скидки в %
+   * друг из друга (см. recalcOrderPricing).
+   */
   private applyZipSellCost(zipId: any) {
     if (this.isEmpty(zipId)) return;
     const zip = (this.references()['zip'] ?? []).find(z => String(z.id) === String(zipId));
     if (zip && zip.sellCost != null) {
       this.form['sellCost'] = zip.sellCost;
+      this.form['priceCost'] = zip.sellCost;
+      this.recalcOrderPricing('sellCost');
     }
+  }
+
+  /** Правки числовых полей формы; у заказа Цена продажи/Скидка/Скидка в % пересчитывают друг друга. */
+  onNumberFieldChange(table: TableDef, key: string, value: any) {
+    this.form[key] = value;
+    if (table.endpoint === 'orders' && (key === 'sellCost' || key === 'discount' || key === 'discountPercent')) {
+      this.recalcOrderPricing(key);
+    }
+  }
+
+  /**
+   * Цена продажи, Скидка и Скидка в % однозначно выражаются друг через друга через прайс-цену
+   * (Скидка = ПрайсЦена − ЦенаПродажи; Скидка% = Скидка / ПрайсЦена × 100). changedKey — какое
+   * из трёх полей только что отредактировал пользователь; оставшиеся два пересчитываются от него.
+   */
+  private recalcOrderPricing(changedKey: 'sellCost' | 'discount' | 'discountPercent') {
+    const priceCost = Number(this.form['priceCost']);
+    if (!Number.isFinite(priceCost) || priceCost === 0) return;
+
+    if (changedKey === 'sellCost') {
+      const sellCost = Number(this.form['sellCost']);
+      if (!Number.isFinite(sellCost)) {
+        this.form['discount'] = null;
+        this.form['discountPercent'] = null;
+        return;
+      }
+      const discount = priceCost - sellCost;
+      this.form['discount'] = this.round2(discount);
+      this.form['discountPercent'] = this.round1((discount / priceCost) * 100);
+    } else if (changedKey === 'discount') {
+      const discount = Number(this.form['discount']);
+      if (!Number.isFinite(discount)) {
+        this.form['sellCost'] = this.round2(priceCost);
+        this.form['discountPercent'] = 0;
+        return;
+      }
+      this.form['sellCost'] = this.round2(priceCost - discount);
+      this.form['discountPercent'] = this.round1((discount / priceCost) * 100);
+    } else {
+      const percent = Number(this.form['discountPercent']);
+      if (!Number.isFinite(percent)) {
+        this.form['sellCost'] = this.round2(priceCost);
+        this.form['discount'] = 0;
+        return;
+      }
+      const discount = (percent / 100) * priceCost;
+      this.form['discount'] = this.round2(discount);
+      this.form['sellCost'] = this.round2(priceCost - discount);
+    }
+  }
+
+  private round2(v: number): number {
+    return Math.round(v * 100) / 100;
+  }
+
+  private round1(v: number): number {
+    return Math.round(v * 10) / 10;
   }
 
   /** Восстанавливает первый шаг по уже сохранённой в заказе запчасти. */
