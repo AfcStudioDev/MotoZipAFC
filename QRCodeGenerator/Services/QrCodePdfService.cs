@@ -29,14 +29,15 @@ namespace PdfGeneration.Services
             string partName = "",
             string donorInfo = "",
             int qrCodeSize = 20,
-            string outputFolder = null)
+            string outputFolder = null,
+            string fileName = null)
         {
             ValidateInput(partNumber);
 
             var qrCodeImage = GenerateQrCode(partNumber, qrCodeSize);
             var document = BuildDocument(qrCodeImage, partName, donorInfo);
 
-            string fileName = partNumber + ".pdf";
+            fileName ??= partNumber + ".pdf";
             string outputPath = string.IsNullOrEmpty(outputFolder) ? fileName : Path.Combine(outputFolder, fileName);
             document.GeneratePdf(outputPath);
 

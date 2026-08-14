@@ -1381,21 +1381,22 @@ export class AdminComponent implements OnInit {
   qrLabelZipId = signal<string | null>(null);
   qrLabelBusy = signal(false);
 
-  /** Печать доступна только для запчастей, по которым уже был хотя бы один заказ. */
-  orderedZipIds = computed(() => {
-    const ids = new Set<string>();
-    for (const o of this.references()['orders'] ?? []) {
-      if (o['zipId']) ids.add(String(o['zipId']));
-    }
-    return ids;
-  });
+  // Прежний вариант: печать была доступна только для запчастей, по которым уже был
+  // хотя бы один заказ. Сейчас не используется — печатаем по любой заведённой запчасти,
+  // независимо от заказов. Оставлено на случай, если ограничение понадобится вернуть.
+  // orderedZipIds = computed(() => {
+  //   const ids = new Set<string>();
+  //   for (const o of this.references()['orders'] ?? []) {
+  //     if (o['zipId']) ids.add(String(o['zipId']));
+  //   }
+  //   return ids;
+  // });
 
-  /** Парт-номера, под которыми есть хотя бы одна уже заказанная запчасть. */
+  /** Парт-номера, под которыми есть хотя бы одна заведённая запчасть. */
   qrLabelPartNumbers = computed(() => {
-    const ordered = this.orderedZipIds();
     const seen = new Map<number, { partNumId: number; partNum: string; name: string }>();
     for (const z of this.references()['zip'] ?? []) {
-      if (z.partNumId != null && ordered.has(String(z.id)) && !seen.has(z.partNumId)) {
+      if (z.partNumId != null && !seen.has(z.partNumId)) {
         seen.set(z.partNumId, { partNumId: z.partNumId, partNum: z.partNum, name: z.name });
       }
     }
@@ -1405,8 +1406,7 @@ export class AdminComponent implements OnInit {
   qrLabelCandidates = computed(() => {
     const pn = this.qrLabelPartNumId();
     if (pn === null || pn === undefined) return [];
-    const ordered = this.orderedZipIds();
-    return (this.references()['zip'] ?? []).filter(z => z.partNumId === pn && ordered.has(String(z.id)));
+    return (this.references()['zip'] ?? []).filter(z => z.partNumId === pn);
   });
 
   qrLabelSelectedZip = computed(() => {
@@ -1480,9 +1480,11 @@ export class AdminComponent implements OnInit {
     const refEndpoints = [
       'marks', 'models', 'series', 'groups', 'part-numbers', 'users', 'addressess', 'zip', 'incomemotos',
       // Нужны, чтобы при редактировании парт-номера подставить его текущие связи (см. loadStagedApplicabilityForEdit).
-      'applicability', 'series-applicability',
-      // Нужны, чтобы в «Печать QR-кода» показывать только уже заказанные запчасти (см. orderedZipIds).
-      'orders'
+      'applicability', 'series-applicability'
+      // Прежде здесь грузились 'orders' — «Печать QR-кода» показывала только уже заказанные
+      // запчасти (см. закомментированный orderedZipIds). Теперь список строится по 'zip',
+      // поэтому лишний запрос всего списка заказов при открытии админки не нужен.
+      // 'orders'
     ];
     const loadedRefs: Record<string, any[]> = {};
 
