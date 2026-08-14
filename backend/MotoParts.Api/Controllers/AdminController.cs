@@ -467,7 +467,7 @@ public class AdminController(AppDbContext db) : ControllerBase
                 outputPath: logoStagePath,
                 position: WatermarkPosition.TopLeft,
                 opacity: 0.4f,
-                scale: 0.3f,
+                scale: 0.23f,
                 padding: 0.02f);
 
             string textBasePath = logoResult.Success ? logoStagePath : sourcePngPath;
@@ -479,10 +479,11 @@ public class AdminController(AppDbContext db) : ControllerBase
                 fontFamily: "Arial",
                 fontSize: 0.05f,
                 position: WatermarkPosition.BottomRight,
-                opacity: 0.4f,
+                opacity: 1f,
                 color: Color.White,
                 padding: 0.05f,
-                rotation: -15f);
+                rotation: -15f, 
+                strokeColor: Color.Black);
 
             // На случай, если GDI+ так же молча обрубит и PNG, — не доверяем "успеху" вслепую.
             if (textResult.Success && new FileInfo(finalStagePath).Length > 512)

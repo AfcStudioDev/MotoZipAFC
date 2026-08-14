@@ -151,8 +151,15 @@ namespace MotoParts.Api.Services
             float opacity = 0.5f,
             Color? color = null,
             float padding = 0.02f,
-            float rotation = 0f)
-        {
+            float rotation = 0f,
+            bool addStroke = true,
+            Color? strokeColor = null,
+            float strokeWidth = 2f,
+            bool addShadow = true,
+            Color? shadowColor = null,
+            float shadowOffsetX = 3f,
+            float shadowOffsetY = 3f)
+                {
             try
             {
                 using var baseImage = Image.Load<Rgba32>(baseImagePath);
@@ -173,16 +180,77 @@ namespace MotoParts.Api.Services
                 var rgba = baseColor.ToPixel<Rgba32>();
                 var fillColor = Color.FromRgba(rgba.R, rgba.G, rgba.B, (byte)(opacity * 255));
 
-                if (rotation != 0f)
+                // Настройка цветов для обводки и тени
+                var strokeColorFinal = strokeColor ?? Color.Black;
+                var shadowColorFinal = shadowColor ?? Color.Black;
+
+                baseImage.Mutate(ctx =>
                 {
-                    var center = new PointF(location.X + textWidth / 2f, location.Y + textHeight / 2f);
-                    var matrix = Matrix3x2Extensions.CreateRotationDegrees(rotation, center);
-                    baseImage.Mutate(ctx => ctx.SetDrawingTransform(matrix).DrawText(text, font, fillColor, location));
-                }
-                else
-                {
-                    baseImage.Mutate(ctx => ctx.DrawText(text, font, fillColor, location));
-                }
+                    // Применяем трансформацию для поворота, если нужно
+                    if (rotation != 0f)
+                    {
+                        var center = new PointF(location.X + textWidth / 2f, location.Y + textHeight / 2f);
+                        var matrix = Matrix3x2Extensions.CreateRotationDegrees(rotation, center);
+                        ctx.SetDrawingTransform(matrix);
+                    }
+
+                    // Рисуем тень (если включена)
+                    if (addShadow)
+                    {
+                        var shadowLocation = new PointF(
+                            location.X + shadowOffsetX,
+                            location.Y + shadowOffsetY
+                        );
+
+                        // Тень рисуем с той же прозрачностью, но более темную
+                        var shadowRgba = shadowColorFinal.ToPixel<Rgba32>();
+                        var shadowColorWithOpacity = Color.FromRgba(
+                            shadowRgba.R,
+                            shadowRgba.G,
+                            shadowRgba.B,
+                            (byte)(opacity * 0.5 * 255) // Делаем тень более прозрачной
+                        );
+
+                        ctx.DrawText(text, font, shadowColorWithOpacity, shadowLocation);
+                    }
+
+                    // Рисуем обводку (контур)
+                    if (addStroke)
+                    {
+                        var strokeRgba = strokeColorFinal.ToPixel<Rgba32>();
+                        var strokeColorWithOpacity = Color.FromRgba(
+                            strokeRgba.R,
+                            strokeRgba.G,
+                            strokeRgba.B,
+                            (byte)(opacity * 255)
+                        );
+
+                        // Создаем обводку путем многократного рисования текста со смещением
+                        // Рисуем текст с обводкой как набор смещенных копий
+                        var strokeOptions = new RichTextOptions(font)
+                        {
+                            Origin = new PointF(location.X, location.Y),
+                        };
+
+                        // Рисуем обводку в 8 направлениях (вокруг текста)
+                        float[] offsets = new float[] { -strokeWidth, 0, strokeWidth };
+                        foreach (var dx in offsets)
+                        {
+                            foreach (var dy in offsets)
+                            {
+                                if (dx == 0 && dy == 0) continue; // Пропускаем центр
+                                var strokeLocation = new PointF(
+                                    location.X + dx,
+                                    location.Y + dy
+                                );
+                                ctx.DrawText(text, font, strokeColorWithOpacity, strokeLocation);
+                            }
+                        }
+                    }
+
+                    // Рисуем основной текст поверх всего
+                    ctx.DrawText(text, font, fillColor, location);
+                });
 
                 baseImage.Save(outputPath);
 
@@ -215,10 +283,17 @@ namespace MotoParts.Api.Services
             float opacity = 0.5f,
             Color? color = null,
             float padding = 0.02f,
-            float rotation = 0f)
+            float rotation = 0f,
+            bool addStroke = true,
+            Color? strokeColor = null,
+            float strokeWidth = 2f,
+            bool addShadow = true,
+            Color? shadowColor = null,
+            float shadowOffsetX = 3f,
+            float shadowOffsetY = 3f)
         {
             return await Task.Run(() =>
-                ApplyTextWatermark(baseImagePath, outputPath, text, fontFamily, fontSize, position, opacity, color, padding, rotation));
+                ApplyTextWatermark(baseImagePath, outputPath, text, fontFamily, fontSize, position, opacity, color, padding, rotation, addStroke, strokeColor, strokeWidth, addShadow, shadowColor, shadowOffsetX, shadowOffsetY));
         }
     }
 }
