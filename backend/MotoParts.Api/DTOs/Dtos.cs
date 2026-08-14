@@ -98,6 +98,9 @@ public record AdminOrderRequest(
     short? DeliveryStatusId
 );
 
+/// <summary>Тело запроса на сохранение черновика формы: JSON со значениями полей.</summary>
+public record SaveDraftRequest(string? Content);
+
 /// <summary>Привязка каталожной позиции к модели мотоцикла.</summary>
 public record AdminApplicabilityRequest(int PartNumId, int ModelId);
 
