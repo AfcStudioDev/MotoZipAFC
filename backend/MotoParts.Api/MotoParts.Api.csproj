@@ -26,4 +26,8 @@
     <ProjectReference Include="..\..\QRCodeGenerator\PdfGeneration.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Folder Include="wwwroot\Labels\" />
+  </ItemGroup>
+
 </Project>

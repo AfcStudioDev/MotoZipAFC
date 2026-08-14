@@ -63,8 +63,9 @@ services:
       Seed__RegistrarEmail: ${SEED_REGISTRAR_EMAIL:-registrar@motoparts.local}
       Seed__RegistrarPassword: ${SEED_REGISTRAR_PASSWORD:?Задайте SEED_REGISTRAR_PASSWORD в .env}
     volumes:
-      # Загруженные фото переживают пересборку и пересоздание контейнера.
+      # Загруженные фото и сгенерированные PDF-этикетки переживают пересборку и пересоздание контейнера.
       - zip-photos:/app/wwwroot/ZipPhotos
+      - qr-labels:/app/wwwroot/Labels
     expose:
       - "8080"
     networks:
@@ -121,6 +122,7 @@ services:
 volumes:
   pgdata:
   zip-photos:
+  qr-labels:
   caddy-data:
   caddy-config:
 
