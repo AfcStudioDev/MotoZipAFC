@@ -803,34 +803,50 @@ public class AdminController(AppDbContext db) : ControllerBase
     /// <summary>
     /// Отдаёт PDF-этикетку с QR-кодом запчасти. Генерация PDF живёт только здесь (не в AddOrder) —
     /// печатают его явно, по кнопке в «Печать QR-кода», а не автоматически при каждом заказе.
-    /// Доступны только запчасти, по которым уже был хотя бы один заказ (фронт фильтрует список).
+    /// Печать доступна по любой заведённой запчасти — заказы на неё роли не играют.
     /// </summary>
     [HttpGet("zip/{id:guid}/qr-label")]
     public async Task<IActionResult> GetZipQrLabel(Guid id)
     {
-        if (!await db.Orders.AnyAsync(o => o.ZipId == id))
-            return BadRequest(new { message = "По этой запчасти ещё не было заказов" });
+        // Прежний вариант: этикетку можно было печатать только по запчасти, на которую уже был
+        // хотя бы один заказ. Сейчас не используется — печатаем по наличию самой запчасти.
+        // Оставлено на случай, если ограничение понадобится вернуть.
+        // if (!await db.Orders.AnyAsync(o => o.ZipId == id))
+        //     return BadRequest(new { message = "По этой запчасти ещё не было заказов" });
 
         var zip = await db.Zips.Include(z => z.PartNumber).Include(z => z.IncomeMoto).FirstOrDefaultAsync(z => z.Id == id);
         if (zip == null) return BadRequest(new { message = "Запчасть не найдена" });
 
         string pdfPath = GenerateZipQrLabel(zip);
-        return PhysicalFile(pdfPath, "application/pdf");
+
+        // Каждый клик должен отдавать только что сгенерированный файл — запрещаем браузеру
+        // и промежуточным прокси отдавать закэшированную версию по ETag/Last-Modified.
+        Response.Headers.CacheControl = "no-store, no-cache, must-revalidate";
+        Response.Headers.Pragma = "no-cache";
+        Response.Headers.Expires = "0";
+
+        return PhysicalFile(pdfPath, "application/pdf", enableRangeProcessing: false);
     }
 
-    /// <summary>Генерирует PDF-этикетку с QR-кодом запчасти в wwwroot/Labels, заменяя прежний файл, если он уже был, и возвращает путь к файлу.</summary>
+    /// <summary>
+    /// Генерирует PDF-этикетку с QR-кодом запчасти в wwwroot/Labels. В папке всегда держим не
+    /// больше одного файла — перед генерацией удаляем всё, что там лежало (в т.ч. этикетки для
+    /// других запчастей), и пишем под одним и тем же именем.
+    /// </summary>
     private static string GenerateZipQrLabel(Zip zip)
     {
+        const string labelFileName = "qr-label.pdf";
+
         string labelFolder = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "Labels");
         Directory.CreateDirectory(labelFolder);
 
-        string existingPath = Path.Combine(labelFolder, $"{zip.Id}.pdf");
-        if (System.IO.File.Exists(existingPath))
-            System.IO.File.Delete(existingPath);
+        foreach (var oldFile in Directory.GetFiles(labelFolder))
+            System.IO.File.Delete(oldFile);
 
         using var qrCodePdfService = new QrCodePdfService();
         return qrCodePdfService.GenerateQrCodePdf(
-            zip.Id.ToString(), zip.PartNumber.Name, zip.IncomeMoto.Description, outputFolder: labelFolder);
+            zip.Id.ToString(), zip.PartNumber.Name, zip.IncomeMoto.Description,
+            outputFolder: labelFolder, fileName: labelFileName);
     }
 
     [HttpPut("{table}/{id}")]
