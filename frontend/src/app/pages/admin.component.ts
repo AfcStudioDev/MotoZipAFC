@@ -929,14 +929,14 @@ export class AdminComponent implements OnInit, OnDestroy {
         { key: 'countOrdered', label: 'Кол-во', type: 'number', required: true },
         { key: 'userId', label: 'Покупатель', type: 'select', refTable: 'users', refLabelKey: 'fio', required: true },
         { key: 'addressId', label: 'Адрес доставки', type: 'select', refTable: 'addressess', refLabelKey: 'address', required: true, filterByUserId: true },
+        // Цена продажи, Скидка и Скидка в % — три связанных поля: правка любого из них
+        // пересчитывает два других от прайс-цены (см. onNumberFieldChange/recalcOrderPricing).
         { key: 'sellCost', label: 'Цена продажи', type: 'number', required: true },
         // Прайс-цена подставляется вместе с ценой продажи (см. applyZipSellCost) и дальше
-        // не редактируется вручную — это опорная точка, от которой считается скидка.
+        // не редактируется вручную — это единственная опорная точка, от которой считаются скидки.
         { key: 'priceCost', label: 'Прайс цена', type: 'number', readonly: true },
-        // Скидка и скидка в % — не ручной ввод, а автоматический пересчёт разницы между
-        // прайс-ценой и ценой продажи (см. recalcOrderDiscount), поэтому тоже только для чтения.
-        { key: 'discount', label: 'Скидка', type: 'number', readonly: true },
-        { key: 'discountPercent', label: 'Скидка в %', type: 'number', readonly: true },
+        { key: 'discount', label: 'Скидка', type: 'number' },
+        { key: 'discountPercent', label: 'Скидка в %', type: 'number' },
         { key: 'orderDateTime', label: 'Дата заказа', type: 'date' },
         { key: 'orderNumber', label: 'Комментарий заказа', type: 'text' }
       ],
@@ -1601,8 +1601,9 @@ export class AdminComponent implements OnInit, OnDestroy {
 
   /**
    * Цена продажи и прайс-цена заказа подставляются из цены выбранной запчасти — обе сразу
-   * равны, поэтому скидка на этот момент нулевая. Прайс-цена дальше не меняется (readonly),
-   * а цену продажи админ может поправить вручную — тогда пересчитается скидка (см. onNumberFieldChange).
+   * равны, поэтому скидка на этот момент нулевая. Прайс-цена дальше не меняется (readonly)
+   * и служит единственной опорной точкой для пересчёта Цены продажи / Скидки / Скидки в %
+   * друг из друга (см. recalcOrderPricing).
    */
   private applyZipSellCost(zipId: any) {
     if (this.isEmpty(zipId)) return;
@@ -1610,35 +1611,65 @@ export class AdminComponent implements OnInit, OnDestroy {
     if (zip && zip.sellCost != null) {
       this.form['sellCost'] = zip.sellCost;
       this.form['priceCost'] = zip.sellCost;
-      this.recalcOrderDiscount();
+      this.recalcOrderPricing('sellCost');
     }
   }
 
-  /** Правки числовых полей формы; для «Цены продажи» заказа дополнительно пересчитывает скидку. */
+  /** Правки числовых полей формы; у заказа Цена продажи/Скидка/Скидка в % пересчитывают друг друга. */
   onNumberFieldChange(table: TableDef, key: string, value: any) {
     this.form[key] = value;
-    if (table.endpoint === 'orders' && key === 'sellCost') {
-      this.recalcOrderDiscount();
+    if (table.endpoint === 'orders' && (key === 'sellCost' || key === 'discount' || key === 'discountPercent')) {
+      this.recalcOrderPricing(key);
     }
   }
 
   /**
-   * Скидка = разница между прайс-ценой и ценой продажи, скидка в % — та же разница
-   * относительно прайс-цены, округлённая до десятых долей процента.
+   * Цена продажи, Скидка и Скидка в % однозначно выражаются друг через друга через прайс-цену
+   * (Скидка = ПрайсЦена − ЦенаПродажи; Скидка% = Скидка / ПрайсЦена × 100). changedKey — какое
+   * из трёх полей только что отредактировал пользователь; оставшиеся два пересчитываются от него.
    */
-  private recalcOrderDiscount() {
+  private recalcOrderPricing(changedKey: 'sellCost' | 'discount' | 'discountPercent') {
     const priceCost = Number(this.form['priceCost']);
-    const sellCost = Number(this.form['sellCost']);
+    if (!Number.isFinite(priceCost) || priceCost === 0) return;
 
-    if (!Number.isFinite(priceCost) || priceCost === 0 || !Number.isFinite(sellCost)) {
-      this.form['discount'] = null;
-      this.form['discountPercent'] = null;
-      return;
+    if (changedKey === 'sellCost') {
+      const sellCost = Number(this.form['sellCost']);
+      if (!Number.isFinite(sellCost)) {
+        this.form['discount'] = null;
+        this.form['discountPercent'] = null;
+        return;
+      }
+      const discount = priceCost - sellCost;
+      this.form['discount'] = this.round2(discount);
+      this.form['discountPercent'] = this.round1((discount / priceCost) * 100);
+    } else if (changedKey === 'discount') {
+      const discount = Number(this.form['discount']);
+      if (!Number.isFinite(discount)) {
+        this.form['sellCost'] = this.round2(priceCost);
+        this.form['discountPercent'] = 0;
+        return;
+      }
+      this.form['sellCost'] = this.round2(priceCost - discount);
+      this.form['discountPercent'] = this.round1((discount / priceCost) * 100);
+    } else {
+      const percent = Number(this.form['discountPercent']);
+      if (!Number.isFinite(percent)) {
+        this.form['sellCost'] = this.round2(priceCost);
+        this.form['discount'] = 0;
+        return;
+      }
+      const discount = (percent / 100) * priceCost;
+      this.form['discount'] = this.round2(discount);
+      this.form['sellCost'] = this.round2(priceCost - discount);
     }
+  }
 
-    const diff = priceCost - sellCost;
-    this.form['discount'] = Math.round(diff * 100) / 100;
-    this.form['discountPercent'] = Math.round((diff / priceCost) * 1000) / 10;
+  private round2(v: number): number {
+    return Math.round(v * 100) / 100;
+  }
+
+  private round1(v: number): number {
+    return Math.round(v * 10) / 10;
   }
 
   /** Восстанавливает первый шаг по уже сохранённой в заказе запчасти. */
