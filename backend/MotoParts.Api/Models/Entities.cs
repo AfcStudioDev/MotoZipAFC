@@ -19,8 +19,12 @@ public class Order
     public DateTimeOffset OrderDateTime { get; set; }
 
     public decimal SellCost { get; set; }
+    /// <summary>Цена по прайсу на момент заказа — опорная точка для расчёта скидки. Не меняется после заведения заказа.</summary>
+    public decimal? PriceCost { get; set; }
     public short? OperationId { get; set; }
     public decimal? Discount { get; set; }
+    /// <summary>Скидка в процентах от PriceCost, округлена до десятых долей.</summary>
+    public decimal? DiscountPercent { get; set; }
     public int UserId { get; set; }
     public short? DeliveryStatusId { get; set; }
 
@@ -347,4 +351,26 @@ public class ZipPhoto
     /// Флаг для главной картинки
     /// </summary>
     public bool IsMain { get; set; }
+}
+
+/// <summary>
+/// Незавершённый (несохранённый) ввод пользователя на форме админ-панели. Хранится на сервере,
+/// а не в localStorage, чтобы черновик переживал очистку браузера и был доступен с другого
+/// устройства. На пару (UserId, FormKey) приходится не больше одной строки.
+/// </summary>
+public class UserDraft
+{
+    [Key]
+    public int Id { get; set; }
+
+    public int UserId { get; set; }
+    public User User { get; set; } = null!;
+
+    /// <summary>Форма, к которой относится черновик — endpoint админ-панели: "orders", "zip".</summary>
+    public string FormKey { get; set; } = null!;
+
+    /// <summary>JSON со значениями полей формы — состав полей задаёт фронтенд.</summary>
+    public string Content { get; set; } = null!;
+
+    public DateTimeOffset UpdatedAt { get; set; }
 }

@@ -187,7 +187,8 @@ public class OrdersController(AppDbContext db) : ControllerBase
             SellCost = zip.SellCost ?? 0m,
             Discount = req.Promo,
             UserId = user.Id,
-            OperationId = (short)OperationEnum.Sale
+            OperationId = (short)OperationEnum.Sale,
+            DeliveryStatusId = (short)DeliveryStatusEnum.created
         };
         db.Orders.Add(order);
 

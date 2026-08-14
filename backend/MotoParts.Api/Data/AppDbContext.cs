@@ -25,6 +25,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<PriceHistory> PriceHistories { get; set; }
     public DbSet<DeliveryStatus> DeliveryStatuses { get; set; }
     public DbSet<ZipPhoto> ZipPhotos { get; set; }
+    public DbSet<UserDraft> UserDrafts { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -196,6 +197,22 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             .WithMany(ds => ds.Orders)
             .HasForeignKey(o => o.DeliveryStatusId)
             .OnDelete(DeleteBehavior.Restrict);
+
+        // ----------------------------------------------------
+        // ЧЕРНОВИКИ ФОРМ
+        // ----------------------------------------------------
+
+        // На пару (пользователь, форма) — не больше одного черновика: сохранение всегда upsert.
+        modelBuilder.Entity<UserDraft>()
+            .HasIndex(d => new { d.UserId, d.FormKey })
+            .IsUnique();
+
+        // Черновики — служебные данные пользователя, вместе с ним они и должны исчезать.
+        modelBuilder.Entity<UserDraft>()
+            .HasOne(d => d.User)
+            .WithMany()
+            .HasForeignKey(d => d.UserId)
+            .OnDelete(DeleteBehavior.Cascade);
 
         // ----------------------------------------------------
         // СПРАВОЧНИК ОПЕРАЦИЙ

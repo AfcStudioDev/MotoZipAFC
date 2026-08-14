@@ -92,11 +92,16 @@ public record AdminOrderRequest(
     int AddressId,
     DateTimeOffset? OrderDateTime,
     decimal SellCost,
+    decimal? PriceCost,
     short? OperationId,
     decimal? Discount,
+    decimal? DiscountPercent,
     int UserId,
     short? DeliveryStatusId
 );
+
+/// <summary>Тело запроса на сохранение черновика формы: JSON со значениями полей.</summary>
+public record SaveDraftRequest(string? Content);
 
 /// <summary>Привязка каталожной позиции к модели мотоцикла.</summary>
 public record AdminApplicabilityRequest(int PartNumId, int ModelId);
