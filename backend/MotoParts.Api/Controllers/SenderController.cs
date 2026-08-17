@@ -2,16 +2,24 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
-using MotoParts.Api.Data;
-using MotoParts.Api.Models;
+using MotoParts.Api.Common;
+using MotoParts.Infrastructure.Persistence;
+using MotoParts.Domain.Models;
+using MotoParts.Application.Warehouse;
+using MotoParts.Infrastructure.Services;
+
+using System.Security.Claims;
 
 namespace MotoParts.Api.Controllers
 {
     [ApiController]
     [Route("api/sender")]
     [Authorize(Roles = "Admin,Sender")] // Защищаем эндпоинты авторизацией
-    public class SenderController(AppDbContext db) : ControllerBase
+    public class SenderController(AppDbContext db, WarehouseService warehouse) : ControllerBase
     {
+        private int? CurrentUserId =>
+            int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var id) ? id : null;
+
         [HttpGet("orders")]
         public async Task<IActionResult> GetOrders()
         {
@@ -88,49 +96,23 @@ namespace MotoParts.Api.Controllers
             await using var tx = await db.Database.BeginTransactionAsync();
 
             // --- ЛОГИКА СКЛАДА ---
-            // Если заказ отменяют - возвращаем товар на склад
+            // Если заказ отменяют — возвращаем товар на склад
             if (newStatus.Description == "canceled" && oldStatusDescription != "canceled")
             {
-                var storedItem = await db.Stored.FirstOrDefaultAsync(s => s.ZipId == order.ZipId);
-                if (storedItem != null)
-                {
-                    storedItem.Count += order.CountOrdered;
-                }
-                else
-                {
-                    db.Stored.Add(new Stored { ZipId = order.ZipId, Count = order.CountOrdered });
-                }
+                var stock = await warehouse.ReturnFromOrderAsync(
+                    order.ZipId, order.CountOrdered, order.Id, order.SellCost, CurrentUserId,
+                    $"Возврат на склад: заказ {order.OrderNumber} отменён");
 
-                db.Logs.Add(new Log
-                {
-                    CreatedAt = DateTimeOffset.UtcNow,
-                    OperationId = (short)OperationEnum.Refund,
-                    OrderId = order.Id,
-                    ZipId = order.ZipId,
-                    Qty = order.CountOrdered,
-                    SellCost = order.SellCost,
-                    Description = $"Возврат на склад: заказ {order.OrderNumber} отменён"
-                });
+                if (stock.IsFailure) return stock.Error!.ToErrorResponse();
             }
-            // Если заказ восстанавливают из отмененных - нужно снова списать товар со склада
+            // Если заказ восстанавливают из отменённых — снова списываем товар со склада
             else if (oldStatusDescription == "canceled" && newStatus.Description != "canceled")
             {
-                var storedItem = await db.Stored.FirstOrDefaultAsync(s => s.ZipId == order.ZipId);
-                if (storedItem != null)
-                {
-                    storedItem.Count = Math.Max(0, storedItem.Count - order.CountOrdered);
-                }
+                var stock = await warehouse.ReserveAgainAsync(
+                    order.ZipId, order.CountOrdered, order.Id, order.SellCost, CurrentUserId,
+                    $"Повторное списание: заказ {order.OrderNumber} восстановлен из отменённых");
 
-                db.Logs.Add(new Log
-                {
-                    CreatedAt = DateTimeOffset.UtcNow,
-                    OperationId = (short)OperationEnum.Sale,
-                    OrderId = order.Id,
-                    ZipId = order.ZipId,
-                    Qty = -order.CountOrdered,
-                    SellCost = order.SellCost,
-                    Description = $"Повторное списание: заказ {order.OrderNumber} восстановлен из отменённых"
-                });
+                if (stock.IsFailure) return stock.Error!.ToErrorResponse();
             }
 
             // --- ОБНОВЛЕНИЕ СТАТУСА ---

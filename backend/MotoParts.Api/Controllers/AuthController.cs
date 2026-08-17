@@ -1,10 +1,11 @@
 using System.Security.Cryptography;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using MotoParts.Api.Data;
-using MotoParts.Api.DTOs;
-using MotoParts.Api.Models;
-using MotoParts.Api.Services;
+using MotoParts.Infrastructure.Persistence;
+using MotoParts.Application.Contracts;
+using MotoParts.Domain.Models;
+using MotoParts.Application.Warehouse;
+using MotoParts.Infrastructure.Services;
 
 namespace MotoParts.Api.Controllers;
 

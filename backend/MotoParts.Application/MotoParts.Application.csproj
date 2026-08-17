@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Слой сценариев. Зависит только от Domain. EF Core здесь присутствует единственной
+       ссылкой на абстракции (DbSet/IQueryable в IAppDbContext) — конкретный провайдер и
+       строка подключения остаются в Infrastructure. -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>MotoParts.Application</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="8.0.6" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\MotoParts.Domain\MotoParts.Domain.csproj" />
+  </ItemGroup>
+
+</Project>
