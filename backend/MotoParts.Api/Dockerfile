@@ -31,6 +31,12 @@ COPY --from=publish /app/publish .
 # в образе каталогом при первом запуске наследует его владельца ($APP_UID,
 # см. USER выше) — без этого шага volume мог бы примонтироваться как root,
 # и AdminController не смог бы писать сюда файлы от непривилегированного пользователя.
-RUN mkdir -p wwwroot/ZipPhotos wwwroot/Labels
+#
+# COPY --from=publish выше копирует файлы с владельцем root (COPY не наследует
+# активный USER без --chown), поэтому mkdir от имени $APP_UID падал с Permission denied.
+# Создаём папки от root и сразу передаём владение $APP_UID, как и было задумано.
+USER root
+RUN mkdir -p wwwroot/ZipPhotos wwwroot/Labels && chown -R $APP_UID:$APP_UID wwwroot
+USER $APP_UID
 
 ENTRYPOINT ["dotnet", "MotoParts.Api.dll"]
