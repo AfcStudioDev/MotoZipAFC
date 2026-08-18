@@ -49,7 +49,8 @@ public record OrderDto(
     string Address,
     decimal? SellCost,
     decimal? Discount,
-    bool IsPaid);
+    bool IsPaid,
+    string? ReceiptFileName);
 
 public record GuestCreateOrderRequest(
     Guid ZipId,

@@ -58,6 +58,8 @@ export interface OrderDto {
   discount?: number;
   /** Подтверждает администратор вручную — онлайн-оплата сейчас отключена. */
   isPaid: boolean;
+  /** Имя файла чека, если покупатель уже приложил его (см. OrdersService.uploadReceipt). */
+  receiptFileName?: string;
 }
 
 export interface AddressDto {

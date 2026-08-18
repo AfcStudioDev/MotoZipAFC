@@ -114,7 +114,7 @@ public class OrdersController(AppDbContext db, WarehouseService warehouse, IConf
                 o.Zip.PartNumber.Name,
                 o.Zip.IncomeCost,
                 o.Address.Address,
-                o.SellCost, o.Discount, o.IsPaid))
+                o.SellCost, o.Discount, o.IsPaid, o.ReceiptFileName))
             .ToListAsync();
 
         return Ok(new PagedResult<OrderDto>(items, total, page, pageSize));
@@ -165,7 +165,7 @@ public class OrdersController(AppDbContext db, WarehouseService warehouse, IConf
         return Ok(new OrderDto(
             order.Id, order.OrderNumber, order.CountOrdered, order.OrderDateTime,
             zip.PartNumber.Name, zip.IncomeCost, address.Address,
-            order.SellCost, order.Discount, order.IsPaid));
+            order.SellCost, order.Discount, order.IsPaid, order.ReceiptFileName));
     }
 
     [HttpDelete("orders/{id}")]
@@ -280,7 +280,8 @@ public class OrdersController(AppDbContext db, WarehouseService warehouse, IConf
             address.Address,
             order.SellCost,
             order.Discount,
-            order.IsPaid
+            order.IsPaid,
+            order.ReceiptFileName
         );
 
         return Ok(dto);

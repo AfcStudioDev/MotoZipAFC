@@ -1,4 +1,4 @@
-import { Component, OnInit, inject, signal, computed, HostListener, ChangeDetectionStrategy } from '@angular/core';
+import { Component, OnInit, ViewChild, inject, signal, computed, HostListener, ChangeDetectionStrategy } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { CurrencyPipe } from '@angular/common';
 import { Router } from '@angular/router';
@@ -6,6 +6,7 @@ import { CatalogService, SearchFilters } from '../core/catalog.service';
 import { OrdersService } from '../core/orders.service';
 import { AuthService } from '../core/auth.service';
 import { AddressDto, GroupDto, MarkDto, ModelDto, PagedResult, ZipDto } from '../core/models';
+import { PaymentModalComponent } from '../shared/payment-modal.component';
 import { NgxMaskDirective } from 'ngx-mask';
 import { Subject, of } from 'rxjs';
 import { debounceTime, distinctUntilChanged, switchMap, catchError } from 'rxjs/operators';
@@ -15,7 +16,7 @@ import { ChangeDetectorRef } from '@angular/core';
 @Component({
   selector: 'app-home',
   styleUrls: ['../styles/home.component.css'],
-  imports: [FormsModule, CurrencyPipe, NgxMaskDirective],
+  imports: [FormsModule, CurrencyPipe, NgxMaskDirective, PaymentModalComponent],
   template: `
     <section class="search-panel card">
       <h1>Запчасти для мотоциклов</h1>
@@ -265,41 +266,7 @@ import { ChangeDetectorRef } from '@angular/core';
 
     <!-- Оплата переводом на карту: онлайн-эквайринг (ЮKassa) отключён, поэтому после
          создания заказа показываем реквизиты для ручного перевода и принимаем чек. -->
-    @if (paidOrder(); as order) {
-      <div class="modal-backdrop" (click)="closePaymentModal()">
-        <div class="card modal" (click)="$event.stopPropagation()">
-          <h3>Оплата заказа {{ order.orderNumber }}</h3>
-          <p>Осуществите перевод суммы по номеру данной карты, после прикрепите чек об успешном переводе</p>
-
-          @if (cardNumber()) {
-            <p class="card-number">{{ cardNumber() }}</p>
-          } @else {
-            <p class="muted">Не удалось получить номер карты. Свяжитесь с администратором.</p>
-          }
-
-          <input
-            #receiptInput
-            type="file"
-            accept="image/jpeg,image/png,image/webp,application/pdf"
-            style="display: none;"
-            (change)="onReceiptFileSelected($event)"
-          >
-
-          @if (receiptUploaded()) {
-            <p class="success">Чек загружен — спасибо! Мы проверим оплату и обновим статус заказа.</p>
-          } @else {
-            <button class="btn" [disabled]="uploadingReceipt()" (click)="receiptInput.click()">
-              @if (uploadingReceipt()) { Загрузка… } @else { Прикрепить чек }
-            </button>
-          }
-          @if (receiptError()) { <p class="error">{{ receiptError() }}</p> }
-
-          <div class="modal-actions">
-            <button class="btn btn-secondary" (click)="closePaymentModal()">Готово</button>
-          </div>
-        </div>
-      </div>
-    }
+    <app-payment-modal #paymentModal />
 
     <!--Модальное окно товара-->
     @if (selectedZip(); as zip) {
@@ -419,15 +386,8 @@ export class HomeComponent implements OnInit {
   buyDeliveryCompany = '';
   buyDeliveryComment = '';
 
-  /**
-   * Онлайн-оплата (ЮKassa) отключена — после создания заказа показываем номер карты
-   * для ручного перевода и даём прикрепить чек (см. OrdersController.PaymentInfo/UploadReceipt).
-   */
-  paidOrder = signal<{ id: string; orderNumber: string } | null>(null);
-  cardNumber = signal('');
-  uploadingReceipt = signal(false);
-  receiptUploaded = signal(false);
-  receiptError = signal('');
+  /** Модалка оплаты переводом на карту — своё состояние держит сама (см. PaymentModalComponent). */
+  @ViewChild('paymentModal') private paymentModal!: PaymentModalComponent;
 
   // Для заказа без регистрации
   guestForm = {
@@ -670,85 +630,16 @@ export class HomeComponent implements OnInit {
     this.busy.set(false);
     this.buying.set(null);
     this.isGuestBuying.set(null);
-
-    this.paidOrder.set(order);
-    this.receiptUploaded.set(false);
-    this.receiptError.set('');
-
-    if (!this.cardNumber()) {
-      this.orders.paymentInfo().subscribe({
-        next: info => this.cardNumber.set(info.cardNumber),
-        error: () => this.cardNumber.set('')
-      });
-    }
-  }
-
-  closePaymentModal(): void {
-    this.paidOrder.set(null);
-  }
-
-  onReceiptFileSelected(event: Event): void {
-    const input = event.target as HTMLInputElement;
-    const file = input.files?.[0];
-    const order = this.paidOrder();
-    if (!file || !order) return;
-
-    this.receiptError.set('');
-    this.uploadingReceipt.set(true);
-
-    this.orders.uploadReceipt(order.id, file).subscribe({
-      next: () => {
-        this.uploadingReceipt.set(false);
-        this.receiptUploaded.set(true);
-      },
-      error: err => {
-        this.uploadingReceipt.set(false);
-        this.receiptError.set(err.error?.message ?? 'Не удалось загрузить чек');
-      }
-    });
-
-    // Сбрасываем значение, иначе повторный выбор того же файла не вызовет change.
-    input.value = '';
+    this.paymentModal.open(order);
   }
 
   openImage(photoUrl: string) {
-    const idx = this.currentGalleryPhotos().indexOf(photoUrl);
-    this.expandedPhotoIndex.set(idx >= 0 ? idx : 0);
+    this.expandedImage.set(photoUrl);
   }
 
-  /** Листание фото в лайтбоксе по кругу — с последнего на первое и наоборот. */
-  prevImage(event?: Event) {
-    event?.stopPropagation();
-    const total = this.currentGalleryPhotos().length;
-    if (total === 0) return;
-    this.expandedPhotoIndex.update(idx => ((idx ?? 0) - 1 + total) % total);
-    this.resetZoom();
-  }
-
-  nextImage(event?: Event) {
-    event?.stopPropagation();
-    const total = this.currentGalleryPhotos().length;
-    if (total === 0) return;
-    this.expandedPhotoIndex.update(idx => ((idx ?? 0) + 1) % total);
-    this.resetZoom();
-  }
-
-  /**
-   * Стрелки — листание фото, Escape — закрыть верхний открытый слой: сначала
-   * лайтбокс (если открыт), иначе карточку товара под ним.
-   */
-  @HostListener('window:keydown', ['$event'])
-  handleModalKeydown(event: KeyboardEvent) {
-    if (this.expandedImage()) {
-      if (event.key === 'ArrowLeft') this.prevImage();
-      else if (event.key === 'ArrowRight') this.nextImage();
-      else if (event.key === 'Escape') this.closeImage();
-      return;
-    }
-    if (event.key === 'Escape' && this.selectedZip()) {
-      this.closeDetails();
-    }
-  }
+  // closeImage() {
+  //   this.expandedImage.set(null);
+  // }
 
   // Дополнительное приближение открытой картинки на 50%
   // Метод для клика по самой картинке
