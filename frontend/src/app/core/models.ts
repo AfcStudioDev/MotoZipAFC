@@ -54,9 +54,10 @@ export interface OrderDto {
   zipName?: string;
   zipCost?: number;
   address: string;
-  paymentStatus?: string;
   sellCost: number;
   discount?: number;
+  /** Подтверждает администратор вручную — онлайн-оплата сейчас отключена. */
+  isPaid: boolean;
 }
 
 export interface AddressDto {

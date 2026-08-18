@@ -40,8 +40,7 @@ public class OrdersController(AppDbContext db) : ControllerBase
                 o.Zip.PartNumber.Name,
                 o.Zip.IncomeCost,
                 o.Address.Address,
-                //o.Payment != null ? o.Payment.Status : null,
-                o.SellCost, o.Discount))
+                o.SellCost, o.Discount, o.IsPaid))
             .ToListAsync();
 
         return Ok(new PagedResult<OrderDto>(items, total, page, pageSize));
@@ -97,7 +96,13 @@ public class OrdersController(AppDbContext db) : ControllerBase
         await db.SaveChangesAsync();
         await tx.CommitAsync();
 
-        return Ok(order);
+        // Не отдаём наружу саму сущность Order: её навигационные свойства (Zip.PartNumber.Zips
+        // ссылается на тот же Zip) образуют цикл, который System.Text.Json не умеет
+        // сериализовать (см. регрессионный тест ниже).
+        return Ok(new OrderDto(
+            order.Id, order.OrderNumber, order.CountOrdered, order.OrderDateTime,
+            zip.PartNumber.Name, zip.IncomeCost, address.Address,
+            order.SellCost, order.Discount, order.IsPaid));
     }
 
     [HttpDelete("orders/{id}")]
@@ -222,7 +227,8 @@ public class OrdersController(AppDbContext db) : ControllerBase
             zip.IncomeCost,
             address.Address,
             order.SellCost,
-            order.Discount
+            order.Discount,
+            order.IsPaid
         );
 
         return Ok(dto);

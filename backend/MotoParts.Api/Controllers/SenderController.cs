@@ -30,7 +30,8 @@ namespace MotoParts.Api.Controllers
                     o.OrderDateTime,
                     ZipName = o.Zip.PartNumber.Name,
                     PartNum = o.Zip.PartNumber.PartNum,
-                    Address = o.Address.Address // Исправлено с Address.Address на Address.Address
+                    Address = o.Address.Address, // Исправлено с Address.Address на Address.Address
+                    o.IsPaid
                 })
                 .ToListAsync();
 
@@ -77,6 +78,12 @@ namespace MotoParts.Api.Controllers
 
             if (newStatus == null)
                 return BadRequest(new { message = "Неизвестный статус доставки" });
+
+            // Пока оплата не подтверждена администратором вручную (онлайн-оплата отключена,
+            // см. PaymentsController), заказ нельзя продвинуть дальше — только отменить
+            // или вернуть в «не отправлено». Иначе отправитель мог бы отгрузить неоплаченное.
+            if (!order.IsPaid && (newStatus.Description == "sent" || newStatus.Description == "completed"))
+                return BadRequest(new { message = "Заказ не оплачен: доступны только отмена или возврат в «не отправлено»" });
 
             var oldStatusDescription = order.DeliveryStatus?.Description;
 

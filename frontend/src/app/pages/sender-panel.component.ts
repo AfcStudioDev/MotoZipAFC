@@ -93,11 +93,19 @@ import { environment } from '../../environments/environment';
                             <td [attr.data-label]="'Адрес доставки'">{{ order.address }}</td>
                             <td [attr.data-label]="'Действия'" class="actions-cell">
                                 @if (activeTab() === 'created') {
-                                    <button class="btn-act btn-primary" (click)="setStatus(order.id, 'sent')">Отправлено</button>
+                                    @if (order.isPaid) {
+                                        <button class="btn-act btn-primary" (click)="setStatus(order.id, 'sent')">Отправлено</button>
+                                    } @else {
+                                        <span class="badge-unpaid">Не оплачен</span>
+                                    }
                                     <button class="btn-act btn-danger" (click)="setStatus(order.id, 'canceled')">Отменить</button>
                                 }
                                 @if (activeTab() === 'sent') {
-                                    <button class="btn-act btn-success" (click)="setStatus(order.id, 'completed')">Завершено</button>
+                                    <!-- Заказ мог попасть в «отправлено» ещё до введения этого флага —
+                                         поэтому «Завершено» тоже гейтим оплатой, а не только вкладку «created». -->
+                                    @if (order.isPaid) {
+                                        <button class="btn-act btn-success" (click)="setStatus(order.id, 'completed')">Завершено</button>
+                                    }
                                     <button class="btn-act btn-warning" (click)="setStatus(order.id, 'created')">Не отправлено</button>
                                 }
                                 @if (activeTab() === 'completed') {
@@ -216,6 +224,16 @@ import { environment } from '../../environments/environment';
       border-radius: 4px;
       font-size: 13px;
       white-space: nowrap;
+    }
+
+    .badge-unpaid {
+      background: #fff3cd;
+      color: #856404;
+      padding: 3px 8px;
+      border-radius: 4px;
+      font-size: 13px;
+      white-space: nowrap;
+      margin-right: 6px;
     }
 
     .empty-row td { text-align: center; padding: 20px; color: #777; }

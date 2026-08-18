@@ -27,6 +27,12 @@ public class Order
     public decimal? DiscountPercent { get; set; }
     public int UserId { get; set; }
     public short? DeliveryStatusId { get; set; }
+    /// <summary>
+    /// Подтверждает администратор вручную — онлайн-оплата (ЮKassa) сейчас отключена
+    /// (см. PaymentsController), поэтому это единственный источник правды о том, что деньги
+    /// получены. Пока false, «Отправления» не дают продвинуть заказ дальше «Отменить»/«Не отправлено».
+    /// </summary>
+    public bool IsPaid { get; set; } = false;
 
     // Навигационные свойства
     public Zip Zip { get; set; } = null!;
