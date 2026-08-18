@@ -1,13 +1,14 @@
-import { Component, OnInit, inject, signal, ChangeDetectionStrategy } from '@angular/core';
+import { Component, OnInit, ViewChild, inject, signal, ChangeDetectionStrategy } from '@angular/core';
 import { CurrencyPipe, DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { AuthService } from '../core/auth.service';
 import { OrdersService } from '../core/orders.service';
 import { AddressDto, OrderDto, PagedResult } from '../core/models';
+import { PaymentModalComponent } from '../shared/payment-modal.component';
 
 @Component({
     selector: 'app-cabinet',
-    imports: [CurrencyPipe, DatePipe, FormsModule],
+    imports: [CurrencyPipe, DatePipe, FormsModule, PaymentModalComponent],
     template: `
     <h1>Личный кабинет</h1>
 
@@ -51,12 +52,14 @@ import { AddressDto, OrderDto, PagedResult } from '../core/models';
                     </td>
                     <td>{{ order.address }}</td>
                     <td>
-                      <!-- Онлайн-оплата сейчас отключена — статус подтверждает администратор
-                           вручную (см. Order.IsPaid), поэтому кнопки «Оплатить» здесь нет. -->
+                      <!-- Онлайн-оплата отключена — статус подтверждает администратор вручную
+                           (см. Order.IsPaid), проверив чек, который покупатель прикладывает сам. -->
                       @if (order.isPaid) {
                         <span class="success">Оплачен</span>
+                      } @else if (order.receiptFileName) {
+                        <span class="muted">Чек на проверке</span>
                       } @else {
-                        <span class="muted">Ожидает оплаты</span>
+                        <button class="btn pay-btn" (click)="confirmPayment(order)">Подтвердить оплату</button>
                       }
                     </td>
                   </tr>
@@ -93,6 +96,8 @@ import { AddressDto, OrderDto, PagedResult } from '../core/models';
         <button class="btn" (click)="addAddress()">Добавить</button>
       </div>
     </section>
+
+    <app-payment-modal #paymentModal (uploaded)="load(orders()?.page ?? 1)" />
   `,
     changeDetection: ChangeDetectionStrategy.Eager,
     styles: [`
@@ -106,6 +111,8 @@ import { AddressDto, OrderDto, PagedResult } from '../core/models';
 export class CabinetComponent implements OnInit {
   auth = inject(AuthService);
   private ordersService = inject(OrdersService);
+
+  @ViewChild('paymentModal') private paymentModal!: PaymentModalComponent;
 
   orders = signal<PagedResult<OrderDto> | null>(null);
   addressess = signal<AddressDto[]>([]);
@@ -128,13 +135,8 @@ export class CabinetComponent implements OnInit {
     return Array.from({ length: to - from + 1 }, (_, i) => from + i);
   }
 
-  pay(order: OrderDto): void {
-    this.error.set('');
-    const returnUrl = `${location.origin}/payment-result/${order.id}`;
-    this.ordersService.createPayment(order.id, returnUrl).subscribe({
-      next: p => { location.href = p.confirmationUrl; },
-      error: err => this.error.set(err.error?.message ?? 'Не удалось создать платёж'),
-    });
+  confirmPayment(order: OrderDto): void {
+    this.paymentModal.open({ id: order.id, orderNumber: order.orderNumber });
   }
 
   addAddress(): void {
