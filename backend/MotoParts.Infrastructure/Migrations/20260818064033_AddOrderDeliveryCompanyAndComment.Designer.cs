@@ -2,18 +2,21 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
-using MotoParts.Api.Data;
+using MotoParts.Infrastructure.Persistence;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
 #nullable disable
 
-namespace MotoParts.Api.Migrations
+namespace MotoParts.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260818064033_AddOrderDeliveryCompanyAndComment")]
+    partial class AddOrderDeliveryCompanyAndComment
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -22,7 +25,7 @@ namespace MotoParts.Api.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
-            modelBuilder.Entity("MotoParts.Api.Models.DeliveryAddress", b =>
+            modelBuilder.Entity("MotoParts.Domain.Models.DeliveryAddress", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -47,7 +50,7 @@ namespace MotoParts.Api.Migrations
                     b.ToTable("DeliveryAddressess");
                 });
 
-            modelBuilder.Entity("MotoParts.Api.Models.DeliveryStatus", b =>
+            modelBuilder.Entity("MotoParts.Domain.Models.DeliveryStatus", b =>
                 {
                     b.Property<short>("Id")
                         .ValueGeneratedOnAdd()
@@ -64,7 +67,7 @@ namespace MotoParts.Api.Migrations
                     b.ToTable("DeliveryStatuses");
                 });
 
-            modelBuilder.Entity("MotoParts.Api.Models.IncomeMoto", b =>
+            modelBuilder.Entity("MotoParts.Domain.Models.IncomeMoto", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -84,7 +87,7 @@ namespace MotoParts.Api.Migrations
                     b.ToTable("IncomeMotos");
                 });
 
-            modelBuilder.Entity("MotoParts.Api.Models.Log", b =>
+            modelBuilder.Entity("MotoParts.Domain.Models.Log", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -132,7 +135,7 @@ namespace MotoParts.Api.Migrations
                     b.ToTable("Logs");
                 });
 
-            modelBuilder.Entity("MotoParts.Api.Models.MotoMark", b =>
+            modelBuilder.Entity("MotoParts.Domain.Models.MotoMark", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -152,7 +155,7 @@ namespace MotoParts.Api.Migrations
                     b.ToTable("MotoMarks");
                 });
 
-            modelBuilder.Entity("MotoParts.Api.Models.MotoModel", b =>
+            modelBuilder.Entity("MotoParts.Domain.Models.MotoModel", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -174,7 +177,7 @@ namespace MotoParts.Api.Migrations
                     b.ToTable("MotoModels");
                 });
 
-            modelBuilder.Entity("MotoParts.Api.Models.MotoSeries", b =>
+            modelBuilder.Entity("MotoParts.Domain.Models.MotoSeries", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -189,7 +192,7 @@ namespace MotoParts.Api.Migrations
                     b.ToTable("MotoSeries");
                 });
 
-            modelBuilder.Entity("MotoParts.Api.Models.Operation", b =>
+            modelBuilder.Entity("MotoParts.Domain.Models.Operation", b =>
                 {
                     b.Property<short>("Id")
                         .ValueGeneratedOnAdd()
@@ -211,7 +214,7 @@ namespace MotoParts.Api.Migrations
                     b.ToTable("Operations");
                 });
 
-            modelBuilder.Entity("MotoParts.Api.Models.OperationType", b =>
+            modelBuilder.Entity("MotoParts.Domain.Models.OperationType", b =>
                 {
                     b.Property<short>("Id")
                         .ValueGeneratedOnAdd()
@@ -228,7 +231,7 @@ namespace MotoParts.Api.Migrations
                     b.ToTable("OperationTypes");
                 });
 
-            modelBuilder.Entity("MotoParts.Api.Models.Order", b =>
+            modelBuilder.Entity("MotoParts.Domain.Models.Order", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -295,7 +298,7 @@ namespace MotoParts.Api.Migrations
                     b.ToTable("Orders");
                 });
 
-            modelBuilder.Entity("MotoParts.Api.Models.PartNumber", b =>
+            modelBuilder.Entity("MotoParts.Domain.Models.PartNumber", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -324,7 +327,7 @@ namespace MotoParts.Api.Migrations
                     b.ToTable("PartNumbers");
                 });
 
-            modelBuilder.Entity("MotoParts.Api.Models.PartNumberApplicability", b =>
+            modelBuilder.Entity("MotoParts.Domain.Models.PartNumberApplicability", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -348,7 +351,7 @@ namespace MotoParts.Api.Migrations
                     b.ToTable("PartNumberApplicabilities");
                 });
 
-            modelBuilder.Entity("MotoParts.Api.Models.PartNumberSeriesApplicability", b =>
+            modelBuilder.Entity("MotoParts.Domain.Models.PartNumberSeriesApplicability", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -372,7 +375,7 @@ namespace MotoParts.Api.Migrations
                     b.ToTable("PartNumberSeriesApplicabilities");
                 });
 
-            modelBuilder.Entity("MotoParts.Api.Models.PriceHistory", b =>
+            modelBuilder.Entity("MotoParts.Domain.Models.PriceHistory", b =>
                 {
                     b.Property<long>("Id")
                         .ValueGeneratedOnAdd()
@@ -412,7 +415,7 @@ namespace MotoParts.Api.Migrations
                     b.ToTable("PriceHistories");
                 });
 
-            modelBuilder.Entity("MotoParts.Api.Models.Stored", b =>
+            modelBuilder.Entity("MotoParts.Domain.Models.Stored", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -434,7 +437,7 @@ namespace MotoParts.Api.Migrations
                     b.ToTable("Stored");
                 });
 
-            modelBuilder.Entity("MotoParts.Api.Models.User", b =>
+            modelBuilder.Entity("MotoParts.Domain.Models.User", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -485,7 +488,7 @@ namespace MotoParts.Api.Migrations
                     b.ToTable("Users");
                 });
 
-            modelBuilder.Entity("MotoParts.Api.Models.UserDraft", b =>
+            modelBuilder.Entity("MotoParts.Domain.Models.UserDraft", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -515,7 +518,7 @@ namespace MotoParts.Api.Migrations
                     b.ToTable("UserDrafts");
                 });
 
-            modelBuilder.Entity("MotoParts.Api.Models.Zip", b =>
+            modelBuilder.Entity("MotoParts.Domain.Models.Zip", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -551,7 +554,7 @@ namespace MotoParts.Api.Migrations
                     b.ToTable("Zips");
                 });
 
-            modelBuilder.Entity("MotoParts.Api.Models.ZipGroup", b =>
+            modelBuilder.Entity("MotoParts.Domain.Models.ZipGroup", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -568,7 +571,7 @@ namespace MotoParts.Api.Migrations
                     b.ToTable("ZipGroups");
                 });
 
-            modelBuilder.Entity("MotoParts.Api.Models.ZipPhoto", b =>
+            modelBuilder.Entity("MotoParts.Domain.Models.ZipPhoto", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -593,9 +596,9 @@ namespace MotoParts.Api.Migrations
                     b.ToTable("ZipPhotos");
                 });
 
-            modelBuilder.Entity("MotoParts.Api.Models.DeliveryAddress", b =>
+            modelBuilder.Entity("MotoParts.Domain.Models.DeliveryAddress", b =>
                 {
-                    b.HasOne("MotoParts.Api.Models.User", "User")
+                    b.HasOne("MotoParts.Domain.Models.User", "User")
                         .WithMany("DeliveryAddresses")
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Restrict);
@@ -603,9 +606,9 @@ namespace MotoParts.Api.Migrations
                     b.Navigation("User");
                 });
 
-            modelBuilder.Entity("MotoParts.Api.Models.IncomeMoto", b =>
+            modelBuilder.Entity("MotoParts.Domain.Models.IncomeMoto", b =>
                 {
-                    b.HasOne("MotoParts.Api.Models.User", "User")
+                    b.HasOne("MotoParts.Domain.Models.User", "User")
                         .WithMany("IncomeMotos")
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Restrict);
@@ -613,25 +616,25 @@ namespace MotoParts.Api.Migrations
                     b.Navigation("User");
                 });
 
-            modelBuilder.Entity("MotoParts.Api.Models.Log", b =>
+            modelBuilder.Entity("MotoParts.Domain.Models.Log", b =>
                 {
-                    b.HasOne("MotoParts.Api.Models.Operation", "Operation")
+                    b.HasOne("MotoParts.Domain.Models.Operation", "Operation")
                         .WithMany("Logs")
                         .HasForeignKey("OperationId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.HasOne("MotoParts.Api.Models.Order", "Order")
+                    b.HasOne("MotoParts.Domain.Models.Order", "Order")
                         .WithMany("Logs")
                         .HasForeignKey("OrderId")
                         .OnDelete(DeleteBehavior.Restrict);
 
-                    b.HasOne("MotoParts.Api.Models.User", "User")
+                    b.HasOne("MotoParts.Domain.Models.User", "User")
                         .WithMany()
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Restrict);
 
-                    b.HasOne("MotoParts.Api.Models.Zip", "Zip")
+                    b.HasOne("MotoParts.Domain.Models.Zip", "Zip")
                         .WithMany("Logs")
                         .HasForeignKey("ZipId")
                         .OnDelete(DeleteBehavior.Restrict);
@@ -645,18 +648,18 @@ namespace MotoParts.Api.Migrations
                     b.Navigation("Zip");
                 });
 
-            modelBuilder.Entity("MotoParts.Api.Models.MotoModel", b =>
+            modelBuilder.Entity("MotoParts.Domain.Models.MotoModel", b =>
                 {
-                    b.HasOne("MotoParts.Api.Models.MotoMark", "Mark")
+                    b.HasOne("MotoParts.Domain.Models.MotoMark", "Mark")
                         .WithMany("MotoModels")
                         .HasForeignKey("MarkId");
 
                     b.Navigation("Mark");
                 });
 
-            modelBuilder.Entity("MotoParts.Api.Models.Operation", b =>
+            modelBuilder.Entity("MotoParts.Domain.Models.Operation", b =>
                 {
-                    b.HasOne("MotoParts.Api.Models.OperationType", "Type")
+                    b.HasOne("MotoParts.Domain.Models.OperationType", "Type")
                         .WithMany("Operations")
                         .HasForeignKey("TypeId")
                         .OnDelete(DeleteBehavior.Restrict);
@@ -664,31 +667,31 @@ namespace MotoParts.Api.Migrations
                     b.Navigation("Type");
                 });
 
-            modelBuilder.Entity("MotoParts.Api.Models.Order", b =>
+            modelBuilder.Entity("MotoParts.Domain.Models.Order", b =>
                 {
-                    b.HasOne("MotoParts.Api.Models.DeliveryAddress", "Address")
+                    b.HasOne("MotoParts.Domain.Models.DeliveryAddress", "Address")
                         .WithMany("Orders")
                         .HasForeignKey("AddressId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.HasOne("MotoParts.Api.Models.DeliveryStatus", "DeliveryStatus")
+                    b.HasOne("MotoParts.Domain.Models.DeliveryStatus", "DeliveryStatus")
                         .WithMany("Orders")
                         .HasForeignKey("DeliveryStatusId")
                         .OnDelete(DeleteBehavior.Restrict);
 
-                    b.HasOne("MotoParts.Api.Models.Operation", "Operation")
+                    b.HasOne("MotoParts.Domain.Models.Operation", "Operation")
                         .WithMany("Orders")
                         .HasForeignKey("OperationId")
                         .OnDelete(DeleteBehavior.Restrict);
 
-                    b.HasOne("MotoParts.Api.Models.User", "User")
+                    b.HasOne("MotoParts.Domain.Models.User", "User")
                         .WithMany("Orders")
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.HasOne("MotoParts.Api.Models.Zip", "Zip")
+                    b.HasOne("MotoParts.Domain.Models.Zip", "Zip")
                         .WithMany("Orders")
                         .HasForeignKey("ZipId")
                         .OnDelete(DeleteBehavior.Restrict)
@@ -705,9 +708,9 @@ namespace MotoParts.Api.Migrations
                     b.Navigation("Zip");
                 });
 
-            modelBuilder.Entity("MotoParts.Api.Models.PartNumber", b =>
+            modelBuilder.Entity("MotoParts.Domain.Models.PartNumber", b =>
                 {
-                    b.HasOne("MotoParts.Api.Models.ZipGroup", "Group")
+                    b.HasOne("MotoParts.Domain.Models.ZipGroup", "Group")
                         .WithMany("PartNumbers")
                         .HasForeignKey("GroupId")
                         .OnDelete(DeleteBehavior.Restrict);
@@ -715,15 +718,15 @@ namespace MotoParts.Api.Migrations
                     b.Navigation("Group");
                 });
 
-            modelBuilder.Entity("MotoParts.Api.Models.PartNumberApplicability", b =>
+            modelBuilder.Entity("MotoParts.Domain.Models.PartNumberApplicability", b =>
                 {
-                    b.HasOne("MotoParts.Api.Models.MotoModel", "Model")
+                    b.HasOne("MotoParts.Domain.Models.MotoModel", "Model")
                         .WithMany("Applicability")
                         .HasForeignKey("ModelId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.HasOne("MotoParts.Api.Models.PartNumber", "PartNumber")
+                    b.HasOne("MotoParts.Domain.Models.PartNumber", "PartNumber")
                         .WithMany("Applicability")
                         .HasForeignKey("PartNumId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -734,15 +737,15 @@ namespace MotoParts.Api.Migrations
                     b.Navigation("PartNumber");
                 });
 
-            modelBuilder.Entity("MotoParts.Api.Models.PartNumberSeriesApplicability", b =>
+            modelBuilder.Entity("MotoParts.Domain.Models.PartNumberSeriesApplicability", b =>
                 {
-                    b.HasOne("MotoParts.Api.Models.PartNumber", "PartNumber")
+                    b.HasOne("MotoParts.Domain.Models.PartNumber", "PartNumber")
                         .WithMany("SeriesApplicability")
                         .HasForeignKey("PartNumId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("MotoParts.Api.Models.MotoSeries", "Series")
+                    b.HasOne("MotoParts.Domain.Models.MotoSeries", "Series")
                         .WithMany("Applicability")
                         .HasForeignKey("SeriesId")
                         .OnDelete(DeleteBehavior.Restrict)
@@ -753,21 +756,21 @@ namespace MotoParts.Api.Migrations
                     b.Navigation("Series");
                 });
 
-            modelBuilder.Entity("MotoParts.Api.Models.PriceHistory", b =>
+            modelBuilder.Entity("MotoParts.Domain.Models.PriceHistory", b =>
                 {
-                    b.HasOne("MotoParts.Api.Models.Operation", "Operation")
+                    b.HasOne("MotoParts.Domain.Models.Operation", "Operation")
                         .WithMany("PriceHistory")
                         .HasForeignKey("OperationId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.HasOne("MotoParts.Api.Models.User", "User")
+                    b.HasOne("MotoParts.Domain.Models.User", "User")
                         .WithMany()
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.HasOne("MotoParts.Api.Models.Zip", "Zip")
+                    b.HasOne("MotoParts.Domain.Models.Zip", "Zip")
                         .WithMany("PriceHistory")
                         .HasForeignKey("ZipId")
                         .OnDelete(DeleteBehavior.Restrict)
@@ -780,20 +783,20 @@ namespace MotoParts.Api.Migrations
                     b.Navigation("Zip");
                 });
 
-            modelBuilder.Entity("MotoParts.Api.Models.Stored", b =>
+            modelBuilder.Entity("MotoParts.Domain.Models.Stored", b =>
                 {
-                    b.HasOne("MotoParts.Api.Models.Zip", "Zip")
+                    b.HasOne("MotoParts.Domain.Models.Zip", "Zip")
                         .WithOne("Stored")
-                        .HasForeignKey("MotoParts.Api.Models.Stored", "ZipId")
+                        .HasForeignKey("MotoParts.Domain.Models.Stored", "ZipId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.Navigation("Zip");
                 });
 
-            modelBuilder.Entity("MotoParts.Api.Models.UserDraft", b =>
+            modelBuilder.Entity("MotoParts.Domain.Models.UserDraft", b =>
                 {
-                    b.HasOne("MotoParts.Api.Models.User", "User")
+                    b.HasOne("MotoParts.Domain.Models.User", "User")
                         .WithMany()
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -802,15 +805,15 @@ namespace MotoParts.Api.Migrations
                     b.Navigation("User");
                 });
 
-            modelBuilder.Entity("MotoParts.Api.Models.Zip", b =>
+            modelBuilder.Entity("MotoParts.Domain.Models.Zip", b =>
                 {
-                    b.HasOne("MotoParts.Api.Models.IncomeMoto", "IncomeMoto")
+                    b.HasOne("MotoParts.Domain.Models.IncomeMoto", "IncomeMoto")
                         .WithMany("Zips")
                         .HasForeignKey("IncomeMotoId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.HasOne("MotoParts.Api.Models.PartNumber", "PartNumber")
+                    b.HasOne("MotoParts.Domain.Models.PartNumber", "PartNumber")
                         .WithMany("Zips")
                         .HasForeignKey("PartNumId")
                         .OnDelete(DeleteBehavior.Restrict)
@@ -821,9 +824,9 @@ namespace MotoParts.Api.Migrations
                     b.Navigation("PartNumber");
                 });
 
-            modelBuilder.Entity("MotoParts.Api.Models.ZipPhoto", b =>
+            modelBuilder.Entity("MotoParts.Domain.Models.ZipPhoto", b =>
                 {
-                    b.HasOne("MotoParts.Api.Models.Zip", "Zip")
+                    b.HasOne("MotoParts.Domain.Models.Zip", "Zip")
                         .WithMany("Photos")
                         .HasForeignKey("ZipId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -832,37 +835,37 @@ namespace MotoParts.Api.Migrations
                     b.Navigation("Zip");
                 });
 
-            modelBuilder.Entity("MotoParts.Api.Models.DeliveryAddress", b =>
+            modelBuilder.Entity("MotoParts.Domain.Models.DeliveryAddress", b =>
                 {
                     b.Navigation("Orders");
                 });
 
-            modelBuilder.Entity("MotoParts.Api.Models.DeliveryStatus", b =>
+            modelBuilder.Entity("MotoParts.Domain.Models.DeliveryStatus", b =>
                 {
                     b.Navigation("Orders");
                 });
 
-            modelBuilder.Entity("MotoParts.Api.Models.IncomeMoto", b =>
+            modelBuilder.Entity("MotoParts.Domain.Models.IncomeMoto", b =>
                 {
                     b.Navigation("Zips");
                 });
 
-            modelBuilder.Entity("MotoParts.Api.Models.MotoMark", b =>
+            modelBuilder.Entity("MotoParts.Domain.Models.MotoMark", b =>
                 {
                     b.Navigation("MotoModels");
                 });
 
-            modelBuilder.Entity("MotoParts.Api.Models.MotoModel", b =>
+            modelBuilder.Entity("MotoParts.Domain.Models.MotoModel", b =>
                 {
                     b.Navigation("Applicability");
                 });
 
-            modelBuilder.Entity("MotoParts.Api.Models.MotoSeries", b =>
+            modelBuilder.Entity("MotoParts.Domain.Models.MotoSeries", b =>
                 {
                     b.Navigation("Applicability");
                 });
 
-            modelBuilder.Entity("MotoParts.Api.Models.Operation", b =>
+            modelBuilder.Entity("MotoParts.Domain.Models.Operation", b =>
                 {
                     b.Navigation("Logs");
 
@@ -871,17 +874,17 @@ namespace MotoParts.Api.Migrations
                     b.Navigation("PriceHistory");
                 });
 
-            modelBuilder.Entity("MotoParts.Api.Models.OperationType", b =>
+            modelBuilder.Entity("MotoParts.Domain.Models.OperationType", b =>
                 {
                     b.Navigation("Operations");
                 });
 
-            modelBuilder.Entity("MotoParts.Api.Models.Order", b =>
+            modelBuilder.Entity("MotoParts.Domain.Models.Order", b =>
                 {
                     b.Navigation("Logs");
                 });
 
-            modelBuilder.Entity("MotoParts.Api.Models.PartNumber", b =>
+            modelBuilder.Entity("MotoParts.Domain.Models.PartNumber", b =>
                 {
                     b.Navigation("Applicability");
 
@@ -890,7 +893,7 @@ namespace MotoParts.Api.Migrations
                     b.Navigation("Zips");
                 });
 
-            modelBuilder.Entity("MotoParts.Api.Models.User", b =>
+            modelBuilder.Entity("MotoParts.Domain.Models.User", b =>
                 {
                     b.Navigation("DeliveryAddresses");
 
@@ -899,7 +902,7 @@ namespace MotoParts.Api.Migrations
                     b.Navigation("Orders");
                 });
 
-            modelBuilder.Entity("MotoParts.Api.Models.Zip", b =>
+            modelBuilder.Entity("MotoParts.Domain.Models.Zip", b =>
                 {
                     b.Navigation("Logs");
 
@@ -912,7 +915,7 @@ namespace MotoParts.Api.Migrations
                     b.Navigation("Stored");
                 });
 
-            modelBuilder.Entity("MotoParts.Api.Models.ZipGroup", b =>
+            modelBuilder.Entity("MotoParts.Domain.Models.ZipGroup", b =>
                 {
                     b.Navigation("PartNumbers");
                 });

@@ -22,4 +22,26 @@
     <PackageReference Include="Swashbuckle.AspNetCore" Version="6.6.2" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\MotoParts.Application\MotoParts.Application.csproj" />
+    <ProjectReference Include="..\MotoParts.Infrastructure\MotoParts.Infrastructure.csproj" />
+  </ItemGroup>
+
+  <!-- git mergetool оставляет рядом с конфликтным файлом копии *_BACKUP_/_BASE_/_LOCAL_/_REMOTE_.
+       В Controllers они попадали в компиляцию и ломали сборку, а хуже того — в них лежит старая
+       версия AdminController с обобщённым PUT {table}/{id}, который мы убрали как уязвимость.
+       Такие копии не должны собираться никогда; их можно спокойно удалять с диска. -->
+  <ItemGroup>
+    <Compile Remove="**\*_BACKUP_*.cs;**\*_BASE_*.cs;**\*_LOCAL_*.cs;**\*_REMOTE_*.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Folder Include="wwwroot\Labels\" />
+  </ItemGroup>
+
+  <!-- Файл давно переехал в MotoParts.Infrastructure/Images (см. её .csproj) вместе с
+       WatermarkService — там и остаётся единственная ссылка на него. Эта ссылка была
+       дублирующим хвостом с переезда и указывала на путь, которого в Api больше нет,
+       из-за чего ломала build/publish/dotnet ef. -->
+
 </Project>

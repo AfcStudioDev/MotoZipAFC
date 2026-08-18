@@ -36,7 +36,9 @@ public record PagedResult<T>(IReadOnlyList<T> Items, int Total, int Page, int Pa
 }
 
 // ---------- Orders ----------
-public record CreateOrderRequest(Guid ZipId, int Count, decimal SellCost, int AddressId);
+public record CreateOrderRequest(
+    Guid ZipId, int Count, decimal SellCost, int AddressId,
+    string? DeliveryCompany = null, string? DeliveryComment = null);
 public record OrderDto(
     Guid Id,
     string OrderNumber,
@@ -58,7 +60,9 @@ public record GuestCreateOrderRequest(
     string? Password,
     string Address,
     string? PostCode,
-    decimal? Promo
+    decimal? Promo,
+    string? DeliveryCompany = null,
+    string? DeliveryComment = null
     );
 
 // ---------- Adresses ----------
@@ -98,7 +102,9 @@ public record AdminOrderRequest(
     decimal? DiscountPercent,
     int UserId,
     short? DeliveryStatusId,
-    bool IsPaid = false
+    bool IsPaid = false,
+    string? DeliveryCompany = null,
+    string? DeliveryComment = null
 );
 
 /// <summary>Тело запроса на сохранение черновика формы: JSON со значениями полей.</summary>
