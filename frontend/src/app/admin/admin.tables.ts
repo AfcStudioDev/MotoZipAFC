@@ -169,7 +169,10 @@ export const ADMIN_TABLES: TableDef[] = [
       { key: 'discount', label: 'Скидка', type: 'number' },
       { key: 'discountPercent', label: 'Скидка в %', type: 'number' },
       { key: 'orderDateTime', label: 'Дата заказа', type: 'date' },
-      { key: 'orderNumber', label: 'Комментарий заказа', type: 'text' }
+      { key: 'orderNumber', label: 'Комментарий заказа', type: 'text' },
+      // Клиент выбирает при оформлении в каталоге; для заказов из админки поле обычно пустое.
+      { key: 'deliveryCompany', label: 'Компания доставки', type: 'text' },
+      { key: 'deliveryComment', label: 'Комментарий к доставке', type: 'text' }
     ],
     searchFields: [
       { key: 'orderNumber', label: 'Комментарий заказа' },

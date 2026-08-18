@@ -71,7 +71,9 @@ public class OrdersController(AppDbContext db, WarehouseService warehouse) : Con
             SellCost = request.SellCost,
             UserId = CurrentUserId,
             OperationId = (short)OperationEnum.Sale,
-            DeliveryStatusId = (short)DeliveryStatusEnum.created
+            DeliveryStatusId = (short)DeliveryStatusEnum.created,
+            DeliveryCompany = request.DeliveryCompany,
+            DeliveryComment = request.DeliveryComment
         };
 
         db.Orders.Add(order);
@@ -176,7 +178,9 @@ public class OrdersController(AppDbContext db, WarehouseService warehouse) : Con
             Discount = req.Promo,
             UserId = user.Id,
             OperationId = (short)OperationEnum.Sale,
-            DeliveryStatusId = (short)DeliveryStatusEnum.created
+            DeliveryStatusId = (short)DeliveryStatusEnum.created,
+            DeliveryCompany = req.DeliveryCompany,
+            DeliveryComment = req.DeliveryComment
         };
         db.Orders.Add(order);
 

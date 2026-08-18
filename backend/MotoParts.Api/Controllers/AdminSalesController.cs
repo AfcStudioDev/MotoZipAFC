@@ -111,7 +111,9 @@ public class AdminSalesController(AppDbContext db, WarehouseService warehouse) :
                 UserFio = o.User.FIO,
                 o.DeliveryStatusId,
                 DeliveryStatus = o.DeliveryStatus != null ? o.DeliveryStatus.Description : null,
-                o.IsPaid
+                o.IsPaid,
+                o.DeliveryCompany,
+                o.DeliveryComment
             })
             .ToListAsync());
 
@@ -162,7 +164,9 @@ public class AdminSalesController(AppDbContext db, WarehouseService warehouse) :
             // Форма в админке не даёт выбрать статус доставки — без дефолта заказ оставался
             // с DeliveryStatusId = null и не попадал ни в одну вкладку «Отправлений».
             DeliveryStatusId = request.DeliveryStatusId ?? (short)DeliveryStatusEnum.created,
-            IsPaid = request.IsPaid
+            IsPaid = request.IsPaid,
+            DeliveryCompany = request.DeliveryCompany,
+            DeliveryComment = request.DeliveryComment
         };
         db.Orders.Add(order);
 
@@ -242,6 +246,8 @@ public class AdminSalesController(AppDbContext db, WarehouseService warehouse) :
         }
 
         order.IsPaid = request.IsPaid;
+        order.DeliveryCompany = request.DeliveryCompany;
+        order.DeliveryComment = request.DeliveryComment;
 
         await db.SaveChangesAsync();
         return Ok(new { order.Id, order.OrderNumber });

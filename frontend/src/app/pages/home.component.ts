@@ -165,6 +165,22 @@ import { ChangeDetectorRef } from '@angular/core';
             <label>…или добавьте новый адрес</label>
             <input type="text" placeholder="Город, улица, дом, квартира" [(ngModel)]="newAddress" />
           </div>
+          <div class="form-field">
+            <label>Компания доставки (необязательно)</label>
+            <select [(ngModel)]="buyDeliveryCompany">
+              <option value="">— не выбрано —</option>
+              @for (c of deliveryCompanies; track c) {
+                <option [value]="c">{{ c }}</option>
+              }
+            </select>
+          </div>
+          <div class="form-field">
+            <label>Комментарий к доставке</label>
+            <small class="muted" style="display: block; margin-bottom: 6px;">
+              Возможно оформление курьерской доставки выбранной клиентом компанией, за счёт клиента
+            </small>
+            <textarea rows="2" [(ngModel)]="buyDeliveryComment"></textarea>
+          </div>
           @if (buyError()) { <p class="error">{{ buyError() }}</p> }
           <div class="modal-actions">
             <button class="btn btn-secondary" (click)="closeBuy()">Отмена</button>
@@ -217,6 +233,24 @@ import { ChangeDetectorRef } from '@angular/core';
           <div class="form-group mb-3">
             <label>Количество</label>
             <input type="number" class="form-control" [(ngModel)]="guestForm.count" min="1">
+          </div>
+
+          <div class="form-group mb-2">
+            <label>Компания доставки <small class="text-muted">(необязательно)</small></label>
+            <select class="form-control" [(ngModel)]="guestForm.deliveryCompany">
+              <option value="">— не выбрано —</option>
+              @for (c of deliveryCompanies; track c) {
+                <option [value]="c">{{ c }}</option>
+              }
+            </select>
+          </div>
+
+          <div class="form-group mb-3">
+            <label>Комментарий к доставке</label>
+            <div class="text-muted mb-1" style="font-size: 13px;">
+              Возможно оформление курьерской доставки выбранной клиентом компанией, за счёт клиента
+            </div>
+            <textarea class="form-control" rows="2" [(ngModel)]="guestForm.deliveryComment"></textarea>
           </div>
 
           <div class="d-flex gap-2 justify-content-end">
@@ -342,6 +376,11 @@ export class HomeComponent implements OnInit {
   buyError = signal('');
   busy = signal(false);
 
+  /** Компании, которыми клиент может заказать курьерскую доставку — за свой счёт. */
+  readonly deliveryCompanies = ['СДЕК', 'Озон', 'Вайлдберриз'];
+  buyDeliveryCompany = '';
+  buyDeliveryComment = '';
+
   // Для заказа без регистрации
   guestForm = {
     fio: '',
@@ -350,7 +389,9 @@ export class HomeComponent implements OnInit {
     password: '',
     address: '',
     postCode: '',
-    count: 1
+    count: 1,
+    deliveryCompany: '',
+    deliveryComment: ''
   };
   isGuestBuying = signal<ZipDto | null>(null);
 
@@ -486,7 +527,10 @@ export class HomeComponent implements OnInit {
     if (!this.auth.isLoggedIn) {
       // Если не авторизован - открываем окно гостевой покупки
       this.buyError.set('');
-      this.guestForm = { fio: '', email: '', phone: '', password: '', address: '', postCode: '', count: 1 };
+      this.guestForm = {
+        fio: '', email: '', phone: '', password: '', address: '', postCode: '', count: 1,
+        deliveryCompany: '', deliveryComment: ''
+      };
       this.isGuestBuying.set(zip);
       return;
     }
@@ -495,6 +539,8 @@ export class HomeComponent implements OnInit {
     this.buyError.set('');
     this.buyCount = 1;
     this.newAddress = '';
+    this.buyDeliveryCompany = '';
+    this.buyDeliveryComment = '';
     this.buying.set(zip);
 
     this.orders.addressess().subscribe(a => {
@@ -520,7 +566,9 @@ export class HomeComponent implements OnInit {
       phone: this.guestForm.phone,
       password: this.guestForm.password,
       address: this.guestForm.address,
-      postCode: this.guestForm.postCode
+      postCode: this.guestForm.postCode,
+      deliveryCompany: this.guestForm.deliveryCompany || undefined,
+      deliveryComment: this.guestForm.deliveryComment || undefined
     };
 
     this.orders.createGuestOrder(requestData).subscribe({
@@ -551,7 +599,10 @@ export class HomeComponent implements OnInit {
     this.busy.set(true);
 
     const placeOrder = (addressId: number) => {
-      this.orders.createOrder(zip.id, this.buyCount, addressId).subscribe({
+      this.orders.createOrder(
+        zip.id, this.buyCount, addressId,
+        this.buyDeliveryCompany || undefined, this.buyDeliveryComment || undefined
+      ).subscribe({
         next: order => {
           const returnUrl = `${location.origin}/payment-result/${order.id}`;
           this.orders.createPayment(order.id, returnUrl).subscribe({

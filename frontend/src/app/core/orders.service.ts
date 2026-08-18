@@ -15,8 +15,11 @@ export class OrdersService {
     });
   }
 
-  createOrder(zipId: string, count: number, addressId: number): Observable<OrderDto> {
-    return this.http.post<OrderDto>(`${this.api}/orders`, { zipId, count, addressId });
+  createOrder(
+    zipId: string, count: number, addressId: number,
+    deliveryCompany?: string, deliveryComment?: string
+  ): Observable<OrderDto> {
+    return this.http.post<OrderDto>(`${this.api}/orders`, { zipId, count, addressId, deliveryCompany, deliveryComment });
   }
 
   addressess(): Observable<AddressDto[]> {

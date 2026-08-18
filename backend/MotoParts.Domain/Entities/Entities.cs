@@ -32,6 +32,11 @@ public class Order
     /// </summary>
     public bool IsPaid { get; set; } = false;
 
+    /// <summary>Компания курьерской доставки, выбранная клиентом при оформлении (СДЕК/Озон/Вайлдберриз). Необязательна.</summary>
+    public string? DeliveryCompany { get; set; }
+    /// <summary>Комментарий клиента к доставке (например, пожелания по курьеру). Доставка выбранной компанией — за счёт клиента.</summary>
+    public string? DeliveryComment { get; set; }
+
     // Навигационные свойства
     public Zip Zip { get; set; } = null!;
     public DeliveryAddress Address { get; set; } = null!;
