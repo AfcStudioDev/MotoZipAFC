@@ -113,7 +113,8 @@ public class AdminSalesController(AppDbContext db, WarehouseService warehouse) :
                 DeliveryStatus = o.DeliveryStatus != null ? o.DeliveryStatus.Description : null,
                 o.IsPaid,
                 o.DeliveryCompany,
-                o.DeliveryComment
+                o.DeliveryComment,
+                o.ReceiptFileName
             })
             .ToListAsync());
 

@@ -73,6 +73,10 @@ public record AddressDto(int Id, string Address, string? PostCode);
 public record CreatePaymentRequest(Guid OrderId, string ReturnUrl);
 public record CreatePaymentResponse(string PaymentId, string ConfirmationUrl);
 
+/// <summary>Номер карты для ручного перевода — показывается в модалке оплаты (см. OrdersController.PaymentInfo).</summary>
+public record PaymentInfoDto(string CardNumber);
+public record UploadReceiptResponse(string ReceiptFileName);
+
 // ---------- Admin ----------
 public record AdminMarkRequest(string Mark);
 public record AdminModelRequest(int MarkId, string Model);

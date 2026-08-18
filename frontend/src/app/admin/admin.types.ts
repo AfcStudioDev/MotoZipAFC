@@ -16,7 +16,8 @@ export interface FieldDef {
    * (например, «Масляный фильтр» и у Honda, и у Yamaha), и по одному названию
    * невозможно понять, какая именно деталь выбирается.
    */
-  type: 'text' | 'number' | 'checkbox' | 'select' | 'date' | 'zip-picker' | 'catalog-picker' | 'group-picker' | 'stock';
+  /** file-link — ссылка на файл, загруженный не через эту форму (например, чек оплаты клиентом); только просмотр. */
+  type: 'text' | 'number' | 'checkbox' | 'select' | 'date' | 'zip-picker' | 'catalog-picker' | 'group-picker' | 'stock' | 'file-link';
   required?: boolean;
   refTable?: string;
   refLabelKey?: string;
@@ -38,6 +39,8 @@ export interface FieldDef {
   filterByUserId?: boolean;
   /** Поле выводится только для чтения — значение проставляет код, а не пользователь. */
   readonly?: boolean;
+  /** Для file-link: подпапка в wwwroot, где отдаются файлы (например, "Receipts"). */
+  fileFolder?: string;
 }
 
 /** Что именно создаём в модалке быстрого добавления и как это применить к форме после сохранения. */

@@ -3,6 +3,7 @@ import { authGuard, allGuard, senderGuard, adminGuard, adminOrRegistrarGuard } f
 
 export const routes: Routes = [
   { path: '', loadComponent: () => import('./pages/home.component').then(m => m.HomeComponent) },
+  { path: 'about', loadComponent: () => import('./pages/about.component').then(m => m.AboutComponent), title: 'Об организации — DonorGarage' },
   { path: 'login', loadComponent: () => import('./pages/login.component').then(m => m.LoginComponent) },
   { path: 'register', loadComponent: () => import('./pages/register.component').then(m => m.RegisterComponent) },
   { path: 'forgot-password', loadComponent: () => import('./pages/forgot-password.component').then(m => m.ForgotPasswordComponent) },

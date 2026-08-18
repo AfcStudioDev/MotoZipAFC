@@ -39,6 +39,18 @@ export class OrdersService {
     return this.http.get<{ orderId: string; status: string }>(`${this.api}/payments/status/${orderId}`);
   }
 
+  /** Номер карты для ручного перевода — онлайн-оплата (ЮKassa) отключена. */
+  paymentInfo(): Observable<{ cardNumber: string }> {
+    return this.http.get<{ cardNumber: string }>(`${this.api}/orders/payment-info`);
+  }
+
+  /** Чек о переводе прикладывает сам покупатель сразу после оформления заказа. */
+  uploadReceipt(orderId: string, file: File): Observable<{ receiptFileName: string }> {
+    const form = new FormData();
+    form.append('file', file);
+    return this.http.post<{ receiptFileName: string }>(`${this.api}/orders/${orderId}/receipt`, form);
+  }
+
   createGuestOrder(data: any) {
     return this.http.post<OrderDto>(`${this.api}/orders/guest-order`, data);
   }

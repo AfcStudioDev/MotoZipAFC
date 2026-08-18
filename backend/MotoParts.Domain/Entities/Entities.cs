@@ -37,6 +37,14 @@ public class Order
     /// <summary>Комментарий клиента к доставке (например, пожелания по курьеру). Доставка выбранной компанией — за счёт клиента.</summary>
     public string? DeliveryComment { get; set; }
 
+    /// <summary>
+    /// Имя файла чека о переводе — покупатель прикладывает его после ручного перевода
+    /// денег по номеру карты (см. OrdersController.UploadReceipt). Хранится в
+    /// wwwroot/Receipts, отдаётся статикой. Само по себе наличие файла не означает
+    /// IsPaid = true — это подтверждает администратор, посмотрев чек.
+    /// </summary>
+    public string? ReceiptFileName { get; set; }
+
     // Навигационные свойства
     public Zip Zip { get; set; } = null!;
     public DeliveryAddress Address { get; set; } = null!;
