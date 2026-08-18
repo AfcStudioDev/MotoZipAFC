@@ -51,17 +51,12 @@ import { AddressDto, OrderDto, PagedResult } from '../core/models';
                     </td>
                     <td>{{ order.address }}</td>
                     <td>
-                      @switch (order.paymentStatus) {
-                        @case ('succeeded') { <span class="success">Оплачен</span> }
-                        @case ('pending') { <span class="muted">Ожидает оплаты</span> }
-                        @case ('waiting_for_capture') { <span class="muted">Обрабатывается</span> }
-                        @case ('canceled') { <span class="error">Отменён</span> }
-                        @default {
-                          <button class="btn pay-btn" (click)="pay(order)">Оплатить</button>
-                        }
-                      }
-                      @if (order.paymentStatus === 'pending' || order.paymentStatus === 'canceled') {
-                        <button class="btn pay-btn" (click)="pay(order)">Оплатить</button>
+                      <!-- Онлайн-оплата сейчас отключена — статус подтверждает администратор
+                           вручную (см. Order.IsPaid), поэтому кнопки «Оплатить» здесь нет. -->
+                      @if (order.isPaid) {
+                        <span class="success">Оплачен</span>
+                      } @else {
+                        <span class="muted">Ожидает оплаты</span>
                       }
                     </td>
                   </tr>

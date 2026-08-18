@@ -155,6 +155,9 @@ export const ADMIN_TABLES: TableDef[] = [
     fields: [
       { key: 'zipId', label: 'Запчасть', type: 'zip-picker', required: true },
       { key: 'countOrdered', label: 'Кол-во', type: 'number', required: true },
+      // Онлайн-оплата (ЮKassa) сейчас отключена — админ подтверждает оплату вручную.
+      // От этого флага зависит, что можно сделать с заказом в «Отправлениях» (см. SenderController).
+      { key: 'isPaid', label: 'Оплачено', type: 'checkbox' },
       { key: 'userId', label: 'Покупатель', type: 'select', refTable: 'users', refLabelKey: 'fio', required: true },
       { key: 'addressId', label: 'Адрес доставки', type: 'select', refTable: 'addressess', refLabelKey: 'address', required: true, filterByUserId: true },
       // Цена продажи, Скидка и Скидка в % — три связанных поля: правка любого из них

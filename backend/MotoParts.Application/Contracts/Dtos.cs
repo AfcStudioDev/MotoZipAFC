@@ -45,9 +45,9 @@ public record OrderDto(
     string? ZipName,
     decimal? ZipCost,
     string Address,
-    //string? PaymentStatus,
     decimal? SellCost,
-    decimal? Discount);
+    decimal? Discount,
+    bool IsPaid);
 
 public record GuestCreateOrderRequest(
     Guid ZipId,
@@ -97,7 +97,8 @@ public record AdminOrderRequest(
     decimal? Discount,
     decimal? DiscountPercent,
     int UserId,
-    short? DeliveryStatusId
+    short? DeliveryStatusId,
+    bool IsPaid = false
 );
 
 /// <summary>Тело запроса на сохранение черновика формы: JSON со значениями полей.</summary>
