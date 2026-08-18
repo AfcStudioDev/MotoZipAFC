@@ -25,7 +25,7 @@ namespace MotoParts.Api.Controllers
         {
             var orders = await db.Orders
                 .Include(o => o.Zip).ThenInclude(z => z.PartNumber)
-                .Include(o => o.Address) // Исправлено с Address на Address
+                .Include(o => o.Purchase).ThenInclude(p => p.Address)
                 .Include(o => o.DeliveryStatus) // Подтягиваем новый справочник статусов
                 .OrderByDescending(o => o.OrderDateTime)
                 .Select(o => new
@@ -38,8 +38,8 @@ namespace MotoParts.Api.Controllers
                     o.OrderDateTime,
                     ZipName = o.Zip.PartNumber.Name,
                     PartNum = o.Zip.PartNumber.PartNum,
-                    Address = o.Address.Address, // Исправлено с Address.Address на Address.Address
-                    o.IsPaid
+                    Address = o.Purchase.Address.Address,
+                    IsPaid = o.Purchase.IsPaid
                 })
                 .ToListAsync();
 
@@ -76,6 +76,7 @@ namespace MotoParts.Api.Controllers
             // Находим заказ и его текущий статус
             var order = await db.Orders
                 .Include(o => o.DeliveryStatus)
+                .Include(o => o.Purchase)
                 .FirstOrDefaultAsync(o => o.Id == id);
 
             if (order == null) return NotFound(new { message = "Заказ не найден" });
@@ -90,7 +91,7 @@ namespace MotoParts.Api.Controllers
             // Пока оплата не подтверждена администратором вручную (онлайн-оплата отключена,
             // см. PaymentsController), заказ нельзя продвинуть дальше — только отменить
             // или вернуть в «не отправлено». Иначе отправитель мог бы отгрузить неоплаченное.
-            if (!order.IsPaid && (newStatus.Description == "sent" || newStatus.Description == "completed"))
+            if (!order.Purchase.IsPaid && (newStatus.Description == "sent" || newStatus.Description == "completed"))
                 return BadRequest(new { message = "Заказ не оплачен: доступны только отмена или возврат в «не отправлено»" });
 
             var oldStatusDescription = order.DeliveryStatus?.Description;

@@ -1,6 +1,7 @@
 import { Component, inject, ChangeDetectionStrategy } from '@angular/core';
 import { Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { AuthService } from './core/auth.service';
+import { CartService } from './core/cart.service';
 
 @Component({
     selector: 'app-root',
@@ -16,6 +17,10 @@ import { AuthService } from './core/auth.service';
           <!-- exact: true — иначе "/" подсвечивался бы на любой странице -->
           <a routerLink="/" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }">Каталог</a>
           <a routerLink="/about" routerLinkActive="active">Об организации</a>
+          <a routerLink="/cart" routerLinkActive="active" class="cart-link">
+            Корзина
+            @if (cart.totalCount() > 0) { <span class="cart-badge">{{ cart.totalCount() }}</span> }
+          </a>
           @if (auth.user(); as user) {
             <a routerLink="/cabinet" routerLinkActive="active">Личный кабинет</a>
             @if (user.isAdmin || user.isRegistrar) {
@@ -113,6 +118,20 @@ import { AuthService } from './core/auth.service';
     }
     .user-name { color: var(--muted); font-size: 14px; }
     .main { padding: 24px 16px 48px; }
+    .cart-link { display: inline-flex; align-items: center; gap: 6px; }
+    .cart-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 18px;
+      height: 18px;
+      padding: 0 5px;
+      border-radius: 9px;
+      background: var(--accent, #007bff);
+      color: #fff;
+      font-size: 12px;
+      font-weight: 700;
+    }
     .footer {
       border-top: 1px solid var(--border);
       padding: 20px 16px;
@@ -150,6 +169,7 @@ import { AuthService } from './core/auth.service';
 })
 export class AppComponent {
   auth = inject(AuthService);
+  cart = inject(CartService);
   private router = inject(Router);
 
   logout(): void {

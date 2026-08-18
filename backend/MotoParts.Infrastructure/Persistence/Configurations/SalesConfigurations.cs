@@ -26,18 +26,29 @@ public class DeliveryAddressConfiguration : IEntityTypeConfiguration<DeliveryAdd
     }
 }
 
+public class PurchaseConfiguration : IEntityTypeConfiguration<Purchase>
+{
+    public void Configure(EntityTypeBuilder<Purchase> builder)
+    {
+        builder.HasOne(p => p.Address)
+            .WithMany(d => d.Purchases)
+            .HasForeignKey(p => p.AddressId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasOne(p => p.User)
+            .WithMany(u => u.Purchases)
+            .HasForeignKey(p => p.UserId)
+            .OnDelete(DeleteBehavior.Restrict);
+    }
+}
+
 public class OrderConfiguration : IEntityTypeConfiguration<Order>
 {
     public void Configure(EntityTypeBuilder<Order> builder)
     {
-        builder.HasOne(o => o.Address)
-            .WithMany(d => d.Orders)
-            .HasForeignKey(o => o.AddressId)
-            .OnDelete(DeleteBehavior.Restrict);
-
-        builder.HasOne(o => o.User)
-            .WithMany(u => u.Orders)
-            .HasForeignKey(o => o.UserId)
+        builder.HasOne(o => o.Purchase)
+            .WithMany(p => p.Orders)
+            .HasForeignKey(o => o.PurchaseId)
             .OnDelete(DeleteBehavior.Restrict);
 
         builder.HasOne(o => o.Zip)

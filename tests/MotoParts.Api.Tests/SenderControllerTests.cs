@@ -25,6 +25,7 @@ public sealed class SenderControllerTests : IDisposable
     private readonly SqliteConnection _connection;
     private readonly AppDbContext _db;
     private readonly Order _order;
+    private readonly Purchase _purchase;
 
     public SenderControllerTests()
     {
@@ -60,19 +61,28 @@ public sealed class SenderControllerTests : IDisposable
         _db.Stored.Add(new Stored { ZipId = zip.Id, Count = 5 });
         _db.SaveChanges();
 
+        _purchase = new Purchase
+        {
+            Id = Guid.NewGuid(),
+            PurchaseNumber = "PUR-TEST",
+            UserId = user.Id,
+            AddressId = address.Id,
+            OrderDateTime = DateTimeOffset.UtcNow,
+            IsPaid = false
+        };
+        _db.Purchases.Add(_purchase);
+
         _order = new Order
         {
             Id = Guid.NewGuid(),
             OrderNumber = "ORD-TEST",
             CountOrdered = 2,
             ZipId = zip.Id,
-            AddressId = address.Id,
-            UserId = user.Id,
+            PurchaseId = _purchase.Id,
             OrderDateTime = DateTimeOffset.UtcNow,
             SellCost = 1790m,
             OperationId = (short)OperationEnum.Sale,
-            DeliveryStatusId = (short)DeliveryStatusEnum.created,
-            IsPaid = false
+            DeliveryStatusId = (short)DeliveryStatusEnum.created
         };
         _db.Orders.Add(_order);
         _db.SaveChanges();
@@ -118,7 +128,7 @@ public sealed class SenderControllerTests : IDisposable
     [Fact]
     public async Task Оплаченный_заказ_можно_отправить()
     {
-        _order.IsPaid = true;
+        _purchase.IsPaid = true;
         await _db.SaveChangesAsync();
         var controller = MakeController();
 

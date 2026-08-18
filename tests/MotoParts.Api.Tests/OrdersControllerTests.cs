@@ -1,15 +1,12 @@
 using System.Security.Claims;
-using System.Text.Json;
 
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
 
 using MotoParts.Api.Controllers;
 using MotoParts.Application.Contracts;
-using MotoParts.Application.Warehouse;
 using MotoParts.Domain.Models;
 using MotoParts.Infrastructure.Persistence;
 
@@ -18,15 +15,8 @@ using Xunit;
 namespace MotoParts.Api.Tests;
 
 /// <summary>
-/// Регрессия: POST /api/orders падал с 500 при указании адреса доставки —
-/// System.Text.Json.JsonException: A possible object cycle was detected
-/// (Order.Zip.PartNumber.Zips.PartNumber.Zips...).
-///
-/// Причина не в самих данных, а в том, что Create() возвращал ActionResult&lt;OrderDto&gt;
-/// с телом Ok(order) — сырой сущностью EF. Order.Zip получает fix-up от трекера контекста
-/// (Zip загружен в этом же запросе через Include), а Zip.PartNumber.Zips — обратная навигация,
-/// которая включает тот же Zip, — отсюда цикл. Тест воспроизводит ровно это состояние
-/// трекера (тот же DbContext, тот же Include) и проверяет, что ответ сериализуется.
+/// Просмотр уже оформленных заказов. Оформление — см. PurchasesControllerTests
+/// (там же и регрессия на цикл сериализации при указании адреса доставки).
 /// </summary>
 public sealed class OrdersControllerTests : IDisposable
 {
@@ -68,9 +58,9 @@ public sealed class OrdersControllerTests : IDisposable
         _db.SaveChanges();
     }
 
-    private OrdersController MakeController(IConfiguration? configuration = null)
+    private OrdersController MakeController()
     {
-        var controller = new OrdersController(_db, new WarehouseService(_db), configuration ?? new ConfigurationBuilder().Build());
+        var controller = new OrdersController(_db);
         var claims = new ClaimsIdentity([new Claim(ClaimTypes.NameIdentifier, _user.Id.ToString())]);
         controller.ControllerContext = new ControllerContext
         {
@@ -79,127 +69,28 @@ public sealed class OrdersControllerTests : IDisposable
         return controller;
     }
 
-    [Fact]
-    public async Task Создание_заказа_с_адресом_доставки_сериализуется_без_ошибок()
+    /// <summary>Заказ вместе с его покупкой — само оформление не проверяется здесь.</summary>
+    private Order SeedOrder(bool isPaid = false, string? receiptFileName = null)
     {
-        var controller = MakeController();
-        var request = new CreateOrderRequest(_zip.Id, 2, 1500m, _address.Id);
-
-        var result = await controller.Create(request);
-
-        var ok = Assert.IsType<OkObjectResult>(result.Result);
-        var dto = Assert.IsType<OrderDto>(ok.Value);
-
-        // Раньше именно этот вызов бросал JsonException из-за цикла в навигационных
-        // свойствах сущности Order — сам факт, что Serialize не бросает, и есть регрессия.
-        JsonSerializer.Serialize(dto);
-
-        Assert.Equal("Масляный фильтр", dto.ZipName);
-        Assert.Equal("ул. Тестовая, 1", dto.Address);
-    }
-
-    [Fact]
-    public async Task Заказ_с_несуществующим_адресом_возвращает_404_а_не_падает()
-    {
-        var controller = MakeController();
-        var request = new CreateOrderRequest(_zip.Id, 1, 1500m, AddressId: 999);
-
-        var result = await controller.Create(request);
-
-        Assert.IsType<NotFoundObjectResult>(result.Result);
-    }
-
-    [Fact]
-    public void PaymentInfo_возвращает_номер_карты_из_настроек()
-    {
-        var config = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?> { ["Payment:CardNumber"] = "2200 0000 0000 0000" })
-            .Build();
-        var controller = MakeController(config);
-
-        var result = controller.PaymentInfo();
-
-        var ok = Assert.IsType<OkObjectResult>(result);
-        var dto = Assert.IsType<PaymentInfoDto>(ok.Value);
-        Assert.Equal("2200 0000 0000 0000", dto.CardNumber);
-    }
-
-    [Fact]
-    public void PaymentInfo_без_настройки_возвращает_404_а_не_пустую_карту()
-    {
-        // Пустая карта в модалке оплаты выглядела бы как баг, а не как «не настроено».
-        var controller = MakeController();
-
-        var result = controller.PaymentInfo();
-
-        Assert.IsType<ObjectResult>(result);
-        Assert.Equal(StatusCodes.Status404NotFound, ((ObjectResult)result).StatusCode);
-    }
-
-    [Fact]
-    public async Task Чек_сохраняется_и_имя_файла_проставляется_в_заказ()
-    {
-        var order = SeedOrder();
-        var controller = MakeController();
-        var file = MakeFormFile("image/jpeg", "чек.jpg");
-
-        try
+        var purchase = new Purchase
         {
-            var result = await controller.UploadReceipt(order.Id, file);
+            Id = Guid.NewGuid(),
+            PurchaseNumber = "PUR-MY-TEST",
+            UserId = _user.Id,
+            AddressId = _address.Id,
+            OrderDateTime = DateTimeOffset.UtcNow,
+            IsPaid = isPaid,
+            ReceiptFileName = receiptFileName
+        };
+        _db.Purchases.Add(purchase);
 
-            var ok = Assert.IsType<OkObjectResult>(result);
-            var response = Assert.IsType<UploadReceiptResponse>(ok.Value);
-
-            var reloaded = await _db.Orders.AsNoTracking().SingleAsync(o => o.Id == order.Id);
-            Assert.Equal(response.ReceiptFileName, reloaded.ReceiptFileName);
-
-            var savedPath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "Receipts", response.ReceiptFileName);
-            Assert.True(File.Exists(savedPath));
-        }
-        finally
-        {
-            CleanupReceiptFiles();
-        }
-    }
-
-    [Fact]
-    public async Task Чек_недопустимого_типа_отклоняется()
-    {
-        var order = SeedOrder();
-        var controller = MakeController();
-        var file = MakeFormFile("text/plain", "чек.txt");
-
-        var result = await controller.UploadReceipt(order.Id, file);
-
-        var obj = Assert.IsType<ObjectResult>(result);
-        Assert.Equal(StatusCodes.Status400BadRequest, obj.StatusCode);
-
-        var reloaded = await _db.Orders.AsNoTracking().SingleAsync(o => o.Id == order.Id);
-        Assert.Null(reloaded.ReceiptFileName);
-    }
-
-    [Fact]
-    public async Task Чек_для_несуществующего_заказа_возвращает_404()
-    {
-        var controller = MakeController();
-        var file = MakeFormFile("image/jpeg", "чек.jpg");
-
-        var result = await controller.UploadReceipt(Guid.NewGuid(), file);
-
-        Assert.IsType<NotFoundObjectResult>(result);
-    }
-
-    /// <summary>Строка заказа для тестов загрузки чека — само создание заказа здесь не проверяется.</summary>
-    private Order SeedOrder()
-    {
         var order = new Order
         {
             Id = Guid.NewGuid(),
-            OrderNumber = "ORD-RECEIPT-TEST",
+            OrderNumber = "ORD-MY-TEST",
             CountOrdered = 1,
             ZipId = _zip.Id,
-            AddressId = _address.Id,
-            UserId = _user.Id,
+            PurchaseId = purchase.Id,
             OrderDateTime = DateTimeOffset.UtcNow,
             SellCost = 1790m,
             OperationId = (short)OperationEnum.Sale,
@@ -210,17 +101,44 @@ public sealed class OrdersControllerTests : IDisposable
         return order;
     }
 
-    private static IFormFile MakeFormFile(string contentType, string fileName)
+    [Fact]
+    public async Task Мои_заказы_отдают_данные_покупки_на_каждой_позиции()
     {
-        var bytes = new byte[] { 1, 2, 3, 4 };
-        var stream = new MemoryStream(bytes);
-        return new FormFile(stream, 0, bytes.Length, "file", fileName) { Headers = new HeaderDictionary(), ContentType = contentType };
+        SeedOrder(isPaid: true, receiptFileName: "receipt.jpg");
+        var controller = MakeController();
+
+        var result = await controller.My();
+
+        var ok = Assert.IsType<OkObjectResult>(result.Result);
+        var page = Assert.IsType<PagedResult<OrderDto>>(ok.Value);
+        var item = Assert.Single(page.Items);
+
+        Assert.True(item.IsPaid);
+        Assert.Equal("receipt.jpg", item.ReceiptFileName);
+        Assert.Equal("ул. Тестовая, 1", item.Address);
+        Assert.StartsWith("PUR-", item.PurchaseNumber);
     }
 
-    private static void CleanupReceiptFiles()
+    [Fact]
+    public async Task Чужие_заказы_не_попадают_в_список()
     {
-        var folder = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "Receipts");
-        if (Directory.Exists(folder)) Directory.Delete(folder, recursive: true);
+        SeedOrder();
+        var otherUser = new User { Email = "other@test.local", FIO = "Другой" };
+        _db.Users.Add(otherUser);
+        _db.SaveChanges();
+
+        var controller = new OrdersController(_db);
+        var claims = new ClaimsIdentity([new Claim(ClaimTypes.NameIdentifier, otherUser.Id.ToString())]);
+        controller.ControllerContext = new ControllerContext
+        {
+            HttpContext = new DefaultHttpContext { User = new ClaimsPrincipal(claims) }
+        };
+
+        var result = await controller.My();
+
+        var ok = Assert.IsType<OkObjectResult>(result.Result);
+        var page = Assert.IsType<PagedResult<OrderDto>>(ok.Value);
+        Assert.Empty(page.Items);
     }
 
     public void Dispose()

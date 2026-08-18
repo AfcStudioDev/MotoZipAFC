@@ -136,7 +136,9 @@ export class CabinetComponent implements OnInit {
   }
 
   confirmPayment(order: OrderDto): void {
-    this.paymentModal.open({ id: order.id, orderNumber: order.orderNumber });
+    // Оплата и чек — на всю покупку, а не на одну позицию: если в покупке несколько
+    // товаров, кнопка на любой из них открывает одну и ту же модалку.
+    this.paymentModal.open({ id: order.purchaseId, orderNumber: order.purchaseNumber });
   }
 
   addAddress(): void {

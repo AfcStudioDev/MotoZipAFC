@@ -35,10 +35,30 @@ public record PagedResult<T>(IReadOnlyList<T> Items, int Total, int Page, int Pa
     public int TotalPages => PageSize <= 0 ? 0 : (int)Math.Ceiling((double)Total / PageSize);
 }
 
-// ---------- Orders ----------
-public record CreateOrderRequest(
-    Guid ZipId, int Count, decimal SellCost, int AddressId,
-    string? DeliveryCompany = null, string? DeliveryComment = null);
+// ---------- Purchases (корзина) ----------
+
+/// <summary>Одна позиция корзины при оформлении — одна покупка может содержать несколько.</summary>
+public record CartItemRequest(Guid ZipId, int Count, decimal SellCost);
+
+/// <summary>Оформление покупки авторизованным пользователем — из одной позиции (обычная «Купить») или из нескольких (корзина).</summary>
+public record CheckoutRequest(
+    List<CartItemRequest> Items,
+    int AddressId,
+    string? DeliveryCompany = null,
+    string? DeliveryComment = null);
+
+/// <summary>То же самое для гостя — совмещает регистрацию/поиск покупателя по телефону с оформлением.</summary>
+public record GuestCheckoutRequest(
+    List<CartItemRequest> Items,
+    string Fio,
+    string Email,
+    string Phone,
+    string? Password,
+    string Address,
+    string? PostCode,
+    string? DeliveryCompany = null,
+    string? DeliveryComment = null);
+
 public record OrderDto(
     Guid Id,
     string OrderNumber,
@@ -49,22 +69,17 @@ public record OrderDto(
     string Address,
     decimal? SellCost,
     decimal? Discount,
+    /// <summary>Общие на всю покупку — берутся из Purchase, одинаковы у всех её позиций.</summary>
     bool IsPaid,
-    string? ReceiptFileName);
+    string? ReceiptFileName,
+    Guid PurchaseId,
+    string PurchaseNumber);
 
-public record GuestCreateOrderRequest(
-    Guid ZipId,
-    int Count,
-    string Fio,
-    string Email,
-    string Phone,
-    string? Password,
-    string Address,
-    string? PostCode,
-    decimal? Promo,
-    string? DeliveryCompany = null,
-    string? DeliveryComment = null
-    );
+/// <summary>Покупка целиком — то, что показывает модалка оплаты сразу после оформления.</summary>
+public record PurchaseDto(
+    Guid Id,
+    string PurchaseNumber,
+    List<OrderDto> Items);
 
 // ---------- Adresses ----------
 public record CreateAddressRequest(string Address, string? PostCode);
@@ -74,7 +89,7 @@ public record AddressDto(int Id, string Address, string? PostCode);
 public record CreatePaymentRequest(Guid OrderId, string ReturnUrl);
 public record CreatePaymentResponse(string PaymentId, string ConfirmationUrl);
 
-/// <summary>Номер карты для ручного перевода — показывается в модалке оплаты (см. OrdersController.PaymentInfo).</summary>
+/// <summary>Номер карты для ручного перевода — показывается в модалке оплаты (см. PurchasesController.PaymentInfo).</summary>
 public record PaymentInfoDto(string CardNumber);
 public record UploadReceiptResponse(string ReceiptFileName);
 

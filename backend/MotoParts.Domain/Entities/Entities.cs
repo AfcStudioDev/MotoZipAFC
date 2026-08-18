@@ -2,6 +2,52 @@ using System.ComponentModel.DataAnnotations;
 
 namespace MotoParts.Domain.Models;
 
+/// <summary>
+/// Одна покупка — то, что клиент оформляет и оплачивает одним переводом за один заход
+/// (корзина из одной или нескольких позиций). Адрес, доставка и оплата — общие на всю
+/// покупку; количество товара и статус доставки — у каждой позиции (<see cref="Order"/>)
+/// свои, потому что физически это может быть разная упаковка/отправка.
+/// </summary>
+public class Purchase
+{
+    [Key]
+    public Guid Id { get; set; }
+
+    /// <summary>Человекочитаемый номер для поиска и модалки оплаты — "PUR-&lt;unix timestamp&gt;".</summary>
+    [Required]
+    public string PurchaseNumber { get; set; } = null!;
+
+    public int UserId { get; set; }
+    public int AddressId { get; set; }
+    public DateTimeOffset OrderDateTime { get; set; }
+
+    /// <summary>
+    /// Подтверждает администратор вручную — онлайн-оплата (ЮKassa) сейчас отключена
+    /// (см. PaymentsController), поэтому это единственный источник правды о том, что деньги
+    /// получены. Пока false, «Отправления» не дают продвинуть ни одну позицию покупки
+    /// дальше «Отменить»/«Не отправлено».
+    /// </summary>
+    public bool IsPaid { get; set; } = false;
+
+    /// <summary>Компания курьерской доставки, выбранная клиентом при оформлении (СДЕК/Озон/Вайлдберриз). Необязательна.</summary>
+    public string? DeliveryCompany { get; set; }
+    /// <summary>Комментарий клиента к доставке (например, пожелания по курьеру). Доставка выбранной компанией — за счёт клиента.</summary>
+    public string? DeliveryComment { get; set; }
+
+    /// <summary>
+    /// Имя файла чека о переводе — покупатель прикладывает его после ручного перевода
+    /// денег по номеру карты (см. PurchasesController.UploadReceipt), один на всю покупку.
+    /// Хранится в wwwroot/Receipts, отдаётся статикой. Само по себе наличие файла не означает
+    /// IsPaid = true — это подтверждает администратор, посмотрев чек.
+    /// </summary>
+    public string? ReceiptFileName { get; set; }
+
+    public User User { get; set; } = null!;
+    public DeliveryAddress Address { get; set; } = null!;
+    public ICollection<Order> Orders { get; set; } = new HashSet<Order>();
+}
+
+/// <summary>Одна позиция покупки — конкретная запчасть и количество.</summary>
 public class Order
 {
     [Key]
@@ -13,7 +59,6 @@ public class Order
     public int CountOrdered { get; set; } = 0;
 
     public Guid ZipId { get; set; }
-    public int AddressId { get; set; }
     public DateTimeOffset OrderDateTime { get; set; }
 
     public decimal SellCost { get; set; }
@@ -23,33 +68,15 @@ public class Order
     public decimal? Discount { get; set; }
     /// <summary>Скидка в процентах от PriceCost, округлена до десятых долей.</summary>
     public decimal? DiscountPercent { get; set; }
-    public int UserId { get; set; }
     public short? DeliveryStatusId { get; set; }
-    /// <summary>
-    /// Подтверждает администратор вручную — онлайн-оплата (ЮKassa) сейчас отключена
-    /// (см. PaymentsController), поэтому это единственный источник правды о том, что деньги
-    /// получены. Пока false, «Отправления» не дают продвинуть заказ дальше «Отменить»/«Не отправлено».
-    /// </summary>
-    public bool IsPaid { get; set; } = false;
 
-    /// <summary>Компания курьерской доставки, выбранная клиентом при оформлении (СДЕК/Озон/Вайлдберриз). Необязательна.</summary>
-    public string? DeliveryCompany { get; set; }
-    /// <summary>Комментарий клиента к доставке (например, пожелания по курьеру). Доставка выбранной компанией — за счёт клиента.</summary>
-    public string? DeliveryComment { get; set; }
-
-    /// <summary>
-    /// Имя файла чека о переводе — покупатель прикладывает его после ручного перевода
-    /// денег по номеру карты (см. OrdersController.UploadReceipt). Хранится в
-    /// wwwroot/Receipts, отдаётся статикой. Само по себе наличие файла не означает
-    /// IsPaid = true — это подтверждает администратор, посмотрев чек.
-    /// </summary>
-    public string? ReceiptFileName { get; set; }
+    /// <summary>Покупка, к которой относится эта позиция — держит адрес, оплату и доставку (см. <see cref="Purchase"/>).</summary>
+    public Guid PurchaseId { get; set; }
+    public Purchase Purchase { get; set; } = null!;
 
     // Навигационные свойства
     public Zip Zip { get; set; } = null!;
-    public DeliveryAddress Address { get; set; } = null!;
     public Operation? Operation { get; set; }
-    public User User { get; set; } = null!;
     public DeliveryStatus? DeliveryStatus { get; set; }
 
     public ICollection<Log> Logs { get; set; } = new HashSet<Log>();
@@ -280,7 +307,7 @@ public class User
     public string? OAuthSubject { get; set; }        // внешний id пользователя у провайдера
 
     public ICollection<DeliveryAddress> DeliveryAddresses { get; set; } = new HashSet<DeliveryAddress>();
-    public ICollection<Order> Orders { get; set; } = new HashSet<Order>();
+    public ICollection<Purchase> Purchases { get; set; } = new HashSet<Purchase>();
     public ICollection<IncomeMoto> IncomeMotos { get; set; } = new HashSet<IncomeMoto>();
 }
 
@@ -297,7 +324,7 @@ public class DeliveryAddress
     public int? UserId { get; set; }
     public User? User { get; set; }
 
-    public ICollection<Order> Orders { get; set; } = new HashSet<Order>();
+    public ICollection<Purchase> Purchases { get; set; } = new HashSet<Purchase>();
 }
 
 /// <summary>Категория операции: движение товара / переоценка / аудит.</summary>

@@ -80,14 +80,25 @@ public class DeliveryStatusSeedTests
         db.AddRange(user, address, group, pn, donor, zip);
         await db.SaveChangesAsync();
 
+        // Id пользователя/адреса появляются только после первого SaveChanges — Purchase создаём отдельно.
+        var purchase = new Purchase
+        {
+            Id = Guid.NewGuid(),
+            PurchaseNumber = "PUR-FK-CHECK",
+            UserId = user.Id,
+            AddressId = address.Id,
+            OrderDateTime = DateTimeOffset.UtcNow
+        };
+        db.Purchases.Add(purchase);
+        await db.SaveChangesAsync();
+
         db.Orders.Add(new Order
         {
             Id = Guid.NewGuid(),
             OrderNumber = "ORD-FK-CHECK",
             CountOrdered = 1,
             ZipId = zip.Id,
-            AddressId = address.Id,
-            UserId = user.Id,
+            PurchaseId = purchase.Id,
             OrderDateTime = DateTimeOffset.UtcNow,
             SellCost = 200m,
             OperationId = (short)OperationEnum.Sale,
