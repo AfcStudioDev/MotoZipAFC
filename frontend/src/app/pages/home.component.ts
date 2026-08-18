@@ -4,6 +4,7 @@ import { CurrencyPipe } from '@angular/common';
 import { Router } from '@angular/router';
 import { CatalogService, SearchFilters } from '../core/catalog.service';
 import { OrdersService } from '../core/orders.service';
+import { CartService } from '../core/cart.service';
 import { AuthService } from '../core/auth.service';
 import { AddressDto, GroupDto, MarkDto, ModelDto, PagedResult, ZipDto } from '../core/models';
 import { PaymentModalComponent } from '../shared/payment-modal.component';
@@ -122,6 +123,7 @@ import { ChangeDetectorRef } from '@angular/core';
               <div class="zip-footer">
                 <span class="price">{{ zip.sellCost | currency:'RUB':'symbol-narrow':'1.0-0' }}</span>
                 @if (zip.countStored > 0) {
+                  <button class="btn btn-secondary" (click)="$event.stopPropagation(); addToCart(zip)">В корзину</button>
                   <button class="btn" (click)="$event.stopPropagation(); openBuy(zip)">Купить</button>
                 } @else {
                   <span class="muted">Нет в наличии</span>
@@ -361,6 +363,7 @@ export class HomeComponent implements OnInit {
   private orders = inject(OrdersService);
   private auth = inject(AuthService);
   private cdr = inject(ChangeDetectorRef);
+  cart = inject(CartService);
 
   // Добавляем новые сигналы в класс компонента
   isZoomed = signal(false);
@@ -562,13 +565,16 @@ export class HomeComponent implements OnInit {
     this.isGuestBuying.set(null);
   }
 
+  addToCart(zip: ZipDto): void {
+    this.cart.add(zip);
+  }
+
   confirmGuestBuy(zip: ZipDto): void {
     this.buyError.set('');
     this.busy.set(true);
 
     const requestData = {
-      zipId: zip.id,
-      count: this.guestForm.count,
+      items: [{ zipId: zip.id, count: this.guestForm.count, sellCost: zip.sellCost ?? 0 }],
       fio: this.guestForm.fio,
       email: this.guestForm.email,
       phone: this.guestForm.phone,
@@ -579,8 +585,8 @@ export class HomeComponent implements OnInit {
       deliveryComment: this.guestForm.deliveryComment || undefined
     };
 
-    this.orders.createGuestOrder(requestData).subscribe({
-      next: order => this.openPaymentModal(order),
+    this.orders.guestCheckout(requestData).subscribe({
+      next: purchase => this.openPaymentModal({ id: purchase.id, orderNumber: purchase.purchaseNumber }),
       error: err => {
         this.busy.set(false);
         this.buyError.set(err.error?.message ?? 'Не удалось создать заказ');
@@ -597,11 +603,11 @@ export class HomeComponent implements OnInit {
     this.busy.set(true);
 
     const placeOrder = (addressId: number) => {
-      this.orders.createOrder(
-        zip.id, this.buyCount, addressId,
+      this.orders.checkout(
+        [{ zipId: zip.id, count: this.buyCount, sellCost: zip.sellCost ?? 0 }], addressId,
         this.buyDeliveryCompany || undefined, this.buyDeliveryComment || undefined
       ).subscribe({
-        next: order => this.openPaymentModal(order),
+        next: purchase => this.openPaymentModal({ id: purchase.id, orderNumber: purchase.purchaseNumber }),
         error: err => {
           this.busy.set(false);
           this.buyError.set(err.error?.message ?? 'Не удалось создать заказ');

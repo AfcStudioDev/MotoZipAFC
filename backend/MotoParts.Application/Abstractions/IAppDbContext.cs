@@ -26,6 +26,7 @@ public interface IAppDbContext
     DbSet<Operation> Operations { get; }
     DbSet<Stored> Stored { get; }
     DbSet<IncomeMoto> IncomeMotos { get; }
+    DbSet<Purchase> Purchases { get; }
     DbSet<Order> Orders { get; }
     DbSet<Log> Logs { get; }
     DbSet<PriceHistory> PriceHistories { get; }

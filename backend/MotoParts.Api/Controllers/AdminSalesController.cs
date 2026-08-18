@@ -100,24 +100,32 @@ public class AdminSalesController(AppDbContext db, WarehouseService warehouse) :
                 o.ZipId,
                 ZipName = o.Zip.PartNumber.Name,
                 PartNum = o.Zip.PartNumber.PartNum,
-                o.AddressId,
+                o.Purchase.AddressId,
                 o.OrderDateTime,
                 o.SellCost,
                 o.PriceCost,
                 o.OperationId,
                 o.Discount,
                 o.DiscountPercent,
-                o.UserId,
-                UserFio = o.User.FIO,
+                o.Purchase.UserId,
+                UserFio = o.Purchase.User.FIO,
                 o.DeliveryStatusId,
                 DeliveryStatus = o.DeliveryStatus != null ? o.DeliveryStatus.Description : null,
-                o.IsPaid,
-                o.DeliveryCompany,
-                o.DeliveryComment,
-                o.ReceiptFileName
+                // Общие на всю покупку — одинаковы у всех её позиций (см. Purchase).
+                o.PurchaseId,
+                PurchaseNumber = o.Purchase.PurchaseNumber,
+                IsPaid = o.Purchase.IsPaid,
+                DeliveryCompany = o.Purchase.DeliveryCompany,
+                DeliveryComment = o.Purchase.DeliveryComment,
+                ReceiptFileName = o.Purchase.ReceiptFileName
             })
             .ToListAsync());
 
+    /// <summary>
+    /// Заводит заказ из одной позиции — «корзина из одного товара», заведённая администратором.
+    /// Для покупок из нескольких позиций клиент проходит через корзину на витрине
+    /// (см. PurchasesController.Checkout); в админке своей корзины пока нет.
+    /// </summary>
     [HttpPost("orders")]
     public async Task<IActionResult> AddOrder(AdminOrderRequest request)
     {
@@ -137,6 +145,27 @@ public class AdminSalesController(AppDbContext db, WarehouseService warehouse) :
             ? "ORD-" + DateTimeOffset.UtcNow.ToUnixTimeSeconds()
             : request.OrderNumber.Trim();
 
+        var orderDateTime = request.OrderDateTime.HasValue
+            // С фронта приходит только календарная дата (input[type=date], без времени и зоны) —
+            // ASP.NET достраивает её локальным смещением сервера, а Npgsql пишет timestamptz
+            // только с Offset=0. ToUniversalTime() тут сдвинул бы саму дату (например, на день
+            // назад), поэтому просто фиксируем выбранный день на полночь UTC, без конвертации.
+            ? new DateTimeOffset(request.OrderDateTime.Value.Date, TimeSpan.Zero)
+            : DateTimeOffset.UtcNow;
+
+        var purchase = new Purchase
+        {
+            Id = Guid.NewGuid(),
+            PurchaseNumber = "PUR-" + DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+            UserId = request.UserId,
+            AddressId = request.AddressId,
+            OrderDateTime = orderDateTime,
+            IsPaid = request.IsPaid,
+            DeliveryCompany = request.DeliveryCompany,
+            DeliveryComment = request.DeliveryComment
+        };
+        db.Purchases.Add(purchase);
+
         // Прайс-цена по умолчанию — текущая цена запчасти: именно её подставляет форма.
         var pricing = DiscountPolicy.FromSellCost(request.PriceCost ?? zip.SellCost, request.SellCost);
 
@@ -146,15 +175,7 @@ public class AdminSalesController(AppDbContext db, WarehouseService warehouse) :
             OrderNumber = orderNumber,
             CountOrdered = request.CountOrdered,
             ZipId = request.ZipId,
-            AddressId = request.AddressId,
-            UserId = request.UserId,
-            // С фронта приходит только календарная дата (input[type=date], без времени и зоны) —
-            // ASP.NET достраивает её локальным смещением сервера, а Npgsql пишет timestamptz
-            // только с Offset=0. ToUniversalTime() тут сдвинул бы саму дату (например, на день
-            // назад), поэтому просто фиксируем выбранный день на полночь UTC, без конвертации.
-            OrderDateTime = request.OrderDateTime.HasValue
-                ? new DateTimeOffset(request.OrderDateTime.Value.Date, TimeSpan.Zero)
-                : DateTimeOffset.UtcNow,
+            OrderDateTime = orderDateTime,
             // Скидку пересчитываем на сервере из прайс-цены, а не берём из запроса: присланная
             // тройка (цена, скидка, процент) могла быть несогласованной — правило одно (DiscountPolicy).
             SellCost = pricing.SellCost,
@@ -165,9 +186,7 @@ public class AdminSalesController(AppDbContext db, WarehouseService warehouse) :
             // Форма в админке не даёт выбрать статус доставки — без дефолта заказ оставался
             // с DeliveryStatusId = null и не попадал ни в одну вкладку «Отправлений».
             DeliveryStatusId = request.DeliveryStatusId ?? (short)DeliveryStatusEnum.created,
-            IsPaid = request.IsPaid,
-            DeliveryCompany = request.DeliveryCompany,
-            DeliveryComment = request.DeliveryComment
+            PurchaseId = purchase.Id
         };
         db.Orders.Add(order);
 
@@ -212,11 +231,15 @@ public class AdminSalesController(AppDbContext db, WarehouseService warehouse) :
     /// Правка заказа. Количество и запчасть здесь не меняются: они уже отражены в остатке и
     /// журнале, и тихая правка развела бы склад с историей. Чтобы изменить количество, заказ
     /// удаляют и заводят заново либо проводят коррекцию.
+    ///
+    /// Адрес, покупатель, оплата и доставка принадлежат не самому заказу, а покупке целиком
+    /// (см. Purchase) — если заказ из покупки в несколько позиций, правка через любую из них
+    /// обновит их все одинаково. Это осознанно: у одной покупки один адрес и одна оплата.
     /// </summary>
     [HttpPut("orders/{id:guid}")]
     public async Task<IActionResult> UpdateOrder(Guid id, AdminOrderRequest request)
     {
-        var order = await db.Orders.FindAsync(id);
+        var order = await db.Orders.Include(o => o.Purchase).FirstOrDefaultAsync(o => o.Id == id);
         if (order == null) return NotFound(new { message = "Заказ не найден" });
 
         if (!await db.DeliveryAddressess.AnyAsync(a => a.Id == request.AddressId))
@@ -227,8 +250,8 @@ public class AdminSalesController(AppDbContext db, WarehouseService warehouse) :
         if (!string.IsNullOrWhiteSpace(request.OrderNumber))
             order.OrderNumber = request.OrderNumber.Trim();
 
-        order.AddressId = request.AddressId;
-        order.UserId = request.UserId;
+        order.Purchase.AddressId = request.AddressId;
+        order.Purchase.UserId = request.UserId;
         if (request.OrderDateTime.HasValue)
             order.OrderDateTime = new DateTimeOffset(request.OrderDateTime.Value.Date, TimeSpan.Zero);
 
@@ -246,9 +269,9 @@ public class AdminSalesController(AppDbContext db, WarehouseService warehouse) :
             order.DeliveryStatusId = request.DeliveryStatusId;
         }
 
-        order.IsPaid = request.IsPaid;
-        order.DeliveryCompany = request.DeliveryCompany;
-        order.DeliveryComment = request.DeliveryComment;
+        order.Purchase.IsPaid = request.IsPaid;
+        order.Purchase.DeliveryCompany = request.DeliveryCompany;
+        order.Purchase.DeliveryComment = request.DeliveryComment;
 
         await db.SaveChangesAsync();
         return Ok(new { order.Id, order.OrderNumber });

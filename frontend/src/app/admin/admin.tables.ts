@@ -153,10 +153,13 @@ export const ADMIN_TABLES: TableDef[] = [
     endpoint: 'orders',
     title: 'Заказы',
     fields: [
+      // Несколько позиций с одинаковым номером покупки — один заказ из корзины: общий адрес,
+      // оплата и доставка (см. Purchase), только количество и статус — у каждой позиции свои.
+      { key: 'purchaseNumber', label: 'Покупка', type: 'text', readonly: true },
       { key: 'zipId', label: 'Запчасть', type: 'zip-picker', required: true },
       { key: 'countOrdered', label: 'Кол-во', type: 'number', required: true },
       // Онлайн-оплата (ЮKassa) сейчас отключена — админ подтверждает оплату вручную.
-      // От этого флага зависит, что можно сделать с заказом в «Отправлениях» (см. SenderController).
+      // Общая на всю покупку: правка через любую её позицию обновит все остальные.
       { key: 'isPaid', label: 'Оплачено', type: 'checkbox' },
       { key: 'userId', label: 'Покупатель', type: 'select', refTable: 'users', refLabelKey: 'fio', required: true },
       { key: 'addressId', label: 'Адрес доставки', type: 'select', refTable: 'addressess', refLabelKey: 'address', required: true, filterByUserId: true },
@@ -178,6 +181,8 @@ export const ADMIN_TABLES: TableDef[] = [
       { key: 'receiptFileName', label: 'Чек оплаты', type: 'file-link', fileFolder: 'Receipts', readonly: true }
     ],
     searchFields: [
+      // По номеру покупки находятся сразу все её позиции — удобно, когда покупка из корзины.
+      { key: 'purchaseNumber', label: 'Покупка' },
       { key: 'orderNumber', label: 'Комментарий заказа' },
       { key: 'partNum', label: 'Парт-номер' },
       // Бэкенд отдаёт наименование в поле zipName; прежний ключ nomenclatureName

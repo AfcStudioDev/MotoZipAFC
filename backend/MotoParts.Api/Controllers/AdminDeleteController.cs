@@ -151,7 +151,7 @@ public class AdminDeleteController(AppDbContext db, WarehouseService warehouse) 
                 var user = await db.Users.FindAsync(userId);
                 if (user == null) return NotFound();
 
-                var orderCount = await db.Orders.CountAsync(o => o.UserId == userId);
+                var orderCount = await db.Purchases.CountAsync(p => p.UserId == userId);
                 if (orderCount > 0)
                     return Conflict(new { message = $"У пользователя есть заказы: {orderCount}. Удалить нельзя — вместе с ним пропали бы документы." });
 
@@ -179,7 +179,7 @@ public class AdminDeleteController(AppDbContext db, WarehouseService warehouse) 
                 var address = await db.DeliveryAddressess.FindAsync(addressId);
                 if (address == null) return NotFound();
 
-                var orderCount = await db.Orders.CountAsync(o => o.AddressId == addressId);
+                var orderCount = await db.Purchases.CountAsync(p => p.AddressId == addressId);
                 if (orderCount > 0)
                     return Conflict(new { message = $"На этот адрес оформлены заказы: {orderCount}. Удалить нельзя." });
 

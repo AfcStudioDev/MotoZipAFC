@@ -56,10 +56,27 @@ export interface OrderDto {
   address: string;
   sellCost: number;
   discount?: number;
-  /** Подтверждает администратор вручную — онлайн-оплата сейчас отключена. */
+  /** Общие на всю покупку — одинаковы у всех её позиций (см. Purchase на бэкенде). */
   isPaid: boolean;
-  /** Имя файла чека, если покупатель уже приложил его (см. OrdersService.uploadReceipt). */
+  /** Имя файла чека, если покупатель уже приложил его (см. OrdersService.uploadReceipt) — один на всю покупку. */
   receiptFileName?: string;
+  /** Покупка, к которой относится эта позиция — оплата и чек привязаны к ней, не к самой позиции. */
+  purchaseId: string;
+  purchaseNumber: string;
+}
+
+/** Покупка целиком — то, что возвращает оформление заказа (см. OrdersService.checkout). */
+export interface PurchaseDto {
+  id: string;
+  purchaseNumber: string;
+  items: OrderDto[];
+}
+
+/** Одна позиция корзины при оформлении. */
+export interface CartItemRequest {
+  zipId: string;
+  count: number;
+  sellCost: number;
 }
 
 export interface AddressDto {

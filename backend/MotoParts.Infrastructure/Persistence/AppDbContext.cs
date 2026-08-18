@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 using MotoParts.Application.Abstractions;
 using MotoParts.Domain.Models;
@@ -21,6 +22,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<Operation> Operations { get; set; }
     public DbSet<Stored> Stored { get; set; }
     public DbSet<IncomeMoto> IncomeMotos { get; set; }
+    public DbSet<Purchase> Purchases { get; set; }
     public DbSet<Order> Orders { get; set; }
     public DbSet<Log> Logs { get; set; }
     public DbSet<PriceHistory> PriceHistories { get; set; }
@@ -37,5 +39,21 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         // сущность описана своим IEntityTypeConfiguration в Persistence/Configurations —
         // они подхватываются из сборки автоматически.
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(AppDbContext).Assembly);
+
+        // SQLite (используется только в тестах — в бою всегда Postgres) не умеет ORDER BY
+        // по DateTimeOffset напрямую. Постгрес это переводит сам, поэтому конвертер нужен
+        // только здесь и только для этого провайдера — на прод-запросы не влияет.
+        if (Database.ProviderName == "Microsoft.EntityFrameworkCore.Sqlite")
+        {
+            var converter = new DateTimeOffsetToBinaryConverter();
+            foreach (var entityType in modelBuilder.Model.GetEntityTypes())
+            {
+                foreach (var property in entityType.GetProperties())
+                {
+                    if (property.ClrType == typeof(DateTimeOffset) || property.ClrType == typeof(DateTimeOffset?))
+                        property.SetValueConverter(converter);
+                }
+            }
+        }
     }
 }
