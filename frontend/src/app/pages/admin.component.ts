@@ -1,113 +1,27 @@
-import { Component, OnInit, OnDestroy, inject, signal, computed, ChangeDetectionStrategy } from '@angular/core';
+import { Component, OnInit, ViewChild, inject, signal, computed, ChangeDetectionStrategy } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { CommonModule } from '@angular/common';
-import { Subject, firstValueFrom } from 'rxjs';
-import { debounceTime, takeUntil } from 'rxjs/operators';
+import { firstValueFrom } from 'rxjs';
 import { AdminService } from '../core/admin.service';
 import { environment } from '../../environments/environment';
-
-interface ZipPhotoRow {
-  id: number;
-  fileName: string;
-  isMain: boolean;
-}
-
-interface FieldDef {
-  key: string;
-  label: string;
-  /**
-   * zip-picker — выбор запчасти в два шага: сначала парт-номер, затем конкретный
-   * экземпляр. Нужен потому, что одно наименование встречается у разных парт-номеров
-   * (например, «Масляный фильтр» и у Honda, и у Yamaha), и по одному названию
-   * невозможно понять, какая именно деталь выбирается.
-   */
-  type: 'text' | 'number' | 'checkbox' | 'select' | 'date' | 'zip-picker' | 'catalog-picker' | 'group-picker' | 'stock';
-  required?: boolean;
-  refTable?: string;
-  refLabelKey?: string;
-  /** Поле принадлежит каталожной позиции (PartNumbers), а не самой записи — сохраняется отдельным запросом. */
-  partNumberOwned?: boolean;
-  /**
-   * Для catalog-picker: по какому свойству PartNumber ищутся подсказки (парт-номер
-   * или наименование) — оба поля ищут по одному и тому же справочнику part-numbers,
-   * и выбор в любом из них подставляет оба значения (см. applyCatalogSuggestion).
-   */
-  catalogRole?: 'partNum' | 'name';
-  /** Кнопка «+» рядом с полем, открывающая модалку быстрого добавления записи в этот справочник. */
-  quickAdd?: 'part-number' | 'group' | 'incomemoto';
-  /**
-   * Для select: показывать в выпадающем списке только записи справочника, у которых
-   * userId совпадает с выбранным в форме form['userId']. Если у покупателя нет ни
-   * одного своего адреса — показывается полный список, чтобы поле не оставалось пустым.
-   */
-  filterByUserId?: boolean;
-  /** Поле выводится только для чтения — значение проставляет код, а не пользователь. */
-  readonly?: boolean;
-}
-
-/** Что именно создаём в модалке быстрого добавления и как это применить к форме после сохранения. */
-type QuickAddKind = 'part-number' | 'group' | 'incomemoto';
-
-/** Поле строки поиска. Только содержательные колонки — без Id и внешних ключей. */
-interface SearchFieldDef {
-  key: string;
-  label: string;
-}
-
-interface TableDef {
-  endpoint: string;
-  title: string;
-  fields: FieldDef[];
-  searchFields?: SearchFieldDef[];
-}
-
-// Решает проблему TS4111 (noPropertyAccessFromIndexSignature)
-interface DynamicRow {
-  id: any;
-  [key: string]: any;
-}
-
-/**
- * Одна строка применимости парт-номера к модели, выбранная/введённая в форме,
- * но ещё не обязательно сохранённая. applicabilityId задан только для уже
- * существующих связей (используется, чтобы отличить их от новых при сохранении).
- * modelId/markId заданы, только если модель/марка выбраны из существующего справочника —
- * иначе при сохранении их создаст syncApplicability по названию.
- */
-interface StagedModelLink {
-  applicabilityId?: number;
-  modelId?: number;
-  markId?: number;
-  markName: string;
-  modelName: string;
-}
-
-/** То же самое для серий — независимая от моделей связка (см. syncApplicability). */
-interface StagedSeriesLink {
-  applicabilityId?: number;
-  seriesId?: string;
-  seriesName: string;
-}
-
-/** Расхождение цены с уже заведёнными запчастями того же парт-номера. */
-interface PriceConflict {
-  partNumId: number;
-  partNum: string;
-  name: string;
-  /** Цена, стоящая сейчас у запчастей в базе. */
-  existingCost: number;
-  /** Цена, введённая пользователем. */
-  newCost: number;
-  /** Сколько запчастей с этим парт-номером уже заведено. */
-  count: number;
-}
+import { AdminDraftService, DraftPayload } from '../admin/admin-draft.service';
+import { ADMIN_TABLES } from '../admin/admin.tables';
+import { ApplicabilityEditorComponent } from '../admin/applicability-editor.component';
+import { ApplicabilitySyncService } from '../admin/applicability-sync.service';
+import { AdminDataTableComponent } from '../admin/admin-data-table.component';
+import {
+  DynamicRow, FieldDef, PriceConflict, QuickAddKind,
+  StagedModelLink, StagedSeriesLink, TableDef, ZipPhotoRow
+} from '../admin/admin.types';
 
 @Component({
   selector: 'app-admin',
   standalone: true,
-  imports: [FormsModule, CommonModule],
+  imports: [FormsModule, CommonModule, ApplicabilityEditorComponent, AdminDataTableComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   styleUrls: ['../styles/admin.component.css'],
+  // Состояние черновика привязано к экземпляру формы, поэтому сервис не глобальный.
+  providers: [AdminDraftService],
   template: `
     <div class="admin-container">
       <h2>Панель администратора</h2>
@@ -431,106 +345,18 @@ interface PriceConflict {
           </form>
         </div>
 
-        <!-- КАРТОЧКА ТАБЛИЦЫ (Оригинальный дизайн) -->
-        <div class="card">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-            <h3 style="margin: 0;">
-              {{ table.title }} (Всего: {{ visibleRows().length }}@if (isFiltered()) { <span> из {{ rows().length }}</span> })
-            </h3>
-            <button (click)="reload(table)" [disabled]="busy()" style="padding: 6px 12px; cursor: pointer;">
-              Обновить таблицу
-            </button>
-          </div>
-
-          <!-- СТРОКА ПОИСКА -->
-          @if (table.searchFields?.length) {
-            <div class="search-bar">
-              @for (sf of table.searchFields!; track sf.key) {
-                <div class="search-field">
-                  <label>{{ sf.label }}</label>
-                  <input
-                    type="text"
-                    class="form-control"
-                    [ngModel]="searchValues[sf.key] || ''"
-                    [name]="'search_' + sf.key"
-                    (ngModelChange)="onSearchInput(sf.key, $event)"
-                    (focus)="onSearchInput(sf.key, searchValues[sf.key] || '')"
-                    (keyup.enter)="applySearch(table)"
-                    autocomplete="off"
-                    placeholder="Введите значение…">
-
-                  @if (activeSearchField() === sf.key && searchSuggestions().length > 0) {
-                    <ul class="suggestions-dropdown">
-                      @for (sug of searchSuggestions(); track sug) {
-                        <li (click)="applySearchSuggestion(table, sf.key, sug)">{{ sug }}</li>
-                      }
-                    </ul>
-                  }
-                </div>
-              }
-
-              <div class="search-actions">
-                <button type="button" class="btn-search" (click)="applySearch(table)">Найти</button>
-                @if (isFiltered()) {
-                  <button type="button" class="btn-reset" (click)="resetSearch()">Сбросить</button>
-                }
-              </div>
-            </div>
-          }
-
-          <div class="table-container">
-            <table class="data-table">
-              <thead>
-                <tr>
-                  <th style="width: 80px;">ID</th>
-                  @for (f of table.fields; track f.key) {
-                    <th>{{ f.label }}</th>
-                  }
-                  <th style="text-align: right; width: 100px;">Действия</th>
-                </tr>
-              </thead>
-              <tbody>
-                @for (r of visibleRows(); track r.id) {
-                  <!-- Использование r.id теперь работает благодаря интерфейсу DynamicRow -->
-                  <tr [class.active-row]="selectedId() === r.id" (click)="editRow(r)">
-                    <td class="id-cell" data-label="ID">{{ r.id }}</td>
-                    @for (f of table.fields; track f.key) {
-                      <td [attr.data-label]="f.label">
-                        @if (f.type === 'zip-picker') {
-                          <!-- В строке заказа бэкенд отдаёт и партномер, и наименование -->
-                          <span style="background: #e0f7fa; padding: 2px 6px; border-radius: 4px; font-size: 13px;">
-                            {{ r['partNum'] }} — {{ r['zipName'] }}
-                          </span>
-                        } @else if (f.type === 'select') {
-                          <span style="background: #e0f7fa; padding: 2px 6px; border-radius: 4px; font-size: 13px;">
-                            {{ getRefDisplay(f, r[f.key]) }}
-                          </span>
-                        } @else if (f.type === 'checkbox') {
-                          <strong [style.color]="r[f.key] ? '#28a745' : '#aaa'">
-                            {{ r[f.key] ? 'Да' : 'Нет' }}
-                          </strong>
-                        } @else {
-                          {{ r[f.key] }}
-                        }
-                      </td>
-                    }
-                    <td class="actions-cell" data-label="Действия" (click)="$event.stopPropagation()">
-                      <button class="btn-delete" (click)="remove(table, r.id)">
-                        Удалить
-                      </button>
-                    </td>
-                  </tr>
-                } @empty {
-                  <tr class="empty-row">
-                    <td [attr.colspan]="table.fields.length + 2">
-                      {{ isFiltered() ? 'Ничего не найдено по заданным условиям' : 'Нет данных в этой таблице' }}
-                    </td>
-                  </tr>
-                }
-              </tbody>
-            </table>
-          </div>
-        </div>
+        <!-- Таблица со строкой поиска: поиск живёт внутри компонента и сбрасывается
+             сам при смене вкладки (см. AdminDataTableComponent.ngOnChanges). -->
+        <app-admin-data-table
+          [table]="table"
+          [rows]="rows()"
+          [references]="references()"
+          [selectedId]="selectedId()"
+          [busy]="busy()"
+          (reload)="reload(table)"
+          (rowSelect)="editRow($event)"
+          (rowDelete)="remove(table, $event)"
+        />
 
       } @else if (qrLabelTabActive()) {
 
@@ -745,95 +571,17 @@ interface PriceConflict {
       <!-- Модели и серии парт-номера — общий фрагмент для формы вкладки «Парт-номера»
            и для модалки быстрого добавления (кнопка «+» у поля «Парт-номер»/«Наименование»
            на вкладке «Запчасти»), чтобы не дублировать разметку. -->
+      <!-- Применимость вынесена в отдельный компонент: он редактирует список связей,
+           а сохраняет их ApplicabilitySyncService после сохранения самого парт-номера. -->
       <ng-template #applicabilityFields>
-        <label>Модели</label>
-        <div class="chips">
-          @for (m of stagedModels(); track $index) {
-            <span class="chip">
-              {{ m.markName ? m.markName + ' ' : '' }}{{ m.modelName }}
-              <button type="button" (click)="removeStagedModel($index)">✕</button>
-            </span>
-          } @empty {
-            <span class="chips-empty">Модели не привязаны</span>
-          }
-        </div>
-        <div class="chip-add-row">
-          <div class="chip-add-field">
-            <input
-              type="text"
-              class="form-control"
-              placeholder="Марка"
-              [(ngModel)]="newModelMark"
-              name="newModelMark"
-              (input)="onMarkSuggestInput(newModelMark)"
-              (focus)="onMarkSuggestInput(newModelMark)"
-              autocomplete="off"
-            >
-            @if (activeMarkSuggest() && markSuggestions().length > 0) {
-              <ul class="suggestions-dropdown">
-                @for (mk of markSuggestions(); track mk.id) {
-                  <li (click)="selectMarkSuggestion(mk)">{{ mk.mark }}</li>
-                }
-              </ul>
-            }
-          </div>
-          <div class="chip-add-field">
-            <input
-              type="text"
-              class="form-control"
-              placeholder="Модель"
-              [(ngModel)]="newModelName"
-              name="newModelName"
-              (input)="onModelSuggestInput(newModelName)"
-              (focus)="onModelSuggestInput(newModelName)"
-              autocomplete="off"
-            >
-            @if (activeModelSuggest() && modelSuggestions().length > 0) {
-              <ul class="suggestions-dropdown">
-                @for (md of modelSuggestions(); track md.id) {
-                  <li (click)="selectModelSuggestion(md)">{{ md.mark ? md.mark + ' — ' : '' }}{{ md.model }}</li>
-                }
-              </ul>
-            }
-          </div>
-          <button type="button" class="btn-chip-add" (click)="addStagedModel()">Добавить</button>
-        </div>
-        <small class="owned-hint">Новые марка/модель будут созданы автоматически, если их ещё нет</small>
-
-        <label style="margin-top: 14px;">Серии</label>
-        <div class="chips">
-          @for (s of stagedSeries(); track $index) {
-            <span class="chip">
-              {{ s.seriesName }}
-              <button type="button" (click)="removeStagedSeries($index)">✕</button>
-            </span>
-          } @empty {
-            <span class="chips-empty">Серии не привязаны</span>
-          }
-        </div>
-        <div class="chip-add-row">
-          <div class="chip-add-field">
-            <input
-              type="text"
-              class="form-control"
-              placeholder="Серия"
-              [(ngModel)]="newSeriesName"
-              name="newSeriesName"
-              (input)="onSeriesSuggestInput(newSeriesName)"
-              (focus)="onSeriesSuggestInput(newSeriesName)"
-              autocomplete="off"
-            >
-            @if (activeSeriesSuggest() && seriesSuggestions().length > 0) {
-              <ul class="suggestions-dropdown">
-                @for (sr of seriesSuggestions(); track sr.id) {
-                  <li (click)="selectSeriesSuggestion(sr)">{{ sr.seriesName }}</li>
-                }
-              </ul>
-            }
-          </div>
-          <button type="button" class="btn-chip-add" (click)="addStagedSeries()">Добавить</button>
-        </div>
-        <small class="owned-hint">Новая серия будет создана автоматически, если её ещё нет</small>
+        <app-applicability-editor
+          [references]="references()"
+          [models]="stagedModels()"
+          (modelsChange)="stagedModels.set($event)"
+          [series]="stagedSeries()"
+          (seriesChange)="stagedSeries.set($event)"
+          (error)="error.set($event)"
+        />
       </ng-template>
     </div>
   `,
@@ -842,7 +590,7 @@ interface PriceConflict {
 
   `]
 })
-export class AdminComponent implements OnInit, OnDestroy {
+export class AdminComponent implements OnInit {
   private admin = inject(AdminService);
   // Сигнал или обычный массив для хранения выбранных файлов
   selectedFiles = signal<File[]>([]);
@@ -852,181 +600,8 @@ export class AdminComponent implements OnInit, OnDestroy {
 
 
 
-  tables: TableDef[] = [
-    {
-      endpoint: 'marks',
-      title: 'Марки мотоциклов',
-      fields: [
-        { key: 'mark', label: 'Марка', type: 'text', required: true }
-      ],
-      searchFields: [{ key: 'mark', label: 'Марка' }]
-    },
-    {
-      endpoint: 'models',
-      title: 'Модели',
-      fields: [
-        { key: 'markId', label: 'Марка', type: 'select', refTable: 'marks', refLabelKey: 'mark', required: true },
-        { key: 'model', label: 'Модель', type: 'text', required: true }
-      ],
-      searchFields: [{ key: 'model', label: 'Модель' }]
-    },
-    {
-      // Серия не привязана к конкретной модели — независимая классификация
-      // (см. PartNumberSeriesApplicability ниже).
-      endpoint: 'series',
-      title: 'Серии',
-      fields: [
-        { key: 'seriesName', label: 'Название серии', type: 'text', required: true }
-      ],
-      searchFields: [{ key: 'seriesName', label: 'Название серии' }]
-    },
-    {
-      endpoint: 'groups',
-      title: 'Группы запчастей',
-      fields: [
-        { key: 'groupName', label: 'Название группы', type: 'text', required: true }
-      ],
-      searchFields: [{ key: 'groupName', label: 'Название группы' }]
-    },
-    {
-      endpoint: 'part-numbers',
-      title: 'Парт-номера',
-      fields: [
-        { key: 'partNum', label: 'Парт-номер', type: 'text', required: true },
-        { key: 'name', label: 'Наименование', type: 'text', required: true },
-        { key: 'groupId', label: 'Группа запчастей', type: 'select', refTable: 'groups', refLabelKey: 'groupName' }
-      ],
-      searchFields: [
-        { key: 'partNum', label: 'Парт-номер' },
-        { key: 'name', label: 'Наименование' }
-      ]
-    },
-    {
-      // Применимость: одна каталожная позиция подходит к нескольким моделям.
-      endpoint: 'applicability',
-      title: 'Применимость к моделям',
-      fields: [
-        { key: 'partNumId', label: 'Парт-номер', type: 'select', refTable: 'part-numbers', refLabelKey: 'partNum', required: true },
-        { key: 'modelId', label: 'Модель', type: 'select', refTable: 'models', refLabelKey: 'model', required: true }
-      ],
-      searchFields: [
-        { key: 'partNum', label: 'Парт-номер' },
-        { key: 'model', label: 'Модель' }
-      ]
-    },
-    {
-      // Независимая от моделей привязка: у одного парт-номера может быть
-      // любое число моделей и любое число серий одновременно (см. server-side
-      // PartNumberSeriesApplicability — отдельная таблица со своей уникальностью).
-      endpoint: 'series-applicability',
-      title: 'Применимость к сериям',
-      fields: [
-        { key: 'partNumId', label: 'Парт-номер', type: 'select', refTable: 'part-numbers', refLabelKey: 'partNum', required: true },
-        { key: 'seriesId', label: 'Серия', type: 'select', refTable: 'series', refLabelKey: 'seriesName', required: true }
-      ],
-      searchFields: [
-        { key: 'partNum', label: 'Парт-номер' },
-        { key: 'series', label: 'Серия' }
-      ]
-    },
-    {
-      endpoint: 'incomemotos',
-      title: 'Доноры',
-      fields: [
-        { key: 'description', label: 'Описание', type: 'text', required: true },
-        { key: 'userId', label: 'Поставщик', type: 'select', refTable: 'users', refLabelKey: 'fio' }
-      ],
-      searchFields: [{ key: 'description', label: 'Описание' }]
-    },
-    {
-      endpoint: 'zip',
-      title: 'Запчасти (Приход)',
-      fields: [
-        // Парт-номер и наименование вводятся вручную с подсказками из справочника
-        // part-numbers; выбор подсказки в любом из полей заполняет оба (см. applyCatalogSuggestion).
-        // Группа принадлежит парт-номеру: подставляется при выборе и сохраняется
-        // отдельным запросом в PartNumbers.
-        { key: 'partNum', label: 'Парт-номер', type: 'catalog-picker', catalogRole: 'partNum', required: true, quickAdd: 'part-number' },
-        { key: 'name', label: 'Наименование', type: 'catalog-picker', catalogRole: 'name', required: true, partNumberOwned: true, quickAdd: 'part-number' },
-        { key: 'groupId', label: 'Группа запчастей', type: 'group-picker', refTable: 'groups', refLabelKey: 'groupName', partNumberOwned: true, quickAdd: 'group' },
-        { key: 'incomeCost', label: 'Закупочная цена', type: 'number', required: true },
-        { key: 'sellCost', label: 'Цена продажи', type: 'number' },
-        // Число редактируется только при добавлении новой партии; при редактировании
-        // существующей запчасти поле показывает сумму по парт-номеру и заблокировано —
-        // см. type: 'stock'.
-        { key: 'countStored', label: 'Количество в приходе', type: 'stock', required: true },
-        { key: 'year', label: 'Год выпуска (YYYY)', type: 'number' },
-        { key: 'incomeDate', label: 'Дата поступления', type: 'date' },
-        { key: 'incomeMotoId', label: 'Донор (IncomeMoto)', type: 'select', refTable: 'incomemotos', refLabelKey: 'description', required: true, quickAdd: 'incomemoto' },
-        { key: 'comment', label: 'Комментарий', type: 'text' }
-      ],
-      searchFields: [
-        { key: 'partNum', label: 'Парт-номер' },
-        { key: 'name', label: 'Наименование' }
-      ]
-    },
-    {
-      endpoint: 'users',
-      title: 'Пользователи',
-      fields: [
-        { key: 'email', label: 'Email', type: 'text', required: true },
-        { key: 'fio', label: 'ФИО', type: 'text', required: true },
-        { key: 'phoneNumber', label: 'Телефон', type: 'text' },
-        { key: 'isAdmin', label: 'Администратор', type: 'checkbox' },
-        { key: 'isRegistrar', label: 'Регистратор', type: 'checkbox' },
-        { key: 'isSender', label: 'Отправитель', type: 'checkbox' },
-        { key: 'password', label: 'Новый пароль', type: 'text' }
-      ],
-      searchFields: [
-        { key: 'fio', label: 'ФИО' },
-        { key: 'email', label: 'Email' },
-        { key: 'phoneNumber', label: 'Телефон' }
-      ]
-    },
-    {
-      endpoint: 'addressess',
-      title: 'Адреса доставки',
-      fields: [
-        { key: 'address', label: 'Адрес', type: 'text', required: true },
-        { key: 'postCode', label: 'Почтовый индекс', type: 'text' },
-        { key: 'userId', label: 'Покупатель', type: 'select', refTable: 'users', refLabelKey: 'fio' }
-      ],
-      searchFields: [
-        { key: 'address', label: 'Адрес' },
-        { key: 'postCode', label: 'Индекс' }
-      ]
-    },
-    {
-      endpoint: 'orders',
-      title: 'Заказы',
-      fields: [
-        { key: 'zipId', label: 'Запчасть', type: 'zip-picker', required: true },
-        { key: 'countOrdered', label: 'Кол-во', type: 'number', required: true },
-        { key: 'userId', label: 'Покупатель', type: 'select', refTable: 'users', refLabelKey: 'fio', required: true },
-        { key: 'addressId', label: 'Адрес доставки', type: 'select', refTable: 'addressess', refLabelKey: 'address', required: true, filterByUserId: true },
-        { key: 'sellCost', label: 'Цена продажи', type: 'number', required: true },
-        // Прайс-цена подставляется вместе с ценой продажи (см. applyZipSellCost) и дальше
-        // не редактируется вручную — это опорная точка, от которой считается скидка.
-        { key: 'priceCost', label: 'Прайс цена', type: 'number', readonly: true },
-        // Скидка и скидка в % — не ручной ввод, а автоматический пересчёт разницы между
-        // прайс-ценой и ценой продажи (см. recalcOrderDiscount), поэтому тоже только для чтения.
-        { key: 'discount', label: 'Скидка', type: 'number', readonly: true },
-        { key: 'discountPercent', label: 'Скидка в %', type: 'number', readonly: true },
-        { key: 'orderDateTime', label: 'Дата заказа', type: 'date' },
-        { key: 'orderNumber', label: 'Комментарий заказа', type: 'text' }
-      ],
-      searchFields: [
-        { key: 'orderNumber', label: 'Комментарий заказа' },
-        { key: 'partNum', label: 'Парт-номер' },
-        // Бэкенд отдаёт наименование в поле zipName; прежний ключ nomenclatureName
-        // не существовал в ответе, из-за чего поиск по запчасти ничего не находил.
-        { key: 'zipName', label: 'Наименование' },
-        // Поиск по userId (сырому id) был бесполезен — искать приходилось по числу.
-        // Бэкенд теперь отдаёт userFio отдельным полем специально для поиска по имени.
-        { key: 'userFio', label: 'Покупатель' }
-      ]
-    }
-  ];
+  /** Описание таблиц вынесено в admin/admin.tables.ts — это статические данные, не состояние. */
+  tables: TableDef[] = ADMIN_TABLES;
 
   current = signal<TableDef | null>(null);
   rows = signal<DynamicRow[]>([]); // Использование DynamicRow позволяет обращаться к r.id
@@ -1041,73 +616,26 @@ export class AdminComponent implements OnInit, OnDestroy {
   //#region [Черновики форм]
 
   /**
-   * Незавершённый ввод на формах «Заказы» и «Запчасти (Приход)» сохраняется на сервере
-   * (таблица UserDrafts), а не в localStorage: черновик должен переживать очистку браузера
-   * и открываться с другого устройства. Черновик привязан к пользователю из токена.
-   *
-   * Ограничение: выбранные фотографии — это File-объекты браузера, их нельзя сериализовать
-   * в JSON, поэтому в черновик попадают только значения полей. Файлы придётся выбрать заново.
+   * Ведение черновиков (debounce, восстановление, гонка при переключении вкладок) вынесено
+   * в AdminDraftService. Здесь остаётся только то, что знает про саму форму.
    */
-  private static readonly DRAFT_ENDPOINTS = ['orders', 'zip'];
+  private readonly drafts = inject(AdminDraftService);
 
   /** Показывается под формой, когда в ней есть восстановленный/сохранённый черновик. */
-  draftSavedAt = signal<Date | null>(null);
-
-  private draftSave$ = new Subject<string>();
-  private destroy$ = new Subject<void>();
+  draftSavedAt = this.drafts.savedAt;
 
   /** Черновик ведём только для новой записи: при правке существующей строки источник истины — сама строка. */
-  private get draftFormKey(): string | null {
+  private currentFormKey(): string | null {
     const endpoint = this.current()?.endpoint;
     if (!endpoint || this.selectedId()) return null;
-    return AdminComponent.DRAFT_ENDPOINTS.includes(endpoint) ? endpoint : null;
-  }
-
-  /**
-   * Ставит черновик в очередь на сохранение. Реальный запрос уходит после паузы в вводе
-   * (debounce), чтобы не бить по API на каждое нажатие клавиши.
-   */
-  scheduleDraftSave() {
-    const formKey = this.draftFormKey;
-    if (!formKey) return;
-    this.draftSave$.next(formKey);
-  }
-
-  private setupDraftAutosave() {
-    this.draftSave$
-      .pipe(debounceTime(800), takeUntil(this.destroy$))
-      .subscribe((formKey) => {
-        // Пока шёл debounce, пользователь мог переключить вкладку. Ввод той формы уже
-        // досохранён синхронно в select(), а применять отложенное сохранение к новой
-        // (ещё пустой) форме нельзя — иначе оно затрёт её черновик как пустой.
-        if (formKey !== this.draftFormKey) return;
-        this.flushDraftSave();
-      });
-  }
-
-  private flushDraftSave() {
-    const formKey = this.draftFormKey;
-    if (!formKey) return;
-
-    const payload = this.collectDraftPayload();
-
-    // Пустую форму не храним — иначе после сохранения записи всплывал бы пустой черновик.
-    if (Object.keys(payload.form).length === 0) {
-      this.discardDraft(formKey);
-      return;
-    }
-
-    this.admin.saveDraft(formKey, JSON.stringify(payload)).subscribe({
-      next: () => this.draftSavedAt.set(new Date()),
-      error: () => { /* потеря черновика не должна мешать работе с формой */ }
-    });
+    return AdminDraftService.tracks(endpoint) ? endpoint : null;
   }
 
   /**
    * Снимок формы для черновика. Поля с пустыми значениями отбрасываются, чтобы дата «по
    * умолчанию сегодня» (её проставляет cancelEdit) сама по себе не считалась черновиком.
    */
-  private collectDraftPayload(): { form: Record<string, any>; zipPartNumId: number | null } {
+  private collectDraftPayload(): DraftPayload {
     const form: Record<string, any> = {};
     Object.entries(this.form).forEach(([key, value]) => {
       if (!this.isEmpty(value)) form[key] = value;
@@ -1118,45 +646,22 @@ export class AdminComponent implements OnInit, OnDestroy {
     return { form, zipPartNumId: this.zipPartNumId() };
   }
 
-  /** Подтягивает черновик текущей формы и подставляет его, если пользователь ещё ничего не ввёл. */
-  private restoreDraft(endpoint: string) {
-    if (!AdminComponent.DRAFT_ENDPOINTS.includes(endpoint)) {
-      this.draftSavedAt.set(null);
-      return;
-    }
-
-    this.admin.getDraft(endpoint).subscribe({
-      next: (draft) => {
-        // Пока шёл запрос, пользователь мог уйти на другую вкладку или начать править строку.
-        if (!draft?.content || this.current()?.endpoint !== endpoint || this.selectedId()) return;
-
-        try {
-          const payload = JSON.parse(draft.content) as { form?: Record<string, any>; zipPartNumId?: number | null };
-          if (!payload?.form) return;
-
-          this.form = { ...this.form, ...payload.form };
-          if (payload.zipPartNumId != null) this.zipPartNumId.set(payload.zipPartNumId);
-
-          this.refreshPartNumStock();
-          this.draftSavedAt.set(draft.updatedAt ? new Date(draft.updatedAt) : new Date());
-        } catch {
-          // Битый черновик просто игнорируем — форма останется пустой.
-        }
-      },
-      error: () => { /* нет черновика или сервер недоступен — работаем с пустой формой */ }
-    });
+  private applyDraftPayload(payload: DraftPayload) {
+    this.form = { ...this.form, ...payload.form };
+    if (payload.zipPartNumId != null) this.zipPartNumId.set(payload.zipPartNumId);
+    this.refreshPartNumStock();
   }
 
-  private discardDraft(formKey: string) {
-    this.draftSavedAt.set(null);
-    this.admin.deleteDraft(formKey).subscribe({ error: () => { } });
+  /** Ставит черновик в очередь на сохранение (вызывается из шаблона на input/change). */
+  scheduleDraftSave() {
+    this.drafts.schedule();
   }
 
   /** Явно очистить черновик и форму по кнопке. */
   clearDraft() {
     const endpoint = this.current()?.endpoint;
     if (!endpoint) return;
-    this.discardDraft(endpoint);
+    this.drafts.discard(endpoint);
     this.cancelEdit();
   }
 
@@ -1355,12 +860,12 @@ export class AdminComponent implements OnInit, OnDestroy {
 
   //#endregion
 
-  //#region [Применимость парт-номера к моделям и сериям прямо в форме]
+  //#region [Применимость парт-номера к моделям и сериям]
 
   /**
-   * Текущий (желаемый) состав связей. Заполняется существующими связями при
-   * редактировании (см. editRow) и пополняется через addStagedModel/addStagedSeries.
-   * Сохраняется вместе с парт-номером — см. syncApplicability.
+   * Желаемый состав связей. Редактирует его ApplicabilityEditorComponent, сохраняет —
+   * ApplicabilitySyncService; здесь список живёт потому, что уезжает на сервер
+   * вместе с самим парт-номером (см. saveRow).
    */
   stagedModels = signal<StagedModelLink[]>([]);
   stagedSeries = signal<StagedSeriesLink[]>([]);
@@ -1369,176 +874,17 @@ export class AdminComponent implements OnInit, OnDestroy {
   private originalModelLinkIds: number[] = [];
   private originalSeriesLinkIds: number[] = [];
 
-  newModelMark = '';
-  newModelName = '';
-  newSeriesName = '';
+  private readonly applicability = inject(ApplicabilitySyncService);
 
-  markSuggestions = signal<{ id: number; mark: string }[]>([]);
-  activeMarkSuggest = signal(false);
-  modelSuggestions = signal<{ id: number; model: string; markId: number | null; mark: string | null }[]>([]);
-  activeModelSuggest = signal(false);
-  seriesSuggestions = signal<{ id: string; seriesName: string }[]>([]);
-  activeSeriesSuggest = signal(false);
-
-  onMarkSuggestInput(value: string) {
-    this.newModelMark = value;
-    this.activeMarkSuggest.set(true);
-    const needle = (value ?? '').trim().toLowerCase();
-    const list = this.references()['marks'] || [];
-    const filtered = needle.length === 0 ? list : list.filter((m: any) => String(m.mark).toLowerCase().includes(needle));
-    this.markSuggestions.set(filtered.slice(0, 8));
-  }
-
-  selectMarkSuggestion(mk: { id: number; mark: string }) {
-    this.newModelMark = mk.mark;
-    this.activeMarkSuggest.set(false);
-    this.markSuggestions.set([]);
-  }
-
-  onModelSuggestInput(value: string) {
-    this.newModelName = value;
-    this.activeModelSuggest.set(true);
-    const needle = (value ?? '').trim().toLowerCase();
-    const list = this.references()['models'] || [];
-    const filtered = needle.length === 0 ? list : list.filter((m: any) => String(m.model).toLowerCase().includes(needle));
-    this.modelSuggestions.set(filtered.slice(0, 8));
-  }
-
-  /** Выбор подсказки модели заодно подставляет её марку — вводить её отдельно не нужно. */
-  selectModelSuggestion(md: { id: number; model: string; markId: number | null; mark: string | null }) {
-    this.newModelName = md.model;
-    if (md.mark) this.newModelMark = md.mark;
-    this.activeModelSuggest.set(false);
-    this.modelSuggestions.set([]);
-  }
-
-  /**
-   * Добавляет модель в локальный список. Если название совпадает с уже существующей
-   * маркой/моделью — запоминает их id (тогда при сохранении новых записей создавать
-   * не придётся), иначе id остаются не заданы, и syncApplicability заведёт их сама.
-   */
-  addStagedModel() {
-    const markName = this.newModelMark.trim();
-    const modelName = this.newModelName.trim();
-    if (!modelName) {
-      this.error.set('Введите название модели');
-      return;
-    }
-
-    const alreadyAdded = this.stagedModels().some(m =>
-      m.modelName.toLowerCase() === modelName.toLowerCase() &&
-      (m.markName || '').toLowerCase() === markName.toLowerCase());
-    if (alreadyAdded) {
-      this.newModelMark = '';
-      this.newModelName = '';
-      this.closeModelSuggestions();
-      return;
-    }
-
-    const existingMark = (this.references()['marks'] || [])
-      .find((m: any) => String(m.mark).toLowerCase() === markName.toLowerCase());
-    const existingModel = (this.references()['models'] || [])
-      .find((m: any) => String(m.model).toLowerCase() === modelName.toLowerCase()
-        && (!existingMark || m.markId === existingMark.id));
-
-    this.stagedModels.set([...this.stagedModels(), {
-      markId: existingMark?.id,
-      markName: existingMark?.mark ?? markName,
-      modelId: existingModel?.id,
-      modelName: existingModel?.model ?? modelName
-    }]);
-
-    this.newModelMark = '';
-    this.newModelName = '';
-    this.closeModelSuggestions();
-  }
-
-  removeStagedModel(index: number) {
-    const list = [...this.stagedModels()];
-    list.splice(index, 1);
-    this.stagedModels.set(list);
-  }
-
-  private closeModelSuggestions() {
-    this.activeMarkSuggest.set(false);
-    this.markSuggestions.set([]);
-    this.activeModelSuggest.set(false);
-    this.modelSuggestions.set([]);
-  }
-
-  onSeriesSuggestInput(value: string) {
-    this.newSeriesName = value;
-    this.activeSeriesSuggest.set(true);
-    const needle = (value ?? '').trim().toLowerCase();
-    const list = this.references()['series'] || [];
-    const filtered = needle.length === 0 ? list : list.filter((s: any) => String(s.seriesName).toLowerCase().includes(needle));
-    this.seriesSuggestions.set(filtered.slice(0, 8));
-  }
-
-  selectSeriesSuggestion(sr: { id: string; seriesName: string }) {
-    this.newSeriesName = sr.seriesName;
-    this.activeSeriesSuggest.set(false);
-    this.seriesSuggestions.set([]);
-  }
-
-  addStagedSeries() {
-    const seriesName = this.newSeriesName.trim();
-    if (!seriesName) {
-      this.error.set('Введите название серии');
-      return;
-    }
-
-    const alreadyAdded = this.stagedSeries().some(s => s.seriesName.toLowerCase() === seriesName.toLowerCase());
-    if (alreadyAdded) {
-      this.newSeriesName = '';
-      this.closeSeriesSuggestions();
-      return;
-    }
-
-    const existing = (this.references()['series'] || [])
-      .find((s: any) => String(s.seriesName).toLowerCase() === seriesName.toLowerCase());
-
-    this.stagedSeries.set([...this.stagedSeries(), {
-      seriesId: existing?.id,
-      seriesName: existing?.seriesName ?? seriesName
-    }]);
-
-    this.newSeriesName = '';
-    this.closeSeriesSuggestions();
-  }
-
-  removeStagedSeries(index: number) {
-    const list = [...this.stagedSeries()];
-    list.splice(index, 1);
-    this.stagedSeries.set(list);
-  }
-
-  private closeSeriesSuggestions() {
-    this.activeSeriesSuggest.set(false);
-    this.seriesSuggestions.set([]);
-  }
+  /** Редактор живёт в двух местах шаблона (форма парт-номеров и модалка «+»), берём любой доступный. */
+  @ViewChild(ApplicabilityEditorComponent) private applicabilityEditor?: ApplicabilityEditorComponent;
 
   /** Заполняет список уже существующими связями редактируемого парт-номера. */
   private loadStagedApplicabilityForEdit(partNumId: number) {
-    const models = (this.references()['applicability'] || [])
-      .filter((a: any) => a.partNumId === partNumId)
-      .map((a: any): StagedModelLink => ({
-        applicabilityId: a.id,
-        modelId: a.modelId,
-        markName: a.mark ?? '',
-        modelName: a.model
-      }));
+    const { models, series } = this.applicability.loadForEdit(partNumId, this.references());
     this.stagedModels.set(models);
-    this.originalModelLinkIds = models.map(m => m.applicabilityId!);
-
-    const series = (this.references()['series-applicability'] || [])
-      .filter((a: any) => a.partNumId === partNumId)
-      .map((a: any): StagedSeriesLink => ({
-        applicabilityId: a.id,
-        seriesId: a.seriesId,
-        seriesName: a.series
-      }));
     this.stagedSeries.set(series);
+    this.originalModelLinkIds = models.map(m => m.applicabilityId!);
     this.originalSeriesLinkIds = series.map(s => s.applicabilityId!);
   }
 
@@ -1547,18 +893,11 @@ export class AdminComponent implements OnInit, OnDestroy {
     this.stagedSeries.set([]);
     this.originalModelLinkIds = [];
     this.originalSeriesLinkIds = [];
-    this.newModelMark = '';
-    this.newModelName = '';
-    this.newSeriesName = '';
-    this.closeModelSuggestions();
-    this.closeSeriesSuggestions();
+    // Недопечатанный ввод живёт внутри редактора — сбрасываем его там.
+    this.applicabilityEditor?.reset();
   }
 
-  /**
-   * Приводит связи парт-номера к желаемому составу: недостающие марка/модель/серия
-   * создаются по названию, новые связи добавляются, убранные из списка — удаляются.
-   * Вызывается после успешного сохранения самого парт-номера (нужен его id).
-   */
+  /** Вызывается после успешного сохранения парт-номера: связям нужен его id. */
   private async syncApplicability(
     partNumId: number,
     models: StagedModelLink[],
@@ -1567,56 +906,8 @@ export class AdminComponent implements OnInit, OnDestroy {
     originalSeriesLinkIds: number[]
   ) {
     try {
-      const keptModelLinkIds = new Set(models.filter(m => m.applicabilityId).map(m => m.applicabilityId));
-      for (const linkId of originalModelLinkIds.filter(id => !keptModelLinkIds.has(id))) {
-        await firstValueFrom(this.admin.delete('applicability', linkId));
-      }
-
-      for (const m of models) {
-        if (m.applicabilityId) continue; // связь уже существует
-
-        let markId = m.markId;
-        if (!markId && m.markName.trim()) {
-          const existingMark = (this.references()['marks'] || [])
-            .find((x: any) => String(x.mark).toLowerCase() === m.markName.trim().toLowerCase());
-          markId = existingMark
-            ? existingMark.id
-            : (await firstValueFrom(this.admin.add('marks', { mark: m.markName.trim() })) as any).id;
-        }
-
-        let modelId = m.modelId;
-        if (!modelId) {
-          const existingModel = (this.references()['models'] || [])
-            .find((x: any) => String(x.model).toLowerCase() === m.modelName.trim().toLowerCase()
-              && (markId == null || x.markId === markId));
-          modelId = existingModel
-            ? existingModel.id
-            : (await firstValueFrom(this.admin.add('models', { markId: markId ?? null, model: m.modelName.trim() })) as any).id;
-        }
-
-        await firstValueFrom(this.admin.add('applicability', { partNumId, modelId }));
-      }
-
-      const keptSeriesLinkIds = new Set(series.filter(s => s.applicabilityId).map(s => s.applicabilityId));
-      for (const linkId of originalSeriesLinkIds.filter(id => !keptSeriesLinkIds.has(id))) {
-        await firstValueFrom(this.admin.delete('series-applicability', linkId));
-      }
-
-      for (const s of series) {
-        if (s.applicabilityId) continue;
-
-        let seriesId = s.seriesId;
-        if (!seriesId) {
-          const existingSeries = (this.references()['series'] || [])
-            .find((x: any) => String(x.seriesName).toLowerCase() === s.seriesName.trim().toLowerCase());
-          seriesId = existingSeries
-            ? existingSeries.id
-            : (await firstValueFrom(this.admin.add('series', { seriesName: s.seriesName.trim() })) as any).id;
-        }
-
-        await firstValueFrom(this.admin.add('series-applicability', { partNumId, seriesId }));
-      }
-
+      await this.applicability.sync(
+        partNumId, models, series, originalModelLinkIds, originalSeriesLinkIds, this.references());
       this.loadAllReferences();
     } catch (err: any) {
       this.error.set('Парт-номер сохранён, но применимость обновить не удалось: ' + (err.error?.message || err.message));
@@ -1676,8 +967,9 @@ export class AdminComponent implements OnInit, OnDestroy {
 
   /**
    * Цена продажи и прайс-цена заказа подставляются из цены выбранной запчасти — обе сразу
-   * равны, поэтому скидка на этот момент нулевая. Прайс-цена дальше не меняется (readonly),
-   * а цену продажи админ может поправить вручную — тогда пересчитается скидка (см. onNumberFieldChange).
+   * равны, поэтому скидка на этот момент нулевая. Прайс-цена дальше не меняется (readonly)
+   * и служит единственной опорной точкой для пересчёта Цены продажи / Скидки / Скидки в %
+   * друг из друга (см. recalcOrderPricing).
    */
   private applyZipSellCost(zipId: any) {
     if (this.isEmpty(zipId)) return;
@@ -1685,35 +977,65 @@ export class AdminComponent implements OnInit, OnDestroy {
     if (zip && zip.sellCost != null) {
       this.form['sellCost'] = zip.sellCost;
       this.form['priceCost'] = zip.sellCost;
-      this.recalcOrderDiscount();
+      this.recalcOrderPricing('sellCost');
     }
   }
 
-  /** Правки числовых полей формы; для «Цены продажи» заказа дополнительно пересчитывает скидку. */
+  /** Правки числовых полей формы; у заказа Цена продажи/Скидка/Скидка в % пересчитывают друг друга. */
   onNumberFieldChange(table: TableDef, key: string, value: any) {
     this.form[key] = value;
-    if (table.endpoint === 'orders' && key === 'sellCost') {
-      this.recalcOrderDiscount();
+    if (table.endpoint === 'orders' && (key === 'sellCost' || key === 'discount' || key === 'discountPercent')) {
+      this.recalcOrderPricing(key);
     }
   }
 
   /**
-   * Скидка = разница между прайс-ценой и ценой продажи, скидка в % — та же разница
-   * относительно прайс-цены, округлённая до десятых долей процента.
+   * Цена продажи, Скидка и Скидка в % однозначно выражаются друг через друга через прайс-цену
+   * (Скидка = ПрайсЦена − ЦенаПродажи; Скидка% = Скидка / ПрайсЦена × 100). changedKey — какое
+   * из трёх полей только что отредактировал пользователь; оставшиеся два пересчитываются от него.
    */
-  private recalcOrderDiscount() {
+  private recalcOrderPricing(changedKey: 'sellCost' | 'discount' | 'discountPercent') {
     const priceCost = Number(this.form['priceCost']);
-    const sellCost = Number(this.form['sellCost']);
+    if (!Number.isFinite(priceCost) || priceCost === 0) return;
 
-    if (!Number.isFinite(priceCost) || priceCost === 0 || !Number.isFinite(sellCost)) {
-      this.form['discount'] = null;
-      this.form['discountPercent'] = null;
-      return;
+    if (changedKey === 'sellCost') {
+      const sellCost = Number(this.form['sellCost']);
+      if (!Number.isFinite(sellCost)) {
+        this.form['discount'] = null;
+        this.form['discountPercent'] = null;
+        return;
+      }
+      const discount = priceCost - sellCost;
+      this.form['discount'] = this.round2(discount);
+      this.form['discountPercent'] = this.round1((discount / priceCost) * 100);
+    } else if (changedKey === 'discount') {
+      const discount = Number(this.form['discount']);
+      if (!Number.isFinite(discount)) {
+        this.form['sellCost'] = this.round2(priceCost);
+        this.form['discountPercent'] = 0;
+        return;
+      }
+      this.form['sellCost'] = this.round2(priceCost - discount);
+      this.form['discountPercent'] = this.round1((discount / priceCost) * 100);
+    } else {
+      const percent = Number(this.form['discountPercent']);
+      if (!Number.isFinite(percent)) {
+        this.form['sellCost'] = this.round2(priceCost);
+        this.form['discount'] = 0;
+        return;
+      }
+      const discount = (percent / 100) * priceCost;
+      this.form['discount'] = this.round2(discount);
+      this.form['sellCost'] = this.round2(priceCost - discount);
     }
+  }
 
-    const diff = priceCost - sellCost;
-    this.form['discount'] = Math.round(diff * 100) / 100;
-    this.form['discountPercent'] = Math.round((diff / priceCost) * 1000) / 10;
+  private round2(v: number): number {
+    return Math.round(v * 100) / 100;
+  }
+
+  private round1(v: number): number {
+    return Math.round(v * 10) / 10;
   }
 
   /** Восстанавливает первый шаг по уже сохранённой в заказе запчасти. */
@@ -1810,31 +1132,23 @@ export class AdminComponent implements OnInit, OnDestroy {
 
   //#endregion
 
-  // --- Поиск по таблице ---
-  /** Введённые значения по каждому поисковому полю. */
-  searchValues: Record<string, string> = {};
-  /** Применённые условия — обновляются только по кнопке «Найти». */
-  appliedSearch = signal<Record<string, string>>({});
-  activeSearchField = signal<string | null>(null);
-  searchSuggestions = signal<string[]>([]);
 
   busy = signal<boolean>(false);
   message = signal<string>('');
   error = signal<string>('');
 
   ngOnInit() {
-    this.setupDraftAutosave();
+    // Сервис черновиков сам ничего не знает про поля формы — отдаём ему три коротких коллбэка.
+    this.drafts.attach({
+      currentFormKey: () => this.currentFormKey(),
+      collect: () => this.collectDraftPayload(),
+      apply: (payload) => this.applyDraftPayload(payload)
+    });
+
     this.loadAllReferences();
     if (this.tables.length > 0) {
       this.select(this.tables[0]);
     }
-  }
-
-  ngOnDestroy() {
-    // Уходя со страницы, дописываем последний ввод: он мог не дожить до конца debounce.
-    this.flushDraftSave();
-    this.destroy$.next();
-    this.destroy$.complete();
   }
 
   loadAllReferences() {
@@ -1860,90 +1174,16 @@ export class AdminComponent implements OnInit, OnDestroy {
     });
   }
 
-  //#region [Поиск по таблице]
-
-  /** Строки с учётом применённых условий поиска. */
-  visibleRows = computed<DynamicRow[]>(() => {
-    const conditions = Object.entries(this.appliedSearch())
-      .filter(([, v]) => v.trim().length > 0)
-      .map(([k, v]) => [k, v.trim().toLowerCase()] as const);
-
-    if (conditions.length === 0) return this.rows();
-
-    // Условия по разным полям объединяются по И.
-    return this.rows().filter(row =>
-      conditions.every(([key, needle]) => {
-        const val = row[key];
-        return val !== null && val !== undefined &&
-          String(val).toLowerCase().includes(needle);
-      })
-    );
-  });
-
-  isFiltered = computed(() =>
-    Object.values(this.appliedSearch()).some(v => v.trim().length > 0));
-
-  /** Подсказки берём из уже загруженных строк — по тому полю, в которое вводят. */
-  onSearchInput(key: string, value: string) {
-    this.searchValues[key] = value;
-    this.activeSearchField.set(key);
-
-    const needle = (value ?? '').trim().toLowerCase();
-    const values = this.rows()
-      .map(row => row[key])
-      .filter(v => v !== null && v !== undefined && String(v).trim().length > 0)
-      .map(v => String(v))
-      .filter(v => needle.length === 0 || v.toLowerCase().includes(needle));
-
-    this.searchSuggestions.set(Array.from(new Set(values)).slice(0, 8));
-  }
-
-  applySearchSuggestion(table: TableDef, key: string, value: string) {
-    this.searchValues[key] = value;
-    this.closeSearchSuggestions();
-    this.applySearch(table);
-  }
-
-  applySearch(_table: TableDef) {
-    this.closeSearchSuggestions();
-    this.appliedSearch.set({ ...this.searchValues });
-  }
-
-  resetSearch() {
-    this.searchValues = {};
-    this.appliedSearch.set({});
-    this.closeSearchSuggestions();
-  }
-
-  private closeSearchSuggestions() {
-    this.activeSearchField.set(null);
-    this.searchSuggestions.set([]);
-  }
-
-  //#endregion
-
-  getRefDisplay(field: FieldDef, val: any): string {
-    if (val === null || val === undefined || !field.refTable) return '—';
-    const list = this.references()[field.refTable];
-    if (!list || list.length === 0) return String(val);
-
-    const item = list.find(x => String(x.id) === String(val));
-    if (!item) return String(val);
-
-    return item[field.refLabelKey!] || item.name || item.mark || item.model || item.address || String(val);
-  }
-
   select(t: TableDef) {
     // Незавершённый ввод предыдущей вкладки досохраняем до сброса формы.
-    this.flushDraftSave();
+    this.drafts.flush();
 
     this.qrLabelTabActive.set(false);
     this.current.set(t);
     this.cancelEdit();
-    // Условия поиска относятся к конкретной таблице — при смене вкладки они не имеют смысла.
-    this.resetSearch();
+    // Условия поиска сбрасывает сама таблица, когда меняется её table (ngOnChanges).
     this.reload(t);
-    this.restoreDraft(t.endpoint);
+    this.drafts.restore(t.endpoint);
   }
 
   reload(t: TableDef) {
@@ -2518,7 +1758,7 @@ export class AdminComponent implements OnInit, OnDestroy {
         const partNumId = id ?? res?.id;
         this.busy.set(false);
         // Данные доехали до основной таблицы — черновик больше не нужен.
-        this.discardDraft(table.endpoint);
+        this.drafts.discard(table.endpoint);
         this.cancelEdit();
         this.reload(table);
         this.loadAllReferences();

@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Слой предметной области. Намеренно без единой ссылки на EF Core, ASP.NET и любые
+       внешние библиотеки: здесь только сущности, перечисления и правила, которые должны
+       выполняться независимо от того, как данные хранятся и как приходят в приложение. -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>MotoParts.Domain</RootNamespace>
+  </PropertyGroup>
+
+</Project>

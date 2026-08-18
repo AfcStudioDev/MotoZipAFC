@@ -11,7 +11,13 @@ EXPOSE 8080
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 ARG BUILD_CONFIGURATION=Release
 WORKDIR /src
+# Сначала только csproj всех проектов решения — так слой с restore переиспользуется,
+# пока не менялись зависимости, а не пересобирается на каждую правку кода.
 COPY ["backend/MotoParts.Api/MotoParts.Api.csproj", "backend/MotoParts.Api/"]
+COPY ["backend/MotoParts.Application/MotoParts.Application.csproj", "backend/MotoParts.Application/"]
+COPY ["backend/MotoParts.Domain/MotoParts.Domain.csproj", "backend/MotoParts.Domain/"]
+COPY ["backend/MotoParts.Infrastructure/MotoParts.Infrastructure.csproj", "backend/MotoParts.Infrastructure/"]
+COPY ["QRCodeGenerator/PdfGeneration.csproj", "QRCodeGenerator/"]
 RUN dotnet restore "./backend/MotoParts.Api/MotoParts.Api.csproj"
 COPY . .
 WORKDIR "/src/backend/MotoParts.Api"
@@ -31,6 +37,12 @@ COPY --from=publish /app/publish .
 # в образе каталогом при первом запуске наследует его владельца ($APP_UID,
 # см. USER выше) — без этого шага volume мог бы примонтироваться как root,
 # и AdminController не смог бы писать сюда файлы от непривилегированного пользователя.
-RUN mkdir -p wwwroot/ZipPhotos wwwroot/Labels
+#
+# COPY --from=publish выше копирует файлы с владельцем root (COPY не наследует
+# активный USER без --chown), поэтому mkdir от имени $APP_UID падал с Permission denied.
+# Создаём папки от root и сразу передаём владение $APP_UID, как и было задумано.
+USER root
+RUN mkdir -p wwwroot/ZipPhotos wwwroot/Labels && chown -R $APP_UID:$APP_UID wwwroot
+USER $APP_UID
 
 ENTRYPOINT ["dotnet", "MotoParts.Api.dll"]

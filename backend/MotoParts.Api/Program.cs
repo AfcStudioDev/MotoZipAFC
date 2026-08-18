@@ -2,25 +2,22 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 
-using MotoParts.Api.Data;
-using MotoParts.Api.Services;
+using MotoParts.Api.Common;
+using MotoParts.Infrastructure;
+using MotoParts.Infrastructure.Persistence;
 
 using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseNpgsql(builder.Configuration.GetConnectionString("Default")));
+// Состав слоёв host не знает: что подключить к БД и чем реализованы интерфейсы —
+// решает сама Infrastructure (см. DependencyInjection).
+builder.Services.AddApplication();
+builder.Services.AddInfrastructure(builder.Configuration);
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
-builder.Services.AddHttpClient();
-
-builder.Services.AddScoped<TokenService>();
-builder.Services.AddScoped<OAuthService>();
-builder.Services.AddScoped<YooKassaService>();
-builder.Services.AddScoped<IEmailService, EmailService>();
 
 builder.Services
     .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
@@ -62,6 +59,9 @@ using (var scope = app.Services.CreateScope())
 
     await DbSeeder.SeedAsync(db, app.Configuration);
 }
+
+// Первым в конвейере: должен накрывать всё, что идёт после него.
+app.UseExceptionHandling();
 
 if (app.Environment.IsDevelopment())
 {

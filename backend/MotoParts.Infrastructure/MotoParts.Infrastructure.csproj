@@ -1,0 +1,48 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Внешний мир: PostgreSQL, файловая система, почта, платежи, генерация PDF и картинок.
+       Реализует интерфейсы, объявленные в Application. -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>MotoParts.Infrastructure</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="MailKit" Version="4.17.0" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="8.0.6">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="8.0.4" />
+    <PackageReference Include="SixLabors.ImageSharp" Version="3.1.12" />
+    <PackageReference Include="SixLabors.ImageSharp.Drawing" Version="2.1.4" />
+    <!-- Конфигурация и DI нужны реализациям (строки подключения, регистрация сервисов),
+         поэтому берём только абстракции, а не весь ASP.NET. -->
+    <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" Version="8.0.0" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="8.0.2" />
+    <PackageReference Include="Microsoft.Extensions.Http" Version="8.0.1" />
+    <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.0.1" />
+  </ItemGroup>
+
+  <!-- Раньше эти namespace приезжали сами: у Web SDK они в неявных using. Обычный
+       Microsoft.NET.Sdk их не добавляет, а нужны они почти в каждом сервисе. -->
+  <ItemGroup>
+    <Using Include="Microsoft.Extensions.Configuration" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\MotoParts.Application\MotoParts.Application.csproj" />
+    <ProjectReference Include="..\..\QRCodeGenerator\PdfGeneration.csproj" />
+  </ItemGroup>
+
+  <!-- Логотип водяного знака — ресурс инфраструктуры, едет вместе с ней в publish. -->
+  <ItemGroup>
+    <Content Include="Images\watermark.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+  </ItemGroup>
+
+</Project>
