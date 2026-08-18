@@ -634,12 +634,26 @@ export class HomeComponent implements OnInit {
   }
 
   openImage(photoUrl: string) {
-    this.expandedImage.set(photoUrl);
+    const idx = this.currentGalleryPhotos().indexOf(photoUrl);
+    this.expandedPhotoIndex.set(idx >= 0 ? idx : 0);
   }
 
-  // closeImage() {
-  //   this.expandedImage.set(null);
-  // }
+  /** Листание фото в лайтбоксе по кругу — с последнего на первое и наоборот. */
+  prevImage(event?: Event) {
+    event?.stopPropagation();
+    const photos = this.currentGalleryPhotos();
+    if (photos.length === 0) return;
+    const idx = this.expandedPhotoIndex() ?? 0;
+    this.expandedPhotoIndex.set((idx - 1 + photos.length) % photos.length);
+  }
+
+  nextImage(event?: Event) {
+    event?.stopPropagation();
+    const photos = this.currentGalleryPhotos();
+    if (photos.length === 0) return;
+    const idx = this.expandedPhotoIndex() ?? 0;
+    this.expandedPhotoIndex.set((idx + 1) % photos.length);
+  }
 
   // Дополнительное приближение открытой картинки на 50%
   // Метод для клика по самой картинке
