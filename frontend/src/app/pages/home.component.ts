@@ -263,6 +263,44 @@ import { ChangeDetectorRef } from '@angular/core';
       </div>
     }
 
+    <!-- Оплата переводом на карту: онлайн-эквайринг (ЮKassa) отключён, поэтому после
+         создания заказа показываем реквизиты для ручного перевода и принимаем чек. -->
+    @if (paidOrder(); as order) {
+      <div class="modal-backdrop" (click)="closePaymentModal()">
+        <div class="card modal" (click)="$event.stopPropagation()">
+          <h3>Оплата заказа {{ order.orderNumber }}</h3>
+          <p>Осуществите перевод суммы по номеру данной карты, после прикрепите чек об успешном переводе</p>
+
+          @if (cardNumber()) {
+            <p class="card-number">{{ cardNumber() }}</p>
+          } @else {
+            <p class="muted">Не удалось получить номер карты. Свяжитесь с администратором.</p>
+          }
+
+          <input
+            #receiptInput
+            type="file"
+            accept="image/jpeg,image/png,image/webp,application/pdf"
+            style="display: none;"
+            (change)="onReceiptFileSelected($event)"
+          >
+
+          @if (receiptUploaded()) {
+            <p class="success">Чек загружен — спасибо! Мы проверим оплату и обновим статус заказа.</p>
+          } @else {
+            <button class="btn" [disabled]="uploadingReceipt()" (click)="receiptInput.click()">
+              @if (uploadingReceipt()) { Загрузка… } @else { Прикрепить чек }
+            </button>
+          }
+          @if (receiptError()) { <p class="error">{{ receiptError() }}</p> }
+
+          <div class="modal-actions">
+            <button class="btn btn-secondary" (click)="closePaymentModal()">Готово</button>
+          </div>
+        </div>
+      </div>
+    }
+
     <!--Модальное окно товара-->
     @if (selectedZip(); as zip) {
       <div class="modal-backdrop" (click)="onBackdropClick($event)">
@@ -358,6 +396,16 @@ export class HomeComponent implements OnInit {
   readonly deliveryCompanies = ['СДЕК', 'Озон', 'Вайлдберриз'];
   buyDeliveryCompany = '';
   buyDeliveryComment = '';
+
+  /**
+   * Онлайн-оплата (ЮKassa) отключена — после создания заказа показываем номер карты
+   * для ручного перевода и даём прикрепить чек (см. OrdersController.PaymentInfo/UploadReceipt).
+   */
+  paidOrder = signal<{ id: string; orderNumber: string } | null>(null);
+  cardNumber = signal('');
+  uploadingReceipt = signal(false);
+  receiptUploaded = signal(false);
+  receiptError = signal('');
 
   // Для заказа без регистрации
   guestForm = {
@@ -550,17 +598,7 @@ export class HomeComponent implements OnInit {
     };
 
     this.orders.createGuestOrder(requestData).subscribe({
-      next: order => {
-        // Существующая логика запуска оплаты
-        const returnUrl = `${location.origin}/payment-result/${order.id}`;
-        this.orders.createPayment(order.id, returnUrl).subscribe({
-          next: p => { location.href = p.confirmationUrl; },
-          error: err => {
-            this.busy.set(false);
-            this.buyError.set(err.error?.message ?? 'Заказ создан, но оплату запустить не удалось.');
-          }
-        });
-      },
+      next: order => this.openPaymentModal(order),
       error: err => {
         this.busy.set(false);
         this.buyError.set(err.error?.message ?? 'Не удалось создать заказ');
@@ -581,16 +619,7 @@ export class HomeComponent implements OnInit {
         zip.id, this.buyCount, addressId,
         this.buyDeliveryCompany || undefined, this.buyDeliveryComment || undefined
       ).subscribe({
-        next: order => {
-          const returnUrl = `${location.origin}/payment-result/${order.id}`;
-          this.orders.createPayment(order.id, returnUrl).subscribe({
-            next: p => { location.href = p.confirmationUrl; },
-            error: err => {
-              this.busy.set(false);
-              this.buyError.set(err.error?.message ?? 'Заказ создан, но оплату запустить не удалось. Оплатите из личного кабинета.');
-            },
-          });
-        },
+        next: order => this.openPaymentModal(order),
         error: err => {
           this.busy.set(false);
           this.buyError.set(err.error?.message ?? 'Не удалось создать заказ');
@@ -612,6 +641,52 @@ export class HomeComponent implements OnInit {
       this.busy.set(false);
       this.buyError.set('Укажите адрес доставки');
     }
+  }
+
+  /** После создания заказа закрываем форму оформления и показываем реквизиты для перевода. */
+  private openPaymentModal(order: { id: string; orderNumber: string }): void {
+    this.busy.set(false);
+    this.buying.set(null);
+    this.isGuestBuying.set(null);
+
+    this.paidOrder.set(order);
+    this.receiptUploaded.set(false);
+    this.receiptError.set('');
+
+    if (!this.cardNumber()) {
+      this.orders.paymentInfo().subscribe({
+        next: info => this.cardNumber.set(info.cardNumber),
+        error: () => this.cardNumber.set('')
+      });
+    }
+  }
+
+  closePaymentModal(): void {
+    this.paidOrder.set(null);
+  }
+
+  onReceiptFileSelected(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    const order = this.paidOrder();
+    if (!file || !order) return;
+
+    this.receiptError.set('');
+    this.uploadingReceipt.set(true);
+
+    this.orders.uploadReceipt(order.id, file).subscribe({
+      next: () => {
+        this.uploadingReceipt.set(false);
+        this.receiptUploaded.set(true);
+      },
+      error: err => {
+        this.uploadingReceipt.set(false);
+        this.receiptError.set(err.error?.message ?? 'Не удалось загрузить чек');
+      }
+    });
+
+    // Сбрасываем значение, иначе повторный выбор того же файла не вызовет change.
+    input.value = '';
   }
 
   openImage(photoUrl: string) {

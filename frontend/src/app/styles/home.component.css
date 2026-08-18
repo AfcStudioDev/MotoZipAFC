@@ -126,6 +126,14 @@
   margin-top: 16px;
 }
 
+.card-number {
+  font-family: 'Courier New', monospace;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  margin: 10px 0 16px;
+}
+
 /* ДОБАВЛЕНО: Стили для выпадающего списка предложений */
 .suggestions-dropdown {
   position: absolute;

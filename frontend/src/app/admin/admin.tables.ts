@@ -172,7 +172,10 @@ export const ADMIN_TABLES: TableDef[] = [
       { key: 'orderNumber', label: 'Комментарий заказа', type: 'text' },
       // Клиент выбирает при оформлении в каталоге; для заказов из админки поле обычно пустое.
       { key: 'deliveryCompany', label: 'Компания доставки', type: 'text' },
-      { key: 'deliveryComment', label: 'Комментарий к доставке', type: 'text' }
+      { key: 'deliveryComment', label: 'Комментарий к доставке', type: 'text' },
+      // Клиент прикладывает сам после оплаты (см. OrdersController.UploadReceipt) —
+      // здесь только просмотр, загрузки через админку нет.
+      { key: 'receiptFileName', label: 'Чек оплаты', type: 'file-link', fileFolder: 'Receipts', readonly: true }
     ],
     searchFields: [
       { key: 'orderNumber', label: 'Комментарий заказа' },

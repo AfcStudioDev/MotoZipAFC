@@ -15,6 +15,7 @@ import { AuthService } from './core/auth.service';
         <nav class="nav">
           <!-- exact: true — иначе "/" подсвечивался бы на любой странице -->
           <a routerLink="/" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }">Каталог</a>
+          <a routerLink="/about" routerLinkActive="active">Об организации</a>
           @if (auth.user(); as user) {
             <a routerLink="/cabinet" routerLinkActive="active">Личный кабинет</a>
             @if (user.isAdmin || user.isRegistrar) {
@@ -41,6 +42,11 @@ import { AuthService } from './core/auth.service';
     <main class="container main">
       <router-outlet />
     </main>
+    <footer class="footer">
+      <div class="container footer-inner">
+        <a routerLink="/about">Об организации</a>
+      </div>
+    </footer>
   `,
     changeDetection: ChangeDetectionStrategy.Eager,
     styles: [`
@@ -107,6 +113,17 @@ import { AuthService } from './core/auth.service';
     }
     .user-name { color: var(--muted); font-size: 14px; }
     .main { padding: 24px 16px 48px; }
+    .footer {
+      border-top: 1px solid var(--border);
+      padding: 20px 16px;
+    }
+    .footer-inner { text-align: center; }
+    .footer a {
+      color: var(--muted);
+      font-size: 14px;
+      text-decoration: none;
+    }
+    .footer a:hover { color: var(--accent, #007bff); }
 
     /* На мобильном пункты меню не помещаются в одну строку рядом с логотипом:
        переносим их и позволяем шапке расти по высоте вместо горизонтальной прокрутки. */

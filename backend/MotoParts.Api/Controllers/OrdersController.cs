@@ -2,10 +2,13 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
-using MotoParts.Api.Data;
-using MotoParts.Api.DTOs;
-using MotoParts.Api.Models;
-using MotoParts.Api.Services;
+using MotoParts.Api.Common;
+using MotoParts.Infrastructure.Persistence;
+using MotoParts.Application.Contracts;
+using MotoParts.Domain.Common;
+using MotoParts.Domain.Models;
+using MotoParts.Application.Warehouse;
+using MotoParts.Infrastructure.Services;
 
 using System.Linq;
 using System.Security.Claims;
@@ -15,9 +18,80 @@ namespace MotoParts.Api.Controllers;
 [ApiController]
 [Route("api/orders")]
 [Authorize]
-public class OrdersController(AppDbContext db) : ControllerBase
+public class OrdersController(AppDbContext db, WarehouseService warehouse, IConfiguration configuration) : ControllerBase
 {
     private int CurrentUserId => int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+
+    /// <summary>Разрешённые типы файлов чека — фото или скан/PDF квитанции.</summary>
+    private static readonly HashSet<string> AllowedReceiptContentTypes =
+        ["image/jpeg", "image/png", "image/webp", "application/pdf"];
+
+    private const long MaxReceiptFileSize = 10 * 1024 * 1024; // 10 МБ — с запасом на фото со смартфона
+
+    /// <summary>
+    /// Номер карты для ручного перевода. Анонимный доступ — гость ещё не залогинен
+    /// (guest-order не выдаёт токен), а карту нужно показать сразу после оформления заказа.
+    /// </summary>
+    [HttpGet("payment-info")]
+    [AllowAnonymous]
+    public IActionResult PaymentInfo()
+    {
+        var cardNumber = configuration["Payment:CardNumber"];
+        if (string.IsNullOrWhiteSpace(cardNumber))
+            return Error.NotFound("Номер карты для оплаты не настроен").ToErrorResponse();
+
+        return Ok(new PaymentInfoDto(cardNumber));
+    }
+
+    /// <summary>
+    /// Покупатель прикладывает чек о переводе. Анонимный доступ по той же причине, что и
+    /// PaymentInfo — заказ уже существует (id непубличный, генерируется сервером), поэтому
+    /// доступ к конкретному заказу по его Guid — тот же уровень защиты, что и у остальных
+    /// точечных gets в этом приложении (см. SenderController.GetZipInfo).
+    /// </summary>
+    [HttpPost("{id:guid}/receipt")]
+    [AllowAnonymous]
+    public async Task<IActionResult> UploadReceipt(Guid id, IFormFile file)
+    {
+        var order = await db.Orders.FindAsync(id);
+        if (order == null) return NotFound(new { message = "Заказ не найден" });
+
+        if (file == null || file.Length == 0)
+            return Error.Validation("Файл чека не передан").ToErrorResponse();
+        if (file.Length > MaxReceiptFileSize)
+            return Error.Validation("Файл чека слишком большой (максимум 10 МБ)").ToErrorResponse();
+        if (!AllowedReceiptContentTypes.Contains(file.ContentType))
+            return Error.Validation("Чек должен быть изображением (JPEG/PNG/WebP) или PDF").ToErrorResponse();
+
+        var uploadFolder = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "Receipts");
+        Directory.CreateDirectory(uploadFolder);
+
+        // Один чек на заказ — новый файл заменяет предыдущий, если покупатель прикладывает повторно.
+        if (!string.IsNullOrEmpty(order.ReceiptFileName))
+        {
+            var oldPath = Path.Combine(uploadFolder, order.ReceiptFileName);
+            if (System.IO.File.Exists(oldPath)) System.IO.File.Delete(oldPath);
+        }
+
+        var extension = file.ContentType switch
+        {
+            "image/jpeg" => ".jpg",
+            "image/png" => ".png",
+            "image/webp" => ".webp",
+            "application/pdf" => ".pdf",
+            _ => Path.GetExtension(file.FileName)
+        };
+        var fileName = $"{id}_{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}{extension}";
+        var filePath = Path.Combine(uploadFolder, fileName);
+
+        await using (var stream = new FileStream(filePath, FileMode.Create))
+            await file.CopyToAsync(stream);
+
+        order.ReceiptFileName = fileName;
+        await db.SaveChangesAsync();
+
+        return Ok(new UploadReceiptResponse(fileName));
+    }
 
     /// <summary>Заказы текущего пользователя, пагинация по 10 штук.</summary>
     [HttpGet("my")]
