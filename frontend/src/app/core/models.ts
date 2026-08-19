@@ -122,6 +122,36 @@ export interface PriceHistoryRow {
   comment?: string;
 }
 
+// ---------- Поддержка ----------
+
+export interface SupportMessageDto {
+  id: number;
+  isFromAdmin: boolean;
+  authorName: string;
+  text: string;
+  createdAt: string;
+}
+
+export interface SupportTicketDto {
+  id: string;
+  orderNumber: string;
+  orderId: string;
+  createdAt: string;
+  isClosed: boolean;
+  messages: SupportMessageDto[];
+}
+
+export interface SupportTicketSummaryDto {
+  id: string;
+  orderNumber: string;
+  createdAt: string;
+  lastMessageAt: string;
+  lastMessagePreview: string;
+  isClosed: boolean;
+  userFio?: string;
+  userEmail?: string;
+}
+
 export interface ZipHistoryRow {
   id: number;
   createdAt: string;

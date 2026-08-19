@@ -35,6 +35,7 @@
   <ItemGroup>
     <ProjectReference Include="..\MotoParts.Application\MotoParts.Application.csproj" />
     <ProjectReference Include="..\..\QRCodeGenerator\PdfGeneration.csproj" />
+    <ProjectReference Include="..\..\VkChatBot\VkChatBot.csproj" />
   </ItemGroup>
 
   <!-- Логотип водяного знака — ресурс инфраструктуры, едет вместе с ней в publish. -->

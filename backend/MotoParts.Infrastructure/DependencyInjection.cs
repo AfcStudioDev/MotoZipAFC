@@ -7,6 +7,8 @@ using MotoParts.Application.Warehouse;
 using MotoParts.Infrastructure.Persistence;
 using MotoParts.Infrastructure.Services;
 
+using VkChatBot;
+
 namespace MotoParts.Infrastructure;
 
 /// <summary>
@@ -31,6 +33,7 @@ public static class DependencyInjection
         services.AddScoped<OAuthService>();
         services.AddScoped<YooKassaService>();
         services.AddScoped<IEmailService, EmailService>();
+        services.AddScoped<IVkBotService, VkBotService>();
 
         return services;
     }

@@ -25,6 +25,9 @@ import { CartService } from './core/cart.service';
             <a routerLink="/cabinet" routerLinkActive="active">Личный кабинет</a>
             @if (user.isAdmin || user.isRegistrar) {
               <a routerLink="/admin" routerLinkActive="active">Админ-панель</a>
+              <a routerLink="/admin/support" routerLinkActive="active">Обращения</a>
+            } @else {
+              <a routerLink="/support" routerLinkActive="active">Поддержка</a>
             }
             @if (user.isAdmin || user.isSender || user.isRegistrar) {
               <a routerLink="/reports" routerLinkActive="active">Отчёты</a>

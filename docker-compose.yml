@@ -50,6 +50,11 @@ services:
       YooKassa__ShopId: ${YOOKASSA_SHOP_ID:-}
       YooKassa__SecretKey: ${YOOKASSA_SECRET_KEY:-}
 
+      VkBot__AccessToken: ${VKBOT_ACCESS_TOKEN:-}
+      VkBot__GroupUrl: ${VKBOT_GROUP_URL:-}
+      # Несколько получателей через запятую, напр. VKBOT_PEER_IDS=111,222
+      VkBot__PeerIds: ${VKBOT_PEER_IDS:-}
+
       SmtpSettings__Host: ${SMTP_HOST:-}
       SmtpSettings__Port: ${SMTP_PORT:-465}
       SmtpSettings__Username: ${SMTP_USERNAME:-}
