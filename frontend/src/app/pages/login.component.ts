@@ -25,10 +25,6 @@ declare const google: any;
         <button class="btn full" type="submit" [disabled]="busy()">Войти</button>
       </form>
 
-      <div class="divider">или войдите через</div>
-      <div id="google-btn"></div>
-      <button class="btn vk-btn" type="button" (click)="loginVk()">Войти через VK</button>
-
       <p class="links">
         <a routerLink="/forgot-password">Забыли пароль?</a><br />
         Нет аккаунта? <a routerLink="/register">Зарегистрироваться</a>
