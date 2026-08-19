@@ -256,6 +256,14 @@ import {
                       <small class="owned-hint">Поле парт-номера — изменение применится ко всем запчастям с ним</small>
                     }
                   }
+                  @else if (f.type === 'file-link') {
+                    <!-- Только просмотр: файл прикладывает клиент через каталог, не админ. -->
+                    @if (form[f.key]) {
+                      <a [href]="fileUrl(f, form[f.key])" target="_blank" rel="noopener">Открыть чек</a>
+                    } @else {
+                      <small class="owned-hint">Чек не прикреплён</small>
+                    }
+                  }
                   @else {
                     <input
                       type="text"
@@ -597,6 +605,12 @@ export class AdminComponent implements OnInit {
   // Уже загруженные фотографии выбранной запчасти
   existingPhotos = signal<ZipPhotoRow[]>([]);
   photoBaseUrl = `${environment.apiUrl.replace('/api', '')}/ZipPhotos/`;
+
+  /** Файлы отдаются статикой (wwwroot/&lt;fileFolder&gt;), а не через /api — например, чек оплаты. */
+  fileUrl(field: FieldDef, fileName: string): string {
+    const base = environment.apiUrl.replace(/\/api\/?$/, '');
+    return `${base}/${field.fileFolder}/${fileName}`;
+  }
 
 
 

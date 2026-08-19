@@ -1,11 +1,13 @@
-import { Component, OnInit, inject, signal, computed, HostListener, ChangeDetectionStrategy } from '@angular/core';
+import { Component, OnInit, ViewChild, inject, signal, computed, HostListener, ChangeDetectionStrategy } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { CurrencyPipe } from '@angular/common';
 import { Router } from '@angular/router';
 import { CatalogService, SearchFilters } from '../core/catalog.service';
 import { OrdersService } from '../core/orders.service';
+import { CartService } from '../core/cart.service';
 import { AuthService } from '../core/auth.service';
 import { AddressDto, GroupDto, MarkDto, ModelDto, PagedResult, ZipDto } from '../core/models';
+import { PaymentModalComponent } from '../shared/payment-modal.component';
 import { NgxMaskDirective } from 'ngx-mask';
 import { Subject, of } from 'rxjs';
 import { debounceTime, distinctUntilChanged, switchMap, catchError } from 'rxjs/operators';
@@ -15,7 +17,7 @@ import { ChangeDetectorRef } from '@angular/core';
 @Component({
   selector: 'app-home',
   styleUrls: ['../styles/home.component.css'],
-  imports: [FormsModule, CurrencyPipe, NgxMaskDirective],
+  imports: [FormsModule, CurrencyPipe, NgxMaskDirective, PaymentModalComponent],
   template: `
     <section class="search-panel card">
       <h1>Запчасти для мотоциклов</h1>
@@ -121,6 +123,7 @@ import { ChangeDetectorRef } from '@angular/core';
               <div class="zip-footer">
                 <span class="price">{{ zip.sellCost | currency:'RUB':'symbol-narrow':'1.0-0' }}</span>
                 @if (zip.countStored > 0) {
+                  <button class="btn btn-secondary" (click)="$event.stopPropagation(); addToCart(zip)">В корзину</button>
                   <button class="btn" (click)="$event.stopPropagation(); openBuy(zip)">Купить</button>
                 } @else {
                   <span class="muted">Нет в наличии</span>
@@ -164,6 +167,22 @@ import { ChangeDetectorRef } from '@angular/core';
           <div class="form-field">
             <label>…или добавьте новый адрес</label>
             <input type="text" placeholder="Город, улица, дом, квартира" [(ngModel)]="newAddress" />
+          </div>
+          <div class="form-field">
+            <label>Компания доставки (необязательно)</label>
+            <select [(ngModel)]="buyDeliveryCompany">
+              <option value="">— не выбрано —</option>
+              @for (c of deliveryCompanies; track c) {
+                <option [value]="c">{{ c }}</option>
+              }
+            </select>
+          </div>
+          <div class="form-field">
+            <label>Комментарий к доставке</label>
+            <small class="muted" style="display: block; margin-bottom: 6px;">
+              Возможно оформление курьерской доставки выбранной клиентом компанией, за счёт клиента
+            </small>
+            <textarea rows="2" [(ngModel)]="buyDeliveryComment"></textarea>
           </div>
           @if (buyError()) { <p class="error">{{ buyError() }}</p> }
           <div class="modal-actions">
@@ -219,6 +238,24 @@ import { ChangeDetectorRef } from '@angular/core';
             <input type="number" class="form-control" [(ngModel)]="guestForm.count" min="1">
           </div>
 
+          <div class="form-group mb-2">
+            <label>Компания доставки <small class="text-muted">(необязательно)</small></label>
+            <select class="form-control" [(ngModel)]="guestForm.deliveryCompany">
+              <option value="">— не выбрано —</option>
+              @for (c of deliveryCompanies; track c) {
+                <option [value]="c">{{ c }}</option>
+              }
+            </select>
+          </div>
+
+          <div class="form-group mb-3">
+            <label>Комментарий к доставке</label>
+            <div class="text-muted mb-1" style="font-size: 13px;">
+              Возможно оформление курьерской доставки выбранной клиентом компанией, за счёт клиента
+            </div>
+            <textarea class="form-control" rows="2" [(ngModel)]="guestForm.deliveryComment"></textarea>
+          </div>
+
           <div class="d-flex gap-2 justify-content-end">
             <button class="btn btn-secondary" (click)="closeBuy()" [disabled]="busy()">Отмена</button>
             <button class="btn btn-primary" (click)="confirmGuestBuy(guestZip)" [disabled]="busy() || !guestForm.fio || !guestForm.phone || !guestForm.address">
@@ -228,6 +265,10 @@ import { ChangeDetectorRef } from '@angular/core';
         </div>
       </div>
     }
+
+    <!-- Оплата переводом на карту: онлайн-эквайринг (ЮKassa) отключён, поэтому после
+         создания заказа показываем реквизиты для ручного перевода и принимаем чек. -->
+    <app-payment-modal #paymentModal />
 
     <!--Модальное окно товара-->
     @if (selectedZip(); as zip) {
@@ -322,6 +363,7 @@ export class HomeComponent implements OnInit {
   private orders = inject(OrdersService);
   private auth = inject(AuthService);
   private cdr = inject(ChangeDetectorRef);
+  cart = inject(CartService);
 
   // Добавляем новые сигналы в класс компонента
   isZoomed = signal(false);
@@ -342,6 +384,14 @@ export class HomeComponent implements OnInit {
   buyError = signal('');
   busy = signal(false);
 
+  /** Компании, которыми клиент может заказать курьерскую доставку — за свой счёт. */
+  readonly deliveryCompanies = ['СДЕК', 'Озон', 'Вайлдберриз'];
+  buyDeliveryCompany = '';
+  buyDeliveryComment = '';
+
+  /** Модалка оплаты переводом на карту — своё состояние держит сама (см. PaymentModalComponent). */
+  @ViewChild('paymentModal') private paymentModal!: PaymentModalComponent;
+
   // Для заказа без регистрации
   guestForm = {
     fio: '',
@@ -350,7 +400,9 @@ export class HomeComponent implements OnInit {
     password: '',
     address: '',
     postCode: '',
-    count: 1
+    count: 1,
+    deliveryCompany: '',
+    deliveryComment: ''
   };
   isGuestBuying = signal<ZipDto | null>(null);
 
@@ -486,7 +538,10 @@ export class HomeComponent implements OnInit {
     if (!this.auth.isLoggedIn) {
       // Если не авторизован - открываем окно гостевой покупки
       this.buyError.set('');
-      this.guestForm = { fio: '', email: '', phone: '', password: '', address: '', postCode: '', count: 1 };
+      this.guestForm = {
+        fio: '', email: '', phone: '', password: '', address: '', postCode: '', count: 1,
+        deliveryCompany: '', deliveryComment: ''
+      };
       this.isGuestBuying.set(zip);
       return;
     }
@@ -495,6 +550,8 @@ export class HomeComponent implements OnInit {
     this.buyError.set('');
     this.buyCount = 1;
     this.newAddress = '';
+    this.buyDeliveryCompany = '';
+    this.buyDeliveryComment = '';
     this.buying.set(zip);
 
     this.orders.addressess().subscribe(a => {
@@ -508,33 +565,28 @@ export class HomeComponent implements OnInit {
     this.isGuestBuying.set(null);
   }
 
+  addToCart(zip: ZipDto): void {
+    this.cart.add(zip);
+  }
+
   confirmGuestBuy(zip: ZipDto): void {
     this.buyError.set('');
     this.busy.set(true);
 
     const requestData = {
-      zipId: zip.id,
-      count: this.guestForm.count,
+      items: [{ zipId: zip.id, count: this.guestForm.count, sellCost: zip.sellCost ?? 0 }],
       fio: this.guestForm.fio,
       email: this.guestForm.email,
       phone: this.guestForm.phone,
       password: this.guestForm.password,
       address: this.guestForm.address,
-      postCode: this.guestForm.postCode
+      postCode: this.guestForm.postCode,
+      deliveryCompany: this.guestForm.deliveryCompany || undefined,
+      deliveryComment: this.guestForm.deliveryComment || undefined
     };
 
-    this.orders.createGuestOrder(requestData).subscribe({
-      next: order => {
-        // Существующая логика запуска оплаты
-        const returnUrl = `${location.origin}/payment-result/${order.id}`;
-        this.orders.createPayment(order.id, returnUrl).subscribe({
-          next: p => { location.href = p.confirmationUrl; },
-          error: err => {
-            this.busy.set(false);
-            this.buyError.set(err.error?.message ?? 'Заказ создан, но оплату запустить не удалось.');
-          }
-        });
-      },
+    this.orders.guestCheckout(requestData).subscribe({
+      next: purchase => this.openPaymentModal({ id: purchase.id, orderNumber: purchase.purchaseNumber }),
       error: err => {
         this.busy.set(false);
         this.buyError.set(err.error?.message ?? 'Не удалось создать заказ');
@@ -551,17 +603,11 @@ export class HomeComponent implements OnInit {
     this.busy.set(true);
 
     const placeOrder = (addressId: number) => {
-      this.orders.createOrder(zip.id, this.buyCount, addressId).subscribe({
-        next: order => {
-          const returnUrl = `${location.origin}/payment-result/${order.id}`;
-          this.orders.createPayment(order.id, returnUrl).subscribe({
-            next: p => { location.href = p.confirmationUrl; },
-            error: err => {
-              this.busy.set(false);
-              this.buyError.set(err.error?.message ?? 'Заказ создан, но оплату запустить не удалось. Оплатите из личного кабинета.');
-            },
-          });
-        },
+      this.orders.checkout(
+        [{ zipId: zip.id, count: this.buyCount, sellCost: zip.sellCost ?? 0 }], addressId,
+        this.buyDeliveryCompany || undefined, this.buyDeliveryComment || undefined
+      ).subscribe({
+        next: purchase => this.openPaymentModal({ id: purchase.id, orderNumber: purchase.purchaseNumber }),
         error: err => {
           this.busy.set(false);
           this.buyError.set(err.error?.message ?? 'Не удалось создать заказ');
@@ -585,6 +631,14 @@ export class HomeComponent implements OnInit {
     }
   }
 
+  /** После создания заказа закрываем форму оформления и показываем реквизиты для перевода. */
+  private openPaymentModal(order: { id: string; orderNumber: string }): void {
+    this.busy.set(false);
+    this.buying.set(null);
+    this.isGuestBuying.set(null);
+    this.paymentModal.open(order);
+  }
+
   openImage(photoUrl: string) {
     const idx = this.currentGalleryPhotos().indexOf(photoUrl);
     this.expandedPhotoIndex.set(idx >= 0 ? idx : 0);
@@ -593,35 +647,18 @@ export class HomeComponent implements OnInit {
   /** Листание фото в лайтбоксе по кругу — с последнего на первое и наоборот. */
   prevImage(event?: Event) {
     event?.stopPropagation();
-    const total = this.currentGalleryPhotos().length;
-    if (total === 0) return;
-    this.expandedPhotoIndex.update(idx => ((idx ?? 0) - 1 + total) % total);
-    this.resetZoom();
+    const photos = this.currentGalleryPhotos();
+    if (photos.length === 0) return;
+    const idx = this.expandedPhotoIndex() ?? 0;
+    this.expandedPhotoIndex.set((idx - 1 + photos.length) % photos.length);
   }
 
   nextImage(event?: Event) {
     event?.stopPropagation();
-    const total = this.currentGalleryPhotos().length;
-    if (total === 0) return;
-    this.expandedPhotoIndex.update(idx => ((idx ?? 0) + 1) % total);
-    this.resetZoom();
-  }
-
-  /**
-   * Стрелки — листание фото, Escape — закрыть верхний открытый слой: сначала
-   * лайтбокс (если открыт), иначе карточку товара под ним.
-   */
-  @HostListener('window:keydown', ['$event'])
-  handleModalKeydown(event: KeyboardEvent) {
-    if (this.expandedImage()) {
-      if (event.key === 'ArrowLeft') this.prevImage();
-      else if (event.key === 'ArrowRight') this.nextImage();
-      else if (event.key === 'Escape') this.closeImage();
-      return;
-    }
-    if (event.key === 'Escape' && this.selectedZip()) {
-      this.closeDetails();
-    }
+    const photos = this.currentGalleryPhotos();
+    if (photos.length === 0) return;
+    const idx = this.expandedPhotoIndex() ?? 0;
+    this.expandedPhotoIndex.set((idx + 1) % photos.length);
   }
 
   // Дополнительное приближение открытой картинки на 50%

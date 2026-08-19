@@ -2,7 +2,7 @@ import { Injectable, inject } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import { environment } from '../../environments/environment';
-import { AddressDto, OrderDto, PagedResult } from './models';
+import { AddressDto, CartItemRequest, OrderDto, PagedResult, PurchaseDto } from './models';
 
 @Injectable({ providedIn: 'root' })
 export class OrdersService {
@@ -15,8 +15,19 @@ export class OrdersService {
     });
   }
 
-  createOrder(zipId: string, count: number, addressId: number): Observable<OrderDto> {
-    return this.http.post<OrderDto>(`${this.api}/orders`, { zipId, count, addressId });
+  /**
+   * Оформление покупки — из одной позиции («Купить» на карточке) или из нескольких
+   * (корзина). Разница только в длине items: сервер всегда создаёт одну Purchase.
+   */
+  checkout(
+    items: CartItemRequest[], addressId: number,
+    deliveryCompany?: string, deliveryComment?: string
+  ): Observable<PurchaseDto> {
+    return this.http.post<PurchaseDto>(`${this.api}/purchases`, { items, addressId, deliveryCompany, deliveryComment });
+  }
+
+  guestCheckout(data: any): Observable<PurchaseDto> {
+    return this.http.post<PurchaseDto>(`${this.api}/purchases/guest`, data);
   }
 
   addressess(): Observable<AddressDto[]> {
@@ -27,17 +38,16 @@ export class OrdersService {
     return this.http.post<AddressDto>(`${this.api}/addressess`, { address, postCode });
   }
 
-  createPayment(orderId: string, returnUrl: string): Observable<{ paymentId: string; confirmationUrl: string }> {
-    return this.http.post<{ paymentId: string; confirmationUrl: string }>(
-      `${this.api}/payments/create`, { orderId, returnUrl });
+  /** Номер карты для ручного перевода — онлайн-оплата (ЮKassa) отключена. */
+  paymentInfo(): Observable<{ cardNumber: string }> {
+    return this.http.get<{ cardNumber: string }>(`${this.api}/purchases/payment-info`);
   }
 
-  paymentStatus(orderId: string): Observable<{ orderId: string; status: string }> {
-    return this.http.get<{ orderId: string; status: string }>(`${this.api}/payments/status/${orderId}`);
-  }
-
-  createGuestOrder(data: any) {
-    return this.http.post<OrderDto>(`${this.api}/orders/guest-order`, data);
+  /** Чек о переводе прикладывает сам покупатель — один на всю покупку, не на каждую позицию. */
+  uploadReceipt(purchaseId: string, file: File): Observable<{ receiptFileName: string }> {
+    const form = new FormData();
+    form.append('file', file);
+    return this.http.post<{ receiptFileName: string }>(`${this.api}/purchases/${purchaseId}/receipt`, form);
   }
 
   // Отключено по просьбе заказчика

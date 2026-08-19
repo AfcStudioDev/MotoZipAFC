@@ -77,20 +77,30 @@ public sealed class WarehouseFixture : IDisposable
     }
 
     /// <summary>
-    /// Настоящая строка заказа. Нужна, потому что журнал ссылается на заказ по внешнему ключу:
-    /// в бою заказ и движение товара сохраняются одной транзакцией, и тест должен вести себя так же.
+    /// Настоящая строка заказа вместе с её покупкой. Нужна, потому что журнал ссылается на
+    /// заказ по внешнему ключу: в бою заказ и движение товара сохраняются одной транзакцией,
+    /// и тест должен вести себя так же.
     /// </summary>
     public Order AddOrder(int qty, decimal sellCost = 1500m, string orderNumber = "ORD-TEST")
     {
+        var purchase = new Purchase
+        {
+            Id = Guid.NewGuid(),
+            PurchaseNumber = "PUR-TEST-" + orderNumber,
+            UserId = _user.Id,
+            AddressId = _address.Id,
+            OrderDateTime = DateTimeOffset.UtcNow
+        };
+        Db.Purchases.Add(purchase);
+
         var order = new Order
         {
             Id = Guid.NewGuid(),
             OrderNumber = orderNumber,
             CountOrdered = qty,
             ZipId = Zip.Id,
-            AddressId = _address.Id,
-            UserId = _user.Id,
-            OrderDateTime = DateTimeOffset.UtcNow,
+            PurchaseId = purchase.Id,
+            OrderDateTime = purchase.OrderDateTime,
             SellCost = sellCost,
             OperationId = (short)OperationEnum.Sale,
             DeliveryStatusId = (short)DeliveryStatusEnum.created

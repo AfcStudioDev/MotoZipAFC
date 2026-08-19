@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using MotoParts.Infrastructure.Persistence;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace MotoParts.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260818103511_AddPurchaseAndMoveOrderFields")]
+    partial class AddPurchaseAndMoveOrderFields
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -44,7 +47,7 @@ namespace MotoParts.Infrastructure.Migrations
 
                     b.HasIndex("UserId");
 
-                    b.ToTable("DeliveryAddressess", (string)null);
+                    b.ToTable("DeliveryAddressess");
                 });
 
             modelBuilder.Entity("MotoParts.Domain.Models.DeliveryStatus", b =>
@@ -61,7 +64,7 @@ namespace MotoParts.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("DeliveryStatuses", (string)null);
+                    b.ToTable("DeliveryStatuses");
                 });
 
             modelBuilder.Entity("MotoParts.Domain.Models.IncomeMoto", b =>
@@ -81,7 +84,7 @@ namespace MotoParts.Infrastructure.Migrations
 
                     b.HasIndex("UserId");
 
-                    b.ToTable("IncomeMotos", (string)null);
+                    b.ToTable("IncomeMotos");
                 });
 
             modelBuilder.Entity("MotoParts.Domain.Models.Log", b =>
@@ -129,7 +132,7 @@ namespace MotoParts.Infrastructure.Migrations
 
                     b.HasIndex("ZipId", "CreatedAt");
 
-                    b.ToTable("Logs", (string)null);
+                    b.ToTable("Logs");
                 });
 
             modelBuilder.Entity("MotoParts.Domain.Models.MotoMark", b =>
@@ -149,7 +152,7 @@ namespace MotoParts.Infrastructure.Migrations
                     b.HasIndex("Mark")
                         .IsUnique();
 
-                    b.ToTable("MotoMarks", (string)null);
+                    b.ToTable("MotoMarks");
                 });
 
             modelBuilder.Entity("MotoParts.Domain.Models.MotoModel", b =>
@@ -171,7 +174,7 @@ namespace MotoParts.Infrastructure.Migrations
 
                     b.HasIndex("MarkId");
 
-                    b.ToTable("MotoModels", (string)null);
+                    b.ToTable("MotoModels");
                 });
 
             modelBuilder.Entity("MotoParts.Domain.Models.MotoSeries", b =>
@@ -186,7 +189,7 @@ namespace MotoParts.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("MotoSeries", (string)null);
+                    b.ToTable("MotoSeries");
                 });
 
             modelBuilder.Entity("MotoParts.Domain.Models.Operation", b =>
@@ -208,7 +211,7 @@ namespace MotoParts.Infrastructure.Migrations
 
                     b.HasIndex("TypeId");
 
-                    b.ToTable("Operations", (string)null);
+                    b.ToTable("Operations");
                 });
 
             modelBuilder.Entity("MotoParts.Domain.Models.OperationType", b =>
@@ -225,7 +228,7 @@ namespace MotoParts.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("OperationTypes", (string)null);
+                    b.ToTable("OperationTypes");
                 });
 
             modelBuilder.Entity("MotoParts.Domain.Models.Order", b =>
@@ -278,7 +281,7 @@ namespace MotoParts.Infrastructure.Migrations
 
                     b.HasIndex("ZipId");
 
-                    b.ToTable("Orders", (string)null);
+                    b.ToTable("Orders");
                 });
 
             modelBuilder.Entity("MotoParts.Domain.Models.PartNumber", b =>
@@ -307,7 +310,7 @@ namespace MotoParts.Infrastructure.Migrations
                     b.HasIndex("PartNum")
                         .IsUnique();
 
-                    b.ToTable("PartNumbers", (string)null);
+                    b.ToTable("PartNumbers");
                 });
 
             modelBuilder.Entity("MotoParts.Domain.Models.PartNumberApplicability", b =>
@@ -331,7 +334,7 @@ namespace MotoParts.Infrastructure.Migrations
                     b.HasIndex("PartNumId", "ModelId")
                         .IsUnique();
 
-                    b.ToTable("PartNumberApplicabilities", (string)null);
+                    b.ToTable("PartNumberApplicabilities");
                 });
 
             modelBuilder.Entity("MotoParts.Domain.Models.PartNumberSeriesApplicability", b =>
@@ -355,7 +358,7 @@ namespace MotoParts.Infrastructure.Migrations
                     b.HasIndex("PartNumId", "SeriesId")
                         .IsUnique();
 
-                    b.ToTable("PartNumberSeriesApplicabilities", (string)null);
+                    b.ToTable("PartNumberSeriesApplicabilities");
                 });
 
             modelBuilder.Entity("MotoParts.Domain.Models.PriceHistory", b =>
@@ -395,7 +398,7 @@ namespace MotoParts.Infrastructure.Migrations
 
                     b.HasIndex("ZipId", "CreatedAt");
 
-                    b.ToTable("PriceHistories", (string)null);
+                    b.ToTable("PriceHistories");
                 });
 
             modelBuilder.Entity("MotoParts.Domain.Models.Purchase", b =>
@@ -435,7 +438,7 @@ namespace MotoParts.Infrastructure.Migrations
 
                     b.HasIndex("UserId");
 
-                    b.ToTable("Purchases", (string)null);
+                    b.ToTable("Purchases");
                 });
 
             modelBuilder.Entity("MotoParts.Domain.Models.Stored", b =>
@@ -457,7 +460,7 @@ namespace MotoParts.Infrastructure.Migrations
                     b.HasIndex("ZipId")
                         .IsUnique();
 
-                    b.ToTable("Stored", (string)null);
+                    b.ToTable("Stored");
                 });
 
             modelBuilder.Entity("MotoParts.Domain.Models.User", b =>
@@ -508,7 +511,7 @@ namespace MotoParts.Infrastructure.Migrations
                     b.HasIndex("Email")
                         .IsUnique();
 
-                    b.ToTable("Users", (string)null);
+                    b.ToTable("Users");
                 });
 
             modelBuilder.Entity("MotoParts.Domain.Models.UserDraft", b =>
@@ -538,7 +541,7 @@ namespace MotoParts.Infrastructure.Migrations
                     b.HasIndex("UserId", "FormKey")
                         .IsUnique();
 
-                    b.ToTable("UserDrafts", (string)null);
+                    b.ToTable("UserDrafts");
                 });
 
             modelBuilder.Entity("MotoParts.Domain.Models.Zip", b =>
@@ -574,7 +577,7 @@ namespace MotoParts.Infrastructure.Migrations
 
                     b.HasIndex("PartNumId");
 
-                    b.ToTable("Zips", (string)null);
+                    b.ToTable("Zips");
                 });
 
             modelBuilder.Entity("MotoParts.Domain.Models.ZipGroup", b =>
@@ -591,7 +594,7 @@ namespace MotoParts.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("ZipGroups", (string)null);
+                    b.ToTable("ZipGroups");
                 });
 
             modelBuilder.Entity("MotoParts.Domain.Models.ZipPhoto", b =>
@@ -616,7 +619,7 @@ namespace MotoParts.Infrastructure.Migrations
 
                     b.HasIndex("ZipId");
 
-                    b.ToTable("ZipPhotos", (string)null);
+                    b.ToTable("ZipPhotos");
                 });
 
             modelBuilder.Entity("MotoParts.Domain.Models.DeliveryAddress", b =>

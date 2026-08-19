@@ -1,5 +1,4 @@
 using System.Security.Claims;
-using System.Text.Json;
 
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -8,7 +7,6 @@ using Microsoft.EntityFrameworkCore;
 
 using MotoParts.Api.Controllers;
 using MotoParts.Application.Contracts;
-using MotoParts.Application.Warehouse;
 using MotoParts.Domain.Models;
 using MotoParts.Infrastructure.Persistence;
 
@@ -17,15 +15,8 @@ using Xunit;
 namespace MotoParts.Api.Tests;
 
 /// <summary>
-/// Регрессия: POST /api/orders падал с 500 при указании адреса доставки —
-/// System.Text.Json.JsonException: A possible object cycle was detected
-/// (Order.Zip.PartNumber.Zips.PartNumber.Zips...).
-///
-/// Причина не в самих данных, а в том, что Create() возвращал ActionResult&lt;OrderDto&gt;
-/// с телом Ok(order) — сырой сущностью EF. Order.Zip получает fix-up от трекера контекста
-/// (Zip загружен в этом же запросе через Include), а Zip.PartNumber.Zips — обратная навигация,
-/// которая включает тот же Zip, — отсюда цикл. Тест воспроизводит ровно это состояние
-/// трекера (тот же DbContext, тот же Include) и проверяет, что ответ сериализуется.
+/// Просмотр уже оформленных заказов. Оформление — см. PurchasesControllerTests
+/// (там же и регрессия на цикл сериализации при указании адреса доставки).
 /// </summary>
 public sealed class OrdersControllerTests : IDisposable
 {
@@ -69,7 +60,7 @@ public sealed class OrdersControllerTests : IDisposable
 
     private OrdersController MakeController()
     {
-        var controller = new OrdersController(_db, new WarehouseService(_db));
+        var controller = new OrdersController(_db);
         var claims = new ClaimsIdentity([new Claim(ClaimTypes.NameIdentifier, _user.Id.ToString())]);
         controller.ControllerContext = new ControllerContext
         {
@@ -78,34 +69,76 @@ public sealed class OrdersControllerTests : IDisposable
         return controller;
     }
 
-    [Fact]
-    public async Task Создание_заказа_с_адресом_доставки_сериализуется_без_ошибок()
+    /// <summary>Заказ вместе с его покупкой — само оформление не проверяется здесь.</summary>
+    private Order SeedOrder(bool isPaid = false, string? receiptFileName = null)
     {
-        var controller = MakeController();
-        var request = new CreateOrderRequest(_zip.Id, 2, 1500m, _address.Id);
+        var purchase = new Purchase
+        {
+            Id = Guid.NewGuid(),
+            PurchaseNumber = "PUR-MY-TEST",
+            UserId = _user.Id,
+            AddressId = _address.Id,
+            OrderDateTime = DateTimeOffset.UtcNow,
+            IsPaid = isPaid,
+            ReceiptFileName = receiptFileName
+        };
+        _db.Purchases.Add(purchase);
 
-        var result = await controller.Create(request);
-
-        var ok = Assert.IsType<OkObjectResult>(result.Result);
-        var dto = Assert.IsType<OrderDto>(ok.Value);
-
-        // Раньше именно этот вызов бросал JsonException из-за цикла в навигационных
-        // свойствах сущности Order — сам факт, что Serialize не бросает, и есть регрессия.
-        JsonSerializer.Serialize(dto);
-
-        Assert.Equal("Масляный фильтр", dto.ZipName);
-        Assert.Equal("ул. Тестовая, 1", dto.Address);
+        var order = new Order
+        {
+            Id = Guid.NewGuid(),
+            OrderNumber = "ORD-MY-TEST",
+            CountOrdered = 1,
+            ZipId = _zip.Id,
+            PurchaseId = purchase.Id,
+            OrderDateTime = DateTimeOffset.UtcNow,
+            SellCost = 1790m,
+            OperationId = (short)OperationEnum.Sale,
+            DeliveryStatusId = (short)DeliveryStatusEnum.created
+        };
+        _db.Orders.Add(order);
+        _db.SaveChanges();
+        return order;
     }
 
     [Fact]
-    public async Task Заказ_с_несуществующим_адресом_возвращает_404_а_не_падает()
+    public async Task Мои_заказы_отдают_данные_покупки_на_каждой_позиции()
     {
+        SeedOrder(isPaid: true, receiptFileName: "receipt.jpg");
         var controller = MakeController();
-        var request = new CreateOrderRequest(_zip.Id, 1, 1500m, AddressId: 999);
 
-        var result = await controller.Create(request);
+        var result = await controller.My();
 
-        Assert.IsType<NotFoundObjectResult>(result.Result);
+        var ok = Assert.IsType<OkObjectResult>(result.Result);
+        var page = Assert.IsType<PagedResult<OrderDto>>(ok.Value);
+        var item = Assert.Single(page.Items);
+
+        Assert.True(item.IsPaid);
+        Assert.Equal("receipt.jpg", item.ReceiptFileName);
+        Assert.Equal("ул. Тестовая, 1", item.Address);
+        Assert.StartsWith("PUR-", item.PurchaseNumber);
+    }
+
+    [Fact]
+    public async Task Чужие_заказы_не_попадают_в_список()
+    {
+        SeedOrder();
+        var otherUser = new User { Email = "other@test.local", FIO = "Другой" };
+        _db.Users.Add(otherUser);
+        _db.SaveChanges();
+
+        var controller = new OrdersController(_db);
+        var claims = new ClaimsIdentity([new Claim(ClaimTypes.NameIdentifier, otherUser.Id.ToString())]);
+        controller.ControllerContext = new ControllerContext
+        {
+            HttpContext = new DefaultHttpContext { User = new ClaimsPrincipal(claims) }
+        };
+
+        var result = await controller.My();
+
+        var ok = Assert.IsType<OkObjectResult>(result.Result);
+        var page = Assert.IsType<PagedResult<OrderDto>>(ok.Value);
+        Assert.Empty(page.Items);
     }
 
     public void Dispose()

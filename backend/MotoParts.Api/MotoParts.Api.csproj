@@ -38,4 +38,9 @@
     <Folder Include="wwwroot\Labels\" />
   </ItemGroup>
 
+  <!-- Файл давно переехал в MotoParts.Infrastructure/Images (см. её .csproj) вместе с
+       WatermarkService — там и остаётся единственная ссылка на него. Эта ссылка была
+       дублирующим хвостом с переезда и указывала на путь, которого в Api больше нет,
+       из-за чего ломала build/publish/dotnet ef. -->
+
 </Project>

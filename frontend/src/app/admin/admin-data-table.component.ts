@@ -5,6 +5,7 @@ import {
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 
+import { environment } from '../../environments/environment';
 import { DynamicRow, FieldDef, TableDef } from './admin.types';
 
 /**
@@ -104,6 +105,14 @@ import { DynamicRow, FieldDef, TableDef } from './admin.types';
                       <strong [style.color]="r[f.key] ? '#28a745' : '#aaa'">
                         {{ r[f.key] ? 'Да' : 'Нет' }}
                       </strong>
+                    } @else if (f.type === 'file-link') {
+                      @if (r[f.key]) {
+                        <a [href]="fileUrl(f, r[f.key])" target="_blank" rel="noopener" (click)="$event.stopPropagation()">
+                          Открыть
+                        </a>
+                      } @else {
+                        <span style="color: #aaa;">—</span>
+                      }
                     } @else {
                       {{ r[f.key] }}
                     }
@@ -230,5 +239,11 @@ export class AdminDataTableComponent implements OnChanges {
     if (!item) return String(val);
 
     return item[field.refLabelKey!] || item.name || item.mark || item.model || item.address || String(val);
+  }
+
+  /** Файлы отдаются статикой (wwwroot/<fileFolder>), а не через /api. */
+  fileUrl(field: FieldDef, fileName: string): string {
+    const base = environment.apiUrl.replace(/\/api\/?$/, '');
+    return `${base}/${field.fileFolder}/${fileName}`;
   }
 }
