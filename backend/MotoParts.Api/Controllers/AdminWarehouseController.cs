@@ -1,4 +1,4 @@
-using Microsoft.AspNetCore.Authorization;
+﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -119,6 +119,7 @@ public class AdminWarehouseController(AppDbContext db, WarehouseService warehous
         return Ok(new { zip.Id, Name = partNumber.Name });
     }
 
+    [AdminOnly]
     [HttpPut("zip/{id}")]
     public async Task<IActionResult> UpdateZip(Guid id, [FromForm] AdminZipRequest request)
     {
@@ -272,6 +273,7 @@ public class AdminWarehouseController(AppDbContext db, WarehouseService warehous
         }
     }
 
+    [AdminOnly]
     [HttpDelete("zip-photos/{photoId:int}")]
     public async Task<IActionResult> DeleteZipPhoto(int photoId)
     {
@@ -292,6 +294,7 @@ public class AdminWarehouseController(AppDbContext db, WarehouseService warehous
     // ---------- Коррекции остатка ----------
 
     /// <summary>Ручная коррекция остатка со знаком: +5 доприходовать, −3 списать.</summary>
+    [AdminOnly]
     [HttpPost("corrections")]
     public async Task<IActionResult> AddCorrection(AdminCorrectionRequest request)
     {
@@ -316,6 +319,7 @@ public class AdminWarehouseController(AppDbContext db, WarehouseService warehous
     }
 
     /// <summary>Изменение цены продажи с записью в историю переоценки.</summary>
+    [AdminOnly]
     [HttpPost("reprice")]
     public async Task<IActionResult> Reprice(AdminRepriceRequest request)
     {
@@ -469,6 +473,7 @@ public class AdminWarehouseController(AppDbContext db, WarehouseService warehous
         return Ok(newDonor);
     }
 
+    [AdminOnly]
     [HttpPut("incomemotos/{id}")]
     public async Task<ActionResult> UpdateIncomeMoto(Guid id, [FromBody] IncomeMoto dto)
     {

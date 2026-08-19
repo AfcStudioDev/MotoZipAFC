@@ -382,9 +382,15 @@
     font-size: 13px;
 }
 
-.btn-delete:hover {
+.btn-delete:hover:not(:disabled) {
     border-color: #dc3545;
     background: #fff5f5;
+}
+
+/* Нет права удаления: кнопка на месте, но не работает. */
+.btn-delete:disabled {
+    color: #aaa;
+    cursor: not-allowed;
 }
 
 .data-table .id-cell {
