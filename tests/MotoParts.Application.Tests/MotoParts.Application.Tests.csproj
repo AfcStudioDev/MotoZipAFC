@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Сценарии проверяются на SQLite in-memory: он даёт настоящие транзакции и внешние ключи,
+       поэтому заодно проверяется и то, что конфигурации EF из Infrastructure вообще применимы.
+       Ссылка на Infrastructure здесь осознанная — тестам нужен реальный AppDbContext. -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="8.0.6" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\backend\MotoParts.Application\MotoParts.Application.csproj" />
+    <ProjectReference Include="..\..\backend\MotoParts.Infrastructure\MotoParts.Infrastructure.csproj" />
+  </ItemGroup>
+
+</Project>

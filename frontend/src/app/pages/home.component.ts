@@ -265,9 +265,12 @@ import { ChangeDetectorRef } from '@angular/core';
             </div>
           </div>
 
-          <div class="d-flex justify-content-end mt-4">
+          <div class="d-flex justify-content-end align-items-center mt-4">
+            @if (zip.countStored <= 0) {
+              <span class="muted me-2">Нет в наличии</span>
+            }
             <button class="btn btn-secondary me-2" (click)="closeDetails()">Закрыть</button>
-            <button class="btn btn-success" (click)="openBuy(zip); closeDetails()">Купить</button>
+            <button class="btn btn-success" [disabled]="zip.countStored <= 0" (click)="openBuy(zip); closeDetails()">Купить</button>
           </div>
         </div>
       </div>

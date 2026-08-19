@@ -11,7 +11,13 @@ EXPOSE 8080
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 ARG BUILD_CONFIGURATION=Release
 WORKDIR /src
+# Сначала только csproj всех проектов решения — так слой с restore переиспользуется,
+# пока не менялись зависимости, а не пересобирается на каждую правку кода.
 COPY ["backend/MotoParts.Api/MotoParts.Api.csproj", "backend/MotoParts.Api/"]
+COPY ["backend/MotoParts.Application/MotoParts.Application.csproj", "backend/MotoParts.Application/"]
+COPY ["backend/MotoParts.Domain/MotoParts.Domain.csproj", "backend/MotoParts.Domain/"]
+COPY ["backend/MotoParts.Infrastructure/MotoParts.Infrastructure.csproj", "backend/MotoParts.Infrastructure/"]
+COPY ["QRCodeGenerator/PdfGeneration.csproj", "QRCodeGenerator/"]
 RUN dotnet restore "./backend/MotoParts.Api/MotoParts.Api.csproj"
 COPY . .
 WORKDIR "/src/backend/MotoParts.Api"

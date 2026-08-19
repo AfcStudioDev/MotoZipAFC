@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using MotoParts.Api.Data;
-using MotoParts.Api.DTOs;
+using MotoParts.Infrastructure.Persistence;
+using MotoParts.Application.Contracts;
 
 namespace MotoParts.Api.Controllers;
 

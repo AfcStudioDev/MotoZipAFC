@@ -2,10 +2,12 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
-using MotoParts.Api.Data;
-using MotoParts.Api.DTOs;
-using MotoParts.Api.Models;
-using MotoParts.Api.Services;
+using MotoParts.Api.Common;
+using MotoParts.Infrastructure.Persistence;
+using MotoParts.Application.Contracts;
+using MotoParts.Domain.Models;
+using MotoParts.Application.Warehouse;
+using MotoParts.Infrastructure.Services;
 
 using System.Linq;
 using System.Security.Claims;
@@ -15,7 +17,7 @@ namespace MotoParts.Api.Controllers;
 [ApiController]
 [Route("api/orders")]
 [Authorize]
-public class OrdersController(AppDbContext db) : ControllerBase
+public class OrdersController(AppDbContext db, WarehouseService warehouse) : ControllerBase
 {
     private int CurrentUserId => int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
 
@@ -53,17 +55,11 @@ public class OrdersController(AppDbContext db) : ControllerBase
         var zip = await db.Zips.Include(z => z.PartNumber).FirstOrDefaultAsync(z => z.Id == request.ZipId);
         if (zip == null) return NotFound(new { message = "Запчасть не найдена" });
 
-        var storedItem = await db.Stored.FirstOrDefaultAsync(s => s.ZipId == request.ZipId);
-
-        if (storedItem == null || storedItem.Count < request.Count)
-        {
-            return BadRequest(new { message = "Недостаточно товара на складе. Доступно: " + (storedItem?.Count ?? 0) });
-        }
+        var address = await db.DeliveryAddressess.FindAsync(request.AddressId);
+        if (address == null) return NotFound(new { message = "Адрес доставки не найден" });
 
         // Списание остатка и запись движения должны быть атомарны.
         await using var tx = await db.Database.BeginTransactionAsync();
-
-        storedItem.Count -= request.Count;
 
         var order = new Order
         {
@@ -81,23 +77,22 @@ public class OrdersController(AppDbContext db) : ControllerBase
 
         db.Orders.Add(order);
 
-        db.Logs.Add(new Log
-        {
-            CreatedAt = DateTimeOffset.UtcNow,
-            OperationId = (short)OperationEnum.Sale,
-            OrderId = order.Id,
-            ZipId = zip.Id,
-            UserId = order.UserId,
-            Qty = -request.Count,
-            UnitCost = zip.IncomeCost,
-            SellCost = request.SellCost,
-            Description = $"Заказ {order.OrderNumber}: {zip.PartNumber.Name} × {request.Count}"
-        });
+        var stock = await warehouse.ReserveForOrderAsync(
+            zip, request.Count, order.Id, order.OrderNumber, request.SellCost, order.UserId,
+            $"Заказ {order.OrderNumber}: {zip.PartNumber.Name} × {request.Count}");
+
+        if (stock.IsFailure) return stock.Error!.ToErrorResponse();
 
         await db.SaveChangesAsync();
         await tx.CommitAsync();
 
-        return Ok(order);
+        // Не отдаём наружу саму сущность Order: её навигационные свойства (Zip.PartNumber.Zips
+        // ссылается на тот же Zip) образуют цикл, который System.Text.Json не умеет
+        // сериализовать (см. регрессионный тест ниже).
+        return Ok(new OrderDto(
+            order.Id, order.OrderNumber, order.CountOrdered, order.OrderDateTime,
+            zip.PartNumber.Name, zip.IncomeCost, address.Address,
+            order.SellCost, order.Discount));
     }
 
     [HttpDelete("orders/{id}")]
@@ -125,10 +120,6 @@ public class OrdersController(AppDbContext db) : ControllerBase
         // 1. Ищем запчасть
         var zip = await db.Zips.Include(z => z.PartNumber).FirstOrDefaultAsync(z => z.Id == req.ZipId);
         if (zip == null) return NotFound(new { message = "Запчасть не найдена" });
-
-        var storedItem = await db.Stored.FirstOrDefaultAsync(s => s.ZipId == req.ZipId);
-        if (storedItem == null || storedItem.Count < req.Count)
-            return BadRequest(new { message = "Недостаточно товара на складе. Доступно: " + (storedItem?.Count ?? 0) });
 
         // 2. Проверяем пользователя по номеру телефона
         var user = await db.Users
@@ -174,8 +165,6 @@ public class OrdersController(AppDbContext db) : ControllerBase
         // 4. Создаем заказ с операцией расхода
         await using var tx = await db.Database.BeginTransactionAsync();
 
-        storedItem.Count -= req.Count;
-
         var order = new Order
         {
             Id = Guid.NewGuid(),
@@ -194,20 +183,13 @@ public class OrdersController(AppDbContext db) : ControllerBase
 
         var incomeMoto = await db.IncomeMotos.FirstOrDefaultAsync(x => x.Id == zip.IncomeMotoId);
 
-        // 5. Добавляем запись в таблицу Log
-        db.Logs.Add(new Log
-        {
-            CreatedAt = DateTimeOffset.UtcNow,
-            OperationId = (short)OperationEnum.Sale,
-            OrderId = order.Id,
-            ZipId = zip.Id,
-            UserId = user.Id,
-            Qty = -req.Count,
-            UnitCost = zip.IncomeCost,
-            SellCost = order.SellCost,
-            Description = $"Заказ {order.OrderNumber} для {user.PhoneNumber}:{user.FIO}. " +
-                          $"Деталь {zip.PartNumber.Name} взята с мотоцикла {incomeMoto?.Description ?? "—"}"
-        });
+        // 5. Списание со склада и запись в журнал — одной операцией
+        var stock = await warehouse.ReserveForOrderAsync(
+            zip, req.Count, order.Id, order.OrderNumber, order.SellCost, user.Id,
+            $"Заказ {order.OrderNumber} для {user.PhoneNumber}:{user.FIO}. " +
+            $"Деталь {zip.PartNumber.Name} взята с мотоцикла {incomeMoto?.Description ?? "—"}");
+
+        if (stock.IsFailure) return stock.Error!.ToErrorResponse();
 
         await db.SaveChangesAsync();
         await tx.CommitAsync();
