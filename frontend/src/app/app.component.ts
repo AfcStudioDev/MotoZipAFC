@@ -55,7 +55,10 @@ import { AuthService } from './core/auth.service';
       display: flex;
       align-items: center;
       justify-content: space-between;
-      height: 64px;
+      flex-wrap: wrap;
+      min-height: 64px;
+      padding: 10px 0;
+      row-gap: 8px;
     }
     .logo {
       display: inline-flex;
@@ -72,7 +75,9 @@ import { AuthService } from './core/auth.service';
       height: 40px;
       width: auto;
     }
-    .nav { display: flex; align-items: center; gap: 18px; }
+    /* У Админа и Регистратора в навигации сразу 6-8 пунктов — при недостаточной ширине
+       экрана перенос строк вместо сжатия отступов не даёт им слипаться друг с другом. */
+    .nav { display: flex; align-items: center; flex-wrap: wrap; row-gap: 8px; column-gap: 18px; }
     .nav a {
       color: var(--text);
       font-weight: 500;
@@ -108,23 +113,12 @@ import { AuthService } from './core/auth.service';
     .user-name { color: var(--muted); font-size: 14px; }
     .main { padding: 24px 16px 48px; }
 
-    /* На мобильном пункты меню не помещаются в одну строку рядом с логотипом:
-       переносим их и позволяем шапке расти по высоте вместо горизонтальной прокрутки. */
+    /* На мобильном пункты меню не помещаются в одну строку рядом с логотипом —
+       перенос строк и рост шапки по высоте уже задан по умолчанию выше. */
     @media (max-width: 768px) {
-      .header-inner {
-        flex-wrap: wrap;
-        height: auto;
-        gap: 8px;
-        padding-top: 10px;
-        padding-bottom: 10px;
-      }
       .logo { font-size: 20px; gap: 6px; }
       .logo-img { height: 30px; }
-      .nav {
-        flex-wrap: wrap;
-        gap: 10px 14px;
-        width: 100%;
-      }
+      .nav { width: 100%; column-gap: 14px; }
       .nav a { font-size: 14px; }
       .user-name { font-size: 13px; }
       .main { padding: 16px 12px 40px; }

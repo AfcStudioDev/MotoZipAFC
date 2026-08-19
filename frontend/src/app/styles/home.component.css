@@ -94,9 +94,20 @@
 
 .zip-footer {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   align-items: center;
+  gap: 8px;
   margin-top: 12px;
+}
+
+/* Кнопки не должны диктовать ширину карточки: сжимаются и переносятся на свою
+   строку, если «В корзину» + «Купить» рядом с ценой не помещаются в 280px карточки. */
+.zip-footer .btn {
+  padding: 8px 14px;
+  font-size: 14px;
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
 
 .price {
@@ -400,10 +411,5 @@
   .gallery-img {
     width: 120px;
     height: 120px;
-  }
-
-  .zip-footer {
-    flex-wrap: wrap;
-    gap: 8px;
   }
 }
