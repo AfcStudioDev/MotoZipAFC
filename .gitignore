@@ -3,6 +3,7 @@ bin/
 obj/
 *.user
 appsettings.Development.json
+appsettings.local.json
 
 # Angular / Node
 node_modules/

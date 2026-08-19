@@ -13,9 +13,17 @@ using MotoParts.Application.Warehouse;
 using MotoParts.Domain.Models;
 using MotoParts.Infrastructure.Persistence;
 
+using VkChatBot;
+
 using Xunit;
 
 namespace MotoParts.Api.Tests;
+
+/// <summary>Ничего не отправляет — тестам сама отправка в VK не интересна, важно лишь не падать.</summary>
+file sealed class FakeVkBotService : IVkBotService
+{
+    public void SendMessage(string message) { }
+}
 
 /// <summary>
 /// Оформление покупки — из одной позиции или из корзины (несколько позиций одной
@@ -71,7 +79,8 @@ public sealed class PurchasesControllerTests : IDisposable
 
     private PurchasesController MakeController(IConfiguration? configuration = null)
     {
-        var controller = new PurchasesController(_db, new WarehouseService(_db), configuration ?? new ConfigurationBuilder().Build());
+        var controller = new PurchasesController(
+            _db, new WarehouseService(_db), new FakeVkBotService(), configuration ?? new ConfigurationBuilder().Build());
         var claims = new ClaimsIdentity([new Claim(ClaimTypes.NameIdentifier, _user.Id.ToString())]);
         controller.ControllerContext = new ControllerContext
         {

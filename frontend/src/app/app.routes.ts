@@ -16,5 +16,7 @@ export const routes: Routes = [
   { path: 'reports', canActivate: [allGuard], loadComponent: () => import('./pages/reports.component').then(m => m.ReportsComponent), title: 'Отчёты — DonorGarage' },
   { path: 'corrections', canActivate: [adminGuard], loadComponent: () => import('./pages/corrections.component').then(m => m.CorrectionsComponent), title: 'Коррекция — DonorGarage' },
   { path: 'sender',canActivate: [senderGuard], loadComponent: () => import('./pages/sender-panel.component').then(m => m.SenderPanelComponent), title: 'Панель отправителя — DonorGarage' },
+  { path: 'support', canActivate: [authGuard], loadComponent: () => import('./pages/support.component').then(m => m.SupportComponent), title: 'Поддержка — DonorGarage' },
+  { path: 'admin/support', canActivate: [adminOrRegistrarGuard], loadComponent: () => import('./pages/admin-support.component').then(m => m.AdminSupportComponent), title: 'Обращения — DonorGarage' },
   { path: '**', redirectTo: '' },
 ];

@@ -11,6 +11,7 @@ using MotoParts.Application.Warehouse;
 using MotoParts.Infrastructure.Services;
 
 using System.Security.Claims;
+using VkChatBot;
 
 namespace MotoParts.Api.Controllers;
 
@@ -23,7 +24,7 @@ namespace MotoParts.Api.Controllers;
 [ApiController]
 [Route("api/purchases")]
 [Authorize]
-public class PurchasesController(AppDbContext db, WarehouseService warehouse, IConfiguration configuration) : ControllerBase
+public class PurchasesController(AppDbContext db, WarehouseService warehouse, IVkBotService vkBot, IConfiguration configuration) : ControllerBase
 {
     private int CurrentUserId => int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
 
@@ -163,6 +164,12 @@ public class PurchasesController(AppDbContext db, WarehouseService warehouse, IC
         await db.SaveChangesAsync();
         await tx.CommitAsync();
 
+        vkBot.SendMessage(
+            $"🛒 Новая покупка {purchase.PurchaseNumber}\n" +
+            string.Join("\n", items.Select(i => $"Деталь: {i.ZipName} × {i.CountOrdered}")) +
+            $"\nСумма: {items.Sum(i => (i.SellCost ?? 0m) * i.CountOrdered)}\n" +
+            $"Адрес: {address.Address}");
+
         return Ok(new PurchaseDto(purchase.Id, purchase.PurchaseNumber, items));
     }
 
@@ -269,6 +276,13 @@ public class PurchasesController(AppDbContext db, WarehouseService warehouse, IC
 
         await db.SaveChangesAsync();
         await tx.CommitAsync();
+
+        vkBot.SendMessage(
+            $"🛒 Новая гостевая покупка {purchase.PurchaseNumber}\n" +
+            $"Клиент: {user.FIO}, {user.PhoneNumber}\n" +
+            string.Join("\n", items.Select(i => $"Деталь: {i.ZipName} × {i.CountOrdered}")) +
+            $"\nСумма: {items.Sum(i => (i.SellCost ?? 0m) * i.CountOrdered)}\n" +
+            $"Адрес: {address.Address}");
 
         return Ok(new PurchaseDto(purchase.Id, purchase.PurchaseNumber, items));
     }

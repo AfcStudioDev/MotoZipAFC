@@ -398,6 +398,48 @@ public class ZipPhoto
     public bool IsMain { get; set; }
 }
 
+/// <summary>Обращение в поддержку, привязанное к конкретному заказу покупателя. Переписка — в SupportMessage.</summary>
+public class SupportTicket
+{
+    [Key]
+    public Guid Id { get; set; }
+
+    public int UserId { get; set; }
+    public User User { get; set; } = null!;
+
+    public Guid OrderId { get; set; }
+    public Order Order { get; set; } = null!;
+
+    public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
+
+    /// <summary>Закрытое обращение остаётся в истории (у покупателя и у поддержки), но переписка в нём больше недоступна.</summary>
+    public bool IsClosed { get; set; }
+    public DateTimeOffset? ClosedAt { get; set; }
+
+    public ICollection<SupportMessage> Messages { get; set; } = new HashSet<SupportMessage>();
+}
+
+/// <summary>Одно сообщение в переписке по обращению — от покупателя или от администратора.</summary>
+public class SupportMessage
+{
+    [Key]
+    public long Id { get; set; }
+
+    public Guid TicketId { get; set; }
+    public SupportTicket Ticket { get; set; } = null!;
+
+    public int AuthorUserId { get; set; }
+    public User AuthorUser { get; set; } = null!;
+
+    /// <summary>Сторона переписки — определяет, как сообщение выравнивается в чате.</summary>
+    public bool IsFromAdmin { get; set; }
+
+    [Required]
+    public string Text { get; set; } = null!;
+
+    public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
+}
+
 /// <summary>
 /// Незавершённый (несохранённый) ввод пользователя на форме админ-панели. Хранится на сервере,
 /// а не в localStorage, чтобы черновик переживал очистку браузера и был доступен с другого

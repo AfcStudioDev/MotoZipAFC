@@ -23,6 +23,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MotoParts.Application.Tests
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MotoParts.Api.Tests", "tests\MotoParts.Api.Tests\MotoParts.Api.Tests.csproj", "{6565AA9B-B216-4982-8BED-24491E0813EE}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VkChatBot", "VkChatBot\VkChatBot.csproj", "{AD2149B9-FED4-470D-9FD0-CB8CCF6B97FD}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -129,6 +131,18 @@ Global
 		{6565AA9B-B216-4982-8BED-24491E0813EE}.Release|x64.Build.0 = Release|Any CPU
 		{6565AA9B-B216-4982-8BED-24491E0813EE}.Release|x86.ActiveCfg = Release|Any CPU
 		{6565AA9B-B216-4982-8BED-24491E0813EE}.Release|x86.Build.0 = Release|Any CPU
+		{AD2149B9-FED4-470D-9FD0-CB8CCF6B97FD}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{AD2149B9-FED4-470D-9FD0-CB8CCF6B97FD}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{AD2149B9-FED4-470D-9FD0-CB8CCF6B97FD}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{AD2149B9-FED4-470D-9FD0-CB8CCF6B97FD}.Debug|x64.Build.0 = Debug|Any CPU
+		{AD2149B9-FED4-470D-9FD0-CB8CCF6B97FD}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{AD2149B9-FED4-470D-9FD0-CB8CCF6B97FD}.Debug|x86.Build.0 = Debug|Any CPU
+		{AD2149B9-FED4-470D-9FD0-CB8CCF6B97FD}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{AD2149B9-FED4-470D-9FD0-CB8CCF6B97FD}.Release|Any CPU.Build.0 = Release|Any CPU
+		{AD2149B9-FED4-470D-9FD0-CB8CCF6B97FD}.Release|x64.ActiveCfg = Release|Any CPU
+		{AD2149B9-FED4-470D-9FD0-CB8CCF6B97FD}.Release|x64.Build.0 = Release|Any CPU
+		{AD2149B9-FED4-470D-9FD0-CB8CCF6B97FD}.Release|x86.ActiveCfg = Release|Any CPU
+		{AD2149B9-FED4-470D-9FD0-CB8CCF6B97FD}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
