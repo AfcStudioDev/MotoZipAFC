@@ -1,4 +1,4 @@
-using Microsoft.AspNetCore.Authorization;
+﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -189,6 +189,7 @@ public class AdminSalesController(AppDbContext db, WarehouseService warehouse) :
     /// печатают его явно, по кнопке в «Печать QR-кода», а не автоматически при каждом заказе.
     /// Печать доступна по любой заведённой запчасти — заказы на неё роли не играют.
     /// </summary>
+    [AdminOnly]
     [HttpPut("addressess/{id:int}")]
     public async Task<IActionResult> UpdateAddress(int id, AdminAddressRequest request)
     {
@@ -213,6 +214,7 @@ public class AdminSalesController(AppDbContext db, WarehouseService warehouse) :
     /// журнале, и тихая правка развела бы склад с историей. Чтобы изменить количество, заказ
     /// удаляют и заводят заново либо проводят коррекцию.
     /// </summary>
+    [AdminOnly]
     [HttpPut("orders/{id:guid}")]
     public async Task<IActionResult> UpdateOrder(Guid id, AdminOrderRequest request)
     {
@@ -258,6 +260,7 @@ public class AdminSalesController(AppDbContext db, WarehouseService warehouse) :
     /// Правка пользователя. Роли и пароль меняет только администратор: иначе регистратор,
     /// у которого тоже есть доступ к этому контроллеру, мог бы выдать себе права админа.
     /// </summary>
+    [AdminOnly]
     [HttpPut("users/{id:int}")]
     public async Task<IActionResult> UpdateUser(int id, AdminUserRequest request)
     {

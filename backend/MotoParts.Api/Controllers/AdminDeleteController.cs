@@ -17,7 +17,8 @@ using SixLabors.ImageSharp.Formats.Webp;
 
 namespace MotoParts.Api.Controllers;
 
-/// <summary>Удаление записей из таблиц админ-панели вместе со связями.</summary>
+/// <summary>Удаление записей из таблиц админ-панели вместе со связями. Только администратору.</summary>
+[AdminOnly]
 public class AdminDeleteController(AppDbContext db, WarehouseService warehouse) : AdminControllerBase
 {
     [HttpDelete("{endpoint}/{id}")]
