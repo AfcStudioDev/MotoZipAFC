@@ -94,6 +94,7 @@ public class AdminSupportController(AppDbContext db) : AdminControllerBase
             ticket.User.FIO, ticket.User.Email));
     }
 
+    [AdminOnly]
     [HttpDelete("support/{id}")]
     public async Task<IActionResult> Delete(Guid id)
     {
