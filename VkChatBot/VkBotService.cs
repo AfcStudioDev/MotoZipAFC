@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 
 using VkBotFramework;
 using VkNet.Model.RequestParams;
@@ -14,25 +15,33 @@ namespace VkChatBot;
 ///   - массивом в appsettings.json:           "VkBot": { "PeerIds": [111, 222] }
 ///   - одной строкой через запятую в переменной окружения: VkBot__PeerIds=111,222
 /// (второй вариант проще прокидывать через docker-compose, где нет обычных индексов массива).
+///
+/// Уведомление в VK — не обязательное условие оформления заказа. Раньше отсутствие
+/// настроек валило конструктор с исключением, а его читает DI при создании
+/// PurchasesController/SupportController — то есть без VK ломались вообще все покупки
+/// и обращения в поддержку, даже никак не связанные с уведомлениями. Теперь при
+/// отсутствии настроек сервис просто не отправляет сообщения (как EmailService
+/// без настроенного SMTP), а сбой самой отправки не мешает уже сохранённой покупке.
 /// </summary>
 public class VkBotService : IVkBotService
 {
-    private readonly VkBot _bot;
+    private readonly ILogger<VkBotService> _logger;
+    private readonly VkBot? _bot;
     private readonly IReadOnlyList<long> _peerIds;
 
-    public VkBotService(IConfiguration configuration)
+    public VkBotService(IConfiguration configuration, ILogger<VkBotService> logger)
     {
+        _logger = logger;
+
         var accessToken = configuration["VkBot:AccessToken"];
         var groupUrl = configuration["VkBot:GroupUrl"];
-
-        if (string.IsNullOrWhiteSpace(accessToken))
-            throw new InvalidOperationException("VkBot:AccessToken не задан в конфигурации");
-        if (string.IsNullOrWhiteSpace(groupUrl))
-            throw new InvalidOperationException("VkBot:GroupUrl не задан в конфигурации");
-
         _peerIds = ParsePeerIds(configuration);
-        if (_peerIds.Count == 0)
-            throw new InvalidOperationException("VkBot:PeerIds не задан — некому отправлять сообщения");
+
+        if (string.IsNullOrWhiteSpace(accessToken) || string.IsNullOrWhiteSpace(groupUrl) || _peerIds.Count == 0)
+        {
+            _logger.LogInformation("VkBot не настроен (VkBot:AccessToken/GroupUrl/PeerIds) — уведомления в VK отправляться не будут");
+            return;
+        }
 
         _bot = new VkBot(accessToken, groupUrl);
     }
@@ -55,14 +64,26 @@ public class VkBotService : IVkBotService
 
     public void SendMessage(string message)
     {
-        foreach (var peerId in _peerIds)
+        if (_bot == null) return;
+
+        // Покупка/обращение уже сохранены к этому моменту — сбой уведомления
+        // (сеть, невалидный токен, VK недоступен) не должен превращать успешный
+        // запрос пользователя в 500.
+        try
         {
-            _bot.Api.Messages.Send(new MessagesSendParams
+            foreach (var peerId in _peerIds)
             {
-                Message = message,
-                PeerId = peerId,
-                RandomId = Environment.TickCount
-            });
+                _bot.Api.Messages.Send(new MessagesSendParams
+                {
+                    Message = message,
+                    PeerId = peerId,
+                    RandomId = Environment.TickCount
+                });
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Не удалось отправить уведомление в VK");
         }
     }
 }

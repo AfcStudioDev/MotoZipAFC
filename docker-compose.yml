@@ -61,6 +61,10 @@ services:
       SmtpSettings__Password: ${SMTP_PASSWORD:-}
       SmtpSettings__FromEmail: ${SMTP_FROM_EMAIL:-}
 
+      # Номер карты для ручного перевода (см. PurchasesController.PaymentInfo) — меняется
+      # без пересборки образа: правите PAYMENT_CARD_NUMBER в .env и делаете `docker compose up -d`.
+      Payment__CardNumber: ${PAYMENT_CARD_NUMBER:-}
+
       Seed__AdminEmail: ${SEED_ADMIN_EMAIL:-admin@motoparts.local}
       Seed__AdminPassword: ${SEED_ADMIN_PASSWORD:?Задайте SEED_ADMIN_PASSWORD в .env}
       Seed__SenderEmail: ${SEED_SENDER_EMAIL:-sender@motoparts.local}
