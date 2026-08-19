@@ -3,6 +3,7 @@ import { FormsModule } from '@angular/forms';
 import { CommonModule } from '@angular/common';
 import { firstValueFrom } from 'rxjs';
 import { AdminService } from '../core/admin.service';
+import { AuthService } from '../core/auth.service';
 import { environment } from '../../environments/environment';
 import { AdminDraftService, DraftPayload } from '../admin/admin-draft.service';
 import { ADMIN_TABLES } from '../admin/admin.tables';
@@ -335,9 +336,13 @@ import {
             </div>
 
             <div class="actions">
-              <button type="submit" [disabled]="busy()" style="padding: 8px 16px; cursor: pointer;">
-                {{ selectedId() ? 'Обновить' : 'Добавить' }}
-              </button>
+              <!-- Регистратор заводит новые записи, но не правит существующие:
+                   в режиме редактирования кнопки сохранения у него нет. -->
+              @if (!selectedId() || canModify) {
+                <button type="submit" [disabled]="busy()" style="padding: 8px 16px; cursor: pointer;">
+                  {{ selectedId() ? 'Обновить' : 'Добавить' }}
+                </button>
+              }
               @if (selectedId()) {
                 <button type="button" (click)="cancelEdit()" style="padding: 8px 16px; cursor: pointer;">
                   Отмена
@@ -361,6 +366,7 @@ import {
           [references]="references()"
           [selectedId]="selectedId()"
           [busy]="busy()"
+          [canDelete]="canModify"
           (reload)="reload(table)"
           (rowSelect)="editRow($event)"
           (rowDelete)="remove(table, $event)"
@@ -600,6 +606,17 @@ import {
 })
 export class AdminComponent implements OnInit {
   private admin = inject(AdminService);
+  private readonly auth = inject(AuthService);
+
+  /**
+   * Правка и удаление существующих записей — только у администратора. Регистратор
+   * заводит новые записи, но не меняет и не удаляет уже заведённые.
+   *
+   * Роль не меняется, пока пользователь не перезайдёт, поэтому это обычное поле, а не сигнал.
+   * Здесь только внешний вид: то же ограничение проверяет бэкенд —
+   * [Authorize(Roles = "Admin")] на PUT и DELETE в api/admin.
+   */
+  readonly canModify = this.auth.isAdmin;
   // Сигнал или обычный массив для хранения выбранных файлов
   selectedFiles = signal<File[]>([]);
   // Уже загруженные фотографии выбранной запчасти
@@ -1601,6 +1618,12 @@ export class AdminComponent implements OnInit {
     this.error.set('');
     this.message.set('');
 
+    // Форма отправляется ещё и по Enter в поле — одной спрятанной кнопки мало.
+    if (this.selectedId() && !this.canModify) {
+      this.error.set('Изменение существующих записей доступно только администратору');
+      return;
+    }
+
     // Группа и парт-номер вводятся вручную — сперва связываем введённый текст
     // с id существующей записи или заводим новую, и только потом продолжаем как раньше.
     if (table.endpoint === 'zip') {
@@ -1792,6 +1815,7 @@ export class AdminComponent implements OnInit {
   }
 
   remove(table: TableDef, id: any) {
+    if (!this.canModify) return;
     if (!confirm('Вы уверены, что хотите удалить эту запись?')) return;
 
     this.busy.set(true);

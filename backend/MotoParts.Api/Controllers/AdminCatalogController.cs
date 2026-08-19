@@ -1,4 +1,4 @@
-using Microsoft.AspNetCore.Authorization;
+﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -56,6 +56,7 @@ public class AdminCatalogController(AppDbContext db) : AdminControllerBase
         return Ok(new { series.Id, series.SeriesName });
     }
 
+    [AdminOnly]
     [HttpPut("series/{id:guid}")]
     public async Task<IActionResult> UpdateSeries(Guid id, AdminSeriesRequest request)
     {
@@ -145,6 +146,7 @@ public class AdminCatalogController(AppDbContext db) : AdminControllerBase
     /// Правка каталожной позиции. Нужна отдельным методом: обобщённый PUT {table}/{id}
     /// ищет таблицу по имени и на "part-numbers" с дефисом не срабатывает.
     /// </summary>
+    [AdminOnly]
     [HttpPut("part-numbers/{id:int}")]
     public async Task<IActionResult> UpdatePartNumber(int id, [FromBody] AdminPartNumberRequest request)
     {
@@ -242,6 +244,7 @@ public class AdminCatalogController(AppDbContext db) : AdminControllerBase
     // или поправить остаток в Stored в обход журнала операций. Ниже — по одному методу на
     // ресурс, каждый принимает свой DTO, поэтому набор изменяемых полей задан явно.
 
+    [AdminOnly]
     [HttpPut("marks/{id:int}")]
     public async Task<IActionResult> UpdateMark(int id, AdminMarkRequest request)
     {
@@ -260,6 +263,7 @@ public class AdminCatalogController(AppDbContext db) : AdminControllerBase
         return Ok(new { mark.Id, mark.Mark });
     }
 
+    [AdminOnly]
     [HttpPut("models/{id:int}")]
     public async Task<IActionResult> UpdateModel(int id, AdminModelRequest request)
     {
@@ -278,6 +282,7 @@ public class AdminCatalogController(AppDbContext db) : AdminControllerBase
         return Ok(new { model.Id, model.MarkId, model.Model });
     }
 
+    [AdminOnly]
     [HttpPut("groups/{id:int}")]
     public async Task<IActionResult> UpdateGroup(int id, AdminGroupRequest request)
     {
@@ -292,6 +297,7 @@ public class AdminCatalogController(AppDbContext db) : AdminControllerBase
         return Ok(new { group.Id, group.GroupName });
     }
 
+    [AdminOnly]
     [HttpPut("applicability/{id:int}")]
     public async Task<IActionResult> UpdateApplicability(int id, AdminApplicabilityRequest request)
     {
@@ -309,6 +315,7 @@ public class AdminCatalogController(AppDbContext db) : AdminControllerBase
         return Ok(new { link.Id, link.PartNumId, link.ModelId });
     }
 
+    [AdminOnly]
     [HttpPut("series-applicability/{id:int}")]
     public async Task<IActionResult> UpdateSeriesApplicability(int id, AdminSeriesApplicabilityRequest request)
     {

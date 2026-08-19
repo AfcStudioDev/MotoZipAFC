@@ -119,7 +119,11 @@ import { DynamicRow, FieldDef, TableDef } from './admin.types';
                   </td>
                 }
                 <td class="actions-cell" data-label="Действия" (click)="$event.stopPropagation()">
-                  <button class="btn-delete" (click)="rowDelete.emit(r.id)">
+                  <button
+                    class="btn-delete"
+                    [disabled]="!canDelete"
+                    [title]="canDelete ? '' : 'Удаление записей доступно только администратору'"
+                    (click)="rowDelete.emit(r.id)">
                     Удалить
                   </button>
                 </td>
@@ -154,6 +158,13 @@ export class AdminDataTableComponent implements OnChanges {
 
   @Input() selectedId: any = null;
   @Input() busy = false;
+
+  /**
+   * Право на удаление строк. Решает родитель — он знает роль пользователя.
+   * Кнопку не убираем, а гасим: колонка «Действия» остаётся на своём месте,
+   * и видно, что действие существует, но недоступно.
+   */
+  @Input() canDelete = true;
 
   @Output() reload = new EventEmitter<void>();
   @Output() rowSelect = new EventEmitter<DynamicRow>();
