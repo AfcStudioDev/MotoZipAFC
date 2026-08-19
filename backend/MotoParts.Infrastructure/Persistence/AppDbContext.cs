@@ -29,6 +29,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<DeliveryStatus> DeliveryStatuses { get; set; }
     public DbSet<ZipPhoto> ZipPhotos { get; set; }
     public DbSet<UserDraft> UserDrafts { get; set; }
+    public DbSet<SupportTicket> SupportTickets { get; set; }
+    public DbSet<SupportMessage> SupportMessages { get; set; }
 
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)

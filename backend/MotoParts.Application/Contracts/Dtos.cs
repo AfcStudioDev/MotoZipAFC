@@ -158,7 +158,17 @@ public class UpdateUserRolesRequest
 }
 
 public class ZipPhotoDto
-{ 
+{
     public long Id { get; set; }
     public string Name { get; set; } = null!;
 }
+
+// ---------- Support ----------
+public record CreateSupportTicketRequest(Guid OrderId, string Message);
+public record SendSupportMessageRequest(string Text);
+public record SupportMessageDto(long Id, bool IsFromAdmin, string AuthorName, string Text, DateTimeOffset CreatedAt);
+public record SupportTicketDto(Guid Id, string OrderNumber, Guid OrderId, DateTimeOffset CreatedAt, bool IsClosed, List<SupportMessageDto> Messages);
+public record SupportTicketSummaryDto(
+    Guid Id, string OrderNumber, DateTimeOffset CreatedAt,
+    DateTimeOffset LastMessageAt, string LastMessagePreview, bool IsClosed,
+    string? UserFio = null, string? UserEmail = null);
