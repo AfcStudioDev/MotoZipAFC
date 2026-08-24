@@ -17,8 +17,8 @@ export class SupportService {
     return this.http.get<SupportTicketDto>(`${this.api}/support/${id}`);
   }
 
-  createTicket(orderId: string, message: string): Observable<SupportTicketDto> {
-    return this.http.post<SupportTicketDto>(`${this.api}/support`, { orderId, message });
+  createTicket(orderId: string | null, subject: string | null, message: string): Observable<SupportTicketDto> {
+    return this.http.post<SupportTicketDto>(`${this.api}/support`, { orderId, subject, message });
   }
 
   sendMessage(ticketId: string, text: string): Observable<SupportMessageDto> {

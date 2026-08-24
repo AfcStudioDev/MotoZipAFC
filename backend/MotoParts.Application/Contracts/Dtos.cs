@@ -164,11 +164,12 @@ public class ZipPhotoDto
 }
 
 // ---------- Support ----------
-public record CreateSupportTicketRequest(Guid OrderId, string Message);
+// Заказ и тема — по одному из двух: см. SupportController.Create.
+public record CreateSupportTicketRequest(Guid? OrderId, string? Subject, string Message);
 public record SendSupportMessageRequest(string Text);
 public record SupportMessageDto(long Id, bool IsFromAdmin, string AuthorName, string Text, DateTimeOffset CreatedAt);
-public record SupportTicketDto(Guid Id, string OrderNumber, Guid OrderId, DateTimeOffset CreatedAt, bool IsClosed, List<SupportMessageDto> Messages);
+public record SupportTicketDto(Guid Id, string? OrderNumber, Guid? OrderId, string? Subject, DateTimeOffset CreatedAt, bool IsClosed, List<SupportMessageDto> Messages);
 public record SupportTicketSummaryDto(
-    Guid Id, string OrderNumber, DateTimeOffset CreatedAt,
+    Guid Id, string? OrderNumber, string? Subject, DateTimeOffset CreatedAt,
     DateTimeOffset LastMessageAt, string LastMessagePreview, bool IsClosed,
     string? UserFio = null, string? UserEmail = null);

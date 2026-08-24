@@ -1,7 +1,12 @@
 import { Component, inject, ChangeDetectionStrategy } from '@angular/core';
-import { Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
+import { NavigationEnd, Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
+import { filter } from 'rxjs';
 import { AuthService } from './core/auth.service';
 import { CartService } from './core/cart.service';
+
+/** Счётчик подключён тегом в index.html — там же и его id. */
+const YANDEX_METRIKA_ID = 111892258;
+declare const ym: ((...args: unknown[]) => void) | undefined;
 
 @Component({
     selector: 'app-root',
@@ -168,6 +173,15 @@ export class AppComponent {
   auth = inject(AuthService);
   cart = inject(CartService);
   private router = inject(Router);
+
+  constructor() {
+    // Счётчик считает по location.href только первую загрузку страницы. В SPA переходы
+    // между разделами (каталог → корзина → о компании и т.д.) идут без перезагрузки —
+    // без этой подписки Метрика видела бы только один просмотр на весь визит.
+    this.router.events
+      .pipe(filter((e): e is NavigationEnd => e instanceof NavigationEnd))
+      .subscribe(() => ym?.(YANDEX_METRIKA_ID, 'hit', location.href));
+  }
 
   logout(): void {
     this.auth.logout();
