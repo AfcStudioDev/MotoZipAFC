@@ -225,6 +225,7 @@ public class AdminWarehouseController(AppDbContext db, WarehouseService warehous
         string sourcePngPath = Path.Combine(dir, $"{baseName}_wm_src.png");
         string logoStagePath = Path.Combine(dir, $"{baseName}_wm_logo.png");
         string finalStagePath = Path.Combine(dir, $"{baseName}_wm_final.png");
+        string finalStagePath2 = Path.Combine(dir, $"{baseName}_wm_final2.png");
         // AppContext.BaseDirectory — папка самого приложения, а не «текущая директория» процесса:
         // при dotnet run/из Visual Studio она случайно совпадает с исходниками (где Images/watermark.png
         // и лежит), но в Docker (publish + запуск из /app) файла там уже нет — из-за этого расхождения
@@ -247,28 +248,44 @@ public class AdminWarehouseController(AppDbContext db, WarehouseService warehous
 
             string textBasePath = logoResult.Success ? logoStagePath : sourcePngPath;
 
+
+            var textResultBottomLeft = await WatermarkService.ApplyTextWatermarkAsync(
+            baseImagePath: textBasePath,
+            outputPath: finalStagePath,
+            text: "DonorGarage.ru",
+            fontFamily: "Arial",
+            fontSize: 0.05f,
+            position: WatermarkPosition.BottomLeft,
+            opacity: 1f,
+            color: Color.White,
+            padding: 0.05f,
+            rotation: -15f,
+            strokeColor: Color.Black);
+
+            string textBasePath2 = textResultBottomLeft.Success ? finalStagePath : sourcePngPath;
+
+
             var textResult = await WatermarkService.ApplyTextWatermarkAsync(
-                baseImagePath: textBasePath,
-                outputPath: finalStagePath,
+                baseImagePath: textBasePath2,
+                outputPath: finalStagePath2,
                 text: "DonorGarage.ru",
                 fontFamily: "Arial",
                 fontSize: 0.05f,
-                position: WatermarkPosition.BottomRight,
+                position: WatermarkPosition.Center,
                 opacity: 0.4f,
                 color: Color.White,
                 padding: 0.05f,
                 rotation: -15f);
-
             // На случай, если GDI+ так же молча обрубит и PNG, — не доверяем "успеху" вслепую.
-            if (textResult.Success && new FileInfo(finalStagePath).Length > 512)
+            if (textResultBottomLeft.Success && new FileInfo(finalStagePath2).Length > 512)
             {
-                using var watermarked = await Image.LoadAsync(finalStagePath);
+                using var watermarked = await Image.LoadAsync(finalStagePath2);
                 await watermarked.SaveAsync(filePath, new WebpEncoder { Quality = 80 });
             }
         }
         finally
         {
-            foreach (var temp in new[] { sourcePngPath, logoStagePath, finalStagePath })
+            foreach (var temp in new[] { sourcePngPath, logoStagePath, finalStagePath2 })
                 if (System.IO.File.Exists(temp)) System.IO.File.Delete(temp);
         }
     }
