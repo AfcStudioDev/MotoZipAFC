@@ -31,7 +31,7 @@ const POLL_INTERVAL_MS = 5000;
           @for (t of tickets(); track t.id) {
             <div class="ticket-row" [class.active]="t.id === selectedId()" (click)="selectTicket(t.id)">
               <div class="ticket-row-top">
-                <span class="order-number">Заказ {{ t.orderNumber }}</span>
+                <span class="order-number">{{ t.orderNumber ? 'Заказ ' + t.orderNumber : t.subject }}</span>
                 <span class="date">{{ t.lastMessageAt | date:'dd.MM HH:mm' }}</span>
               </div>
               <div class="user-line">{{ t.userFio }} · {{ t.userEmail }}</div>
@@ -48,7 +48,7 @@ const POLL_INTERVAL_MS = 5000;
           @if (selectedTicket(); as ticket) {
             <div class="card chat-card">
               <div class="chat-header">
-                <span>Заказ {{ ticket.orderNumber }}</span>
+                <span>{{ ticket.orderNumber ? 'Заказ ' + ticket.orderNumber : ticket.subject }}</span>
                 @if (!ticket.isClosed) {
                   <button class="btn btn-secondary close-btn" (click)="closeTicket(ticket.id)" [disabled]="busy()">
                     Завершить обращение

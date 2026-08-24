@@ -398,7 +398,12 @@ public class ZipPhoto
     public bool IsMain { get; set; }
 }
 
-/// <summary>Обращение в поддержку, привязанное к конкретному заказу покупателя. Переписка — в SupportMessage.</summary>
+/// <summary>
+/// Обращение в поддержку. Обычно привязано к конкретному заказу покупателя, но заказ
+/// не обязателен — вместо него можно указать свободную тему (см. Subject). Одно из двух
+/// обязательно всегда: это проверяется в SupportController.Create, а не на уровне БД.
+/// Переписка — в SupportMessage.
+/// </summary>
 public class SupportTicket
 {
     [Key]
@@ -407,8 +412,11 @@ public class SupportTicket
     public int UserId { get; set; }
     public User User { get; set; } = null!;
 
-    public Guid OrderId { get; set; }
-    public Order Order { get; set; } = null!;
+    public Guid? OrderId { get; set; }
+    public Order? Order { get; set; }
+
+    /// <summary>Тема обращения — заполняется, когда обращение не привязано к заказу.</summary>
+    public string? Subject { get; set; }
 
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 

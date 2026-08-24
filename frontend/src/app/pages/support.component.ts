@@ -34,7 +34,7 @@ const POLL_INTERVAL_MS = 5000;
           @for (t of tickets(); track t.id) {
             <div class="ticket-row" [class.active]="t.id === selectedId()" (click)="selectTicket(t.id)">
               <div class="ticket-row-top">
-                <span class="order-number">Заказ {{ t.orderNumber }}</span>
+                <span class="order-number">{{ t.orderNumber ? 'Заказ ' + t.orderNumber : t.subject }}</span>
                 <span class="date">{{ t.lastMessageAt | date:'dd.MM HH:mm' }}</span>
               </div>
               <div class="preview">{{ t.lastMessagePreview }}</div>
@@ -49,14 +49,20 @@ const POLL_INTERVAL_MS = 5000;
           @if (showNewForm()) {
             <div class="card">
               <h3>Новое обращение</h3>
+              <p class="muted hint">Укажите заказ, к которому относится вопрос, или впишите тему обращения — нужно хотя бы одно.</p>
               <div class="form-group">
-                <label>Заказ <span class="req">*</span></label>
+                <label>Заказ</label>
                 <select [(ngModel)]="newOrderId" class="form-control">
                   <option [ngValue]="''">— выберите заказ —</option>
                   @for (o of orders(); track o.id) {
                     <option [ngValue]="o.id">{{ o.orderNumber }} — {{ o.zipName }}</option>
                   }
                 </select>
+              </div>
+              <div class="form-group">
+                <label>Тема обращения</label>
+                <input type="text" [(ngModel)]="newSubject" class="form-control"
+                       placeholder="Например: Вопрос по возврату" maxlength="200" />
               </div>
               <div class="form-group">
                 <label>Сообщение <span class="req">*</span></label>
@@ -72,7 +78,7 @@ const POLL_INTERVAL_MS = 5000;
             </div>
           } @else if (selectedTicket(); as ticket) {
             <div class="card chat-card">
-              <div class="chat-header">Заказ {{ ticket.orderNumber }}</div>
+              <div class="chat-header">{{ ticket.orderNumber ? 'Заказ ' + ticket.orderNumber : ticket.subject }}</div>
               <div class="messages">
                 @for (m of ticket.messages; track m.id) {
                   <div class="message" [class.from-admin]="m.isFromAdmin">
@@ -145,6 +151,7 @@ const POLL_INTERVAL_MS = 5000;
       box-shadow: 0 2px 4px rgba(0,0,0,0.05);
     }
 
+    .hint { margin-top: 0; margin-bottom: 16px; font-size: 13px; }
     .form-group { margin-bottom: 16px; }
     .form-group label { display: block; margin-bottom: 6px; font-weight: 500; font-size: 13px; color: #555; }
     .req { color: red; }
@@ -220,6 +227,7 @@ export class SupportComponent implements OnDestroy {
   error = signal('');
 
   newOrderId = '';
+  newSubject = '';
   newMessage = '';
   replyText = '';
 
@@ -249,6 +257,7 @@ export class SupportComponent implements OnDestroy {
     this.selectedTicket.set(null);
     this.stopPolling();
     this.newOrderId = '';
+    this.newSubject = '';
     this.newMessage = '';
   }
 
@@ -282,8 +291,8 @@ export class SupportComponent implements OnDestroy {
 
   submitNewTicket() {
     this.error.set('');
-    if (!this.newOrderId) {
-      this.error.set('Выберите заказ.');
+    if (!this.newOrderId && !this.newSubject.trim()) {
+      this.error.set('Укажите заказ или тему обращения.');
       return;
     }
     if (!this.newMessage.trim()) {
@@ -292,7 +301,7 @@ export class SupportComponent implements OnDestroy {
     }
 
     this.busy.set(true);
-    this.support.createTicket(this.newOrderId, this.newMessage.trim()).subscribe({
+    this.support.createTicket(this.newOrderId || null, this.newSubject.trim() || null, this.newMessage.trim()).subscribe({
       next: ticket => {
         this.busy.set(false);
         this.showNewForm.set(false);

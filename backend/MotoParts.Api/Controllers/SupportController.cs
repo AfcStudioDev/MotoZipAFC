@@ -54,18 +54,27 @@ public class SupportController(AppDbContext db, IVkBotService vkBot) : Controlle
         if (string.IsNullOrWhiteSpace(request.Message))
             return BadRequest(new { message = "Опишите ваше обращение" });
 
+        var subject = request.Subject?.Trim();
+        if (request.OrderId is null && string.IsNullOrWhiteSpace(subject))
+            return BadRequest(new { message = "Укажите заказ или тему обращения" });
+
         var userId = CurrentUserId;
 
         // Заказ должен принадлежать текущему пользователю — иначе можно было бы
         // открывать обращения по чужим заказам, зная только их Id.
-        var order = await db.Orders.FirstOrDefaultAsync(o => o.Id == request.OrderId && o.Purchase.UserId == userId);
-        if (order == null) return NotFound(new { message = "Заказ не найден" });
+        Order? order = null;
+        if (request.OrderId is { } orderId)
+        {
+            order = await db.Orders.FirstOrDefaultAsync(o => o.Id == orderId && o.Purchase.UserId == userId);
+            if (order == null) return NotFound(new { message = "Заказ не найден" });
+        }
 
         var ticket = new SupportTicket
         {
             Id = Guid.NewGuid(),
             UserId = userId,
-            OrderId = order.Id,
+            OrderId = order?.Id,
+            Subject = order == null ? subject : null,
             CreatedAt = DateTimeOffset.UtcNow,
         };
         ticket.Messages.Add(new SupportMessage
@@ -80,8 +89,8 @@ public class SupportController(AppDbContext db, IVkBotService vkBot) : Controlle
         db.SupportTickets.Add(ticket);
         await db.SaveChangesAsync();
 
-        vkBot.SendMessage(
-            $"💬 Новое обращение в поддержку по заказу {order.OrderNumber}\n{request.Message.Trim()}");
+        var topic = order != null ? $"по заказу {order.OrderNumber}" : $"«{ticket.Subject}»";
+        vkBot.SendMessage($"💬 Новое обращение в поддержку {topic}\n{request.Message.Trim()}");
 
         ticket = await db.SupportTickets
             .Include(t => t.Order)
@@ -114,8 +123,8 @@ public class SupportController(AppDbContext db, IVkBotService vkBot) : Controlle
         db.SupportMessages.Add(message);
         await db.SaveChangesAsync();
 
-        vkBot.SendMessage(
-            $"💬 Ответ по обращению (заказ {ticket.Order.OrderNumber})\n{message.Text}");
+        var topic = ticket.Order != null ? $"заказ {ticket.Order.OrderNumber}" : $"«{ticket.Subject}»";
+        vkBot.SendMessage($"💬 Ответ по обращению ({topic})\n{message.Text}");
 
         await db.Entry(message).Reference(m => m.AuthorUser).LoadAsync();
         return Ok(ToMessageDto(message));
@@ -125,12 +134,12 @@ public class SupportController(AppDbContext db, IVkBotService vkBot) : Controlle
     {
         var last = t.Messages.OrderByDescending(m => m.CreatedAt).First();
         return new SupportTicketSummaryDto(
-            t.Id, t.Order.OrderNumber, t.CreatedAt,
+            t.Id, t.Order?.OrderNumber, t.Subject, t.CreatedAt,
             last.CreatedAt, last.Text.Length > 120 ? last.Text[..120] + "…" : last.Text, t.IsClosed);
     }
 
     private static SupportTicketDto ToDto(SupportTicket t) => new(
-        t.Id, t.Order.OrderNumber, t.OrderId, t.CreatedAt, t.IsClosed,
+        t.Id, t.Order?.OrderNumber, t.OrderId, t.Subject, t.CreatedAt, t.IsClosed,
         t.Messages.OrderBy(m => m.CreatedAt).Select(ToMessageDto).ToList());
 
     private static SupportMessageDto ToMessageDto(SupportMessage m) => new(
