@@ -24,7 +24,7 @@ public class AdminSupportController(AppDbContext db) : AdminControllerBase
         {
             var last = t.Messages.OrderByDescending(m => m.CreatedAt).First();
             return new SupportTicketSummaryDto(
-                t.Id, t.Order.OrderNumber, t.CreatedAt,
+                t.Id, t.Order?.OrderNumber, t.Subject, t.CreatedAt,
                 last.CreatedAt, last.Text.Length > 120 ? last.Text[..120] + "…" : last.Text, t.IsClosed,
                 t.User.FIO, t.User.Email);
         }).ToList());
@@ -41,7 +41,7 @@ public class AdminSupportController(AppDbContext db) : AdminControllerBase
         if (ticket == null) return NotFound(new { message = "Обращение не найдено" });
 
         return Ok(new SupportTicketDto(
-            ticket.Id, ticket.Order.OrderNumber, ticket.OrderId, ticket.CreatedAt, ticket.IsClosed,
+            ticket.Id, ticket.Order?.OrderNumber, ticket.OrderId, ticket.Subject, ticket.CreatedAt, ticket.IsClosed,
             ticket.Messages.OrderBy(m => m.CreatedAt)
                 .Select(m => new SupportMessageDto(m.Id, m.IsFromAdmin, m.AuthorUser.FIO, m.Text, m.CreatedAt))
                 .ToList()));
@@ -89,7 +89,7 @@ public class AdminSupportController(AppDbContext db) : AdminControllerBase
 
         var last = ticket.Messages.OrderByDescending(m => m.CreatedAt).First();
         return Ok(new SupportTicketSummaryDto(
-            ticket.Id, ticket.Order.OrderNumber, ticket.CreatedAt,
+            ticket.Id, ticket.Order?.OrderNumber, ticket.Subject, ticket.CreatedAt,
             last.CreatedAt, last.Text.Length > 120 ? last.Text[..120] + "…" : last.Text, ticket.IsClosed,
             ticket.User.FIO, ticket.User.Email));
     }

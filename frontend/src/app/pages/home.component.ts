@@ -102,12 +102,22 @@ import { ChangeDetectorRef } from '@angular/core';
           @for (zip of r.items; track zip.id) {
             <div class="card zip-card" (click)="openDetails(zip)">
               @if (zip.photos && zip.photos.length > 0) {
-                <img
-                  [src]="photoBaseUrl + zip.photos[0]"
-                  alt="{{ zip.name }}"
-                  class="product-image"
-                  (error)="onImageError($event)"
-                >
+                <div class="product-image-wrap">
+                  <img
+                    [src]="photoBaseUrl + zip.photos[cardPhotoIndex(zip)]"
+                    alt="{{ zip.name }}"
+                    class="product-image"
+                    (error)="onImageError($event)"
+                  >
+                  @if (zip.photos.length > 1) {
+                    <button type="button" class="card-photo-nav card-photo-prev"
+                            (click)="$event.stopPropagation(); cardPrevPhoto(zip)"
+                            title="Предыдущее фото" aria-label="Предыдущее фото">&#8249;</button>
+                    <button type="button" class="card-photo-nav card-photo-next"
+                            (click)="$event.stopPropagation(); cardNextPhoto(zip)"
+                            title="Следующее фото" aria-label="Следующее фото">&#8250;</button>
+                  }
+                </div>
               } @else {
                 <div class="product-image product-image-placeholder">Нет фото</div>
               }
@@ -320,6 +330,10 @@ import { ChangeDetectorRef } from '@angular/core';
       @if (expandedImage(); as imgUrl) {
         <div class="image-lightbox-backdrop" (click)="closeImage()" (mousemove)="onMouseMove($event)">
           <button class="lightbox-close-btn" (click)="closeImage()">&times;</button>
+          <button class="lightbox-download-btn" (click)="downloadAsJpeg($event)" [disabled]="downloadingJpeg()" title="Скачать это фото в формате JPEG">
+            {{ downloadingJpeg() ? 'Скачивание…' : 'Скачать JPEG' }}
+          </button>
+          @if (downloadError()) { <div class="lightbox-download-error">{{ downloadError() }}</div> }
           @if (currentGalleryPhotos().length > 1) {
             <button class="lightbox-nav-btn lightbox-prev-btn" (click)="prevImage($event)" title="Предыдущее фото">&#8249;</button>
             <button class="lightbox-nav-btn lightbox-next-btn" (click)="nextImage($event)" title="Следующее фото">&#8250;</button>
@@ -340,6 +354,9 @@ export class HomeComponent implements OnInit {
 
   /** Индекс открытой в лайтбоксе фотографии среди фото текущего товара (selectedZip). */
   expandedPhotoIndex = signal<number | null>(null);
+
+  downloadingJpeg = signal(false);
+  downloadError = signal('');
 
   /** Фото текущего открытого товара — базис для листания в лайтбоксе. */
   currentGalleryPhotos = computed(() => {
@@ -430,6 +447,27 @@ export class HomeComponent implements OnInit {
   // Метод для получения путей к реально загруженным фотографиям запчасти
   getZipPhotos(zip: ZipDto): string[] {
     return (zip.photos || []).map(fileName => this.photoBaseUrl + fileName);
+  }
+
+  /** Какое фото сейчас показано на превью карточки — листается стрелками при наведении, без открытия карточки. */
+  private cardPhotoIndexes = signal<Record<string, number>>({});
+
+  cardPhotoIndex(zip: ZipDto): number {
+    return this.cardPhotoIndexes()[zip.id] ?? 0;
+  }
+
+  cardPrevPhoto(zip: ZipDto) {
+    const count = zip.photos?.length ?? 0;
+    if (count === 0) return;
+    const idx = this.cardPhotoIndex(zip);
+    this.cardPhotoIndexes.update(map => ({ ...map, [zip.id]: (idx - 1 + count) % count }));
+  }
+
+  cardNextPhoto(zip: ZipDto) {
+    const count = zip.photos?.length ?? 0;
+    if (count === 0) return;
+    const idx = this.cardPhotoIndex(zip);
+    this.cardPhotoIndexes.update(map => ({ ...map, [zip.id]: (idx + 1) % count }));
   }
 
   // Если фото не найдено (например, их только 1 или 2), скрываем сломанную картинку
@@ -642,6 +680,7 @@ export class HomeComponent implements OnInit {
   openImage(photoUrl: string) {
     const idx = this.currentGalleryPhotos().indexOf(photoUrl);
     this.expandedPhotoIndex.set(idx >= 0 ? idx : 0);
+    this.downloadError.set('');
   }
 
   /** Листание фото в лайтбоксе по кругу — с последнего на первое и наоборот. */
@@ -651,6 +690,7 @@ export class HomeComponent implements OnInit {
     if (photos.length === 0) return;
     const idx = this.expandedPhotoIndex() ?? 0;
     this.expandedPhotoIndex.set((idx - 1 + photos.length) % photos.length);
+    this.downloadError.set('');
   }
 
   nextImage(event?: Event) {
@@ -659,6 +699,53 @@ export class HomeComponent implements OnInit {
     if (photos.length === 0) return;
     const idx = this.expandedPhotoIndex() ?? 0;
     this.expandedPhotoIndex.set((idx + 1) % photos.length);
+    this.downloadError.set('');
+  }
+
+  /**
+   * Хранится на сервере как webp — перекодируем в JPEG прямо в браузере через canvas,
+   * чтобы не заводить отдельный конвертирующий эндпоинт ради одной кнопки.
+   */
+  async downloadAsJpeg(event?: Event) {
+    event?.stopPropagation();
+    const url = this.expandedImage();
+    if (!url || this.downloadingJpeg()) return;
+
+    this.downloadError.set('');
+    this.downloadingJpeg.set(true);
+    try {
+      const response = await fetch(url);
+      if (!response.ok) throw new Error('Не удалось загрузить фото');
+      const sourceBlob = await response.blob();
+      const bitmap = await createImageBitmap(sourceBlob);
+
+      const canvas = document.createElement('canvas');
+      canvas.width = bitmap.width;
+      canvas.height = bitmap.height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('Canvas недоступен');
+      // JPEG не поддерживает прозрачность — подкладываем белый фон под то,
+      // что в исходном webp могло быть прозрачным.
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(bitmap, 0, 0);
+
+      const jpegBlob = await new Promise<Blob | null>(resolve =>
+        canvas.toBlob(resolve, 'image/jpeg', 0.92));
+      if (!jpegBlob) throw new Error('Не удалось сформировать JPEG');
+
+      const fileName = (url.split('/').pop() || 'photo').replace(/\.\w+$/, '') + '.jpg';
+      const objectUrl = URL.createObjectURL(jpegBlob);
+      const link = document.createElement('a');
+      link.href = objectUrl;
+      link.download = fileName;
+      link.click();
+      URL.revokeObjectURL(objectUrl);
+    } catch {
+      this.downloadError.set('Не удалось скачать фото. Попробуйте ещё раз.');
+    } finally {
+      this.downloadingJpeg.set(false);
+    }
   }
 
   // Дополнительное приближение открытой картинки на 50%
@@ -697,5 +784,6 @@ export class HomeComponent implements OnInit {
   closeImage() {
     this.expandedPhotoIndex.set(null);
     this.resetZoom();
+    this.downloadError.set('');
   }
 }

@@ -17,6 +17,9 @@ import { Component, ChangeDetectionStrategy } from '@angular/core';
 
         <dt>ИНН</dt>
         <dd>561000007761</dd>
+
+        <dt>Почта для связи</dt>
+        <dd>donorgarage56@gmail.com</dd>
       </dl>
     </div>
   `,

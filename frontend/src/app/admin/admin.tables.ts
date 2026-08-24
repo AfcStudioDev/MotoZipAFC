@@ -155,7 +155,7 @@ export const ADMIN_TABLES: TableDef[] = [
     fields: [
       // Несколько позиций с одинаковым номером покупки — один заказ из корзины: общий адрес,
       // оплата и доставка (см. Purchase), только количество и статус — у каждой позиции свои.
-      { key: 'purchaseNumber', label: 'Покупка', type: 'text', readonly: true },
+      { key: 'purchaseNumber', label: 'Корзина', type: 'text', readonly: true },
       { key: 'zipId', label: 'Запчасть', type: 'zip-picker', required: true },
       { key: 'countOrdered', label: 'Кол-во', type: 'number', required: true },
       // Онлайн-оплата (ЮKassa) сейчас отключена — админ подтверждает оплату вручную.
@@ -182,7 +182,7 @@ export const ADMIN_TABLES: TableDef[] = [
     ],
     searchFields: [
       // По номеру покупки находятся сразу все её позиции — удобно, когда покупка из корзины.
-      { key: 'purchaseNumber', label: 'Покупка' },
+      { key: 'purchaseNumber', label: 'Корзина' },
       { key: 'orderNumber', label: 'Комментарий заказа' },
       { key: 'partNum', label: 'Парт-номер' },
       // Бэкенд отдаёт наименование в поле zipName; прежний ключ nomenclatureName
