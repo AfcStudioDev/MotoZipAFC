@@ -31,6 +31,15 @@ public class AdminAuthorizationTests
             .Select(a => a.Roles)
             .Where(r => !string.IsNullOrWhiteSpace(r))!;
 
+    /// <summary>
+    /// Пройдёт ли пользователь с единственной ролью <paramref name="role"/> все ограничения метода.
+    /// [Authorize] класса и метода складываются по И: у пользователя должна быть роль из
+    /// КАЖДОЙ группы, а не хотя бы одной — иначе роль, широкая на уровне метода, не спасает,
+    /// если базовый класс её не перечисляет (см. WarehouseCorrectionsController).
+    /// </summary>
+    private static bool RoleIsAllowed(MethodInfo method, string role) =>
+        RoleRestrictions(method).All(group => group.Split(',').Select(r => r.Trim()).Contains(role));
+
     public static TheoryData<string, string> ИзменяющиеМетодыАдминПанели()
     {
         var data = new TheoryData<string, string>();
@@ -75,17 +84,22 @@ public class AdminAuthorizationTests
     }
 
     /// <summary>
-    /// Коррекция остатка и переоценка — тоже POST, но меняют склад и цены, а не заводят новую
-    /// запись, поэтому под общее правило «POST открыт регистратору» не подпадают: закрыты явно.
+    /// Коррекция остатка и переоценка живут в WarehouseCorrectionsController — отдельно от
+    /// AdminWarehouseController — именно потому, что нужны Sender-у наравне с Admin, но не
+    /// Registrar-у. Открыть их Sender-у методом-уровневым [Authorize(Roles="Admin,Sender")]
+    /// прямо в AdminWarehouseController нельзя: он всё равно комбинировался бы по И с
+    /// [Authorize(Roles="Admin,Registrar")] базового класса, и Sender так и остался бы снаружи.
     /// </summary>
     [Theory]
-    [InlineData(nameof(AdminWarehouseController.AddCorrection))]
-    [InlineData(nameof(AdminWarehouseController.Reprice))]
-    public void Коррекция_остатка_и_переоценка_закрыты_от_регистратора(string methodName)
+    [InlineData(nameof(WarehouseCorrectionsController.AddCorrection))]
+    [InlineData(nameof(WarehouseCorrectionsController.Reprice))]
+    public void Коррекция_остатка_и_переоценка_доступны_Admin_и_Sender_но_не_Registrar(string methodName)
     {
-        var method = typeof(AdminWarehouseController)
+        var method = typeof(WarehouseCorrectionsController)
             .GetMethod(methodName, BindingFlags.Public | BindingFlags.Instance)!;
 
-        Assert.Contains("Admin", RoleRestrictions(method));
+        Assert.True(RoleIsAllowed(method, "Admin"), $"{methodName} должен быть доступен Admin");
+        Assert.True(RoleIsAllowed(method, "Sender"), $"{methodName} должен быть доступен Sender");
+        Assert.False(RoleIsAllowed(method, "Registrar"), $"{methodName} не должен быть доступен Registrar");
     }
 }

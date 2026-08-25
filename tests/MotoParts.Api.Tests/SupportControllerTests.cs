@@ -136,8 +136,10 @@ public sealed class SupportControllerTests : IDisposable
 
         var result = await controller.Create(request);
 
-        var obj = Assert.IsType<ObjectResult>(result.Result);
-        Assert.Equal(StatusCodes.Status400BadRequest, obj.StatusCode);
+        // SupportController.Create отдаёт этот случай через прямой BadRequest(...), а не через
+        // Error.Validation(...).ToErrorResponse() — поэтому тип именно BadRequestObjectResult,
+        // а не общий ObjectResult, которым отвечают остальные ошибки в контроллере.
+        Assert.IsType<BadRequestObjectResult>(result.Result);
     }
 
     [Fact]

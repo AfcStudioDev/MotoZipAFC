@@ -291,67 +291,9 @@ public class AdminWarehouseController(AppDbContext db, WarehouseService warehous
         return Ok(new { message = "Фотография удалена" });
     }
 
-    // ---------- Коррекции остатка ----------
-
-    /// <summary>Ручная коррекция остатка со знаком: +5 доприходовать, −3 списать.</summary>
-    [AdminOnly]
-    [HttpPost("corrections")]
-    public async Task<IActionResult> AddCorrection(AdminCorrectionRequest request)
-    {
-        if (request.Delta == 0)
-            return BadRequest(new { message = "Изменение количества не может быть нулевым" });
-        if (string.IsNullOrWhiteSpace(request.Comment))
-            return BadRequest(new { message = "Причина коррекции обязательна" });
-
-        var zip = await db.Zips.Include(z => z.PartNumber).FirstOrDefaultAsync(z => z.Id == request.ZipId);
-        if (zip == null) return NotFound(new { message = "Запчасть не найдена" });
-
-        await using var tx = await db.Database.BeginTransactionAsync();
-
-        // Знак дельты сам определяет операцию: минус — списание, плюс — коррекция в плюс.
-        var stock = await warehouse.AdjustAsync(zip, request.Delta, CurrentUserId, request.Comment);
-        if (stock.IsFailure) return stock.Error!.ToErrorResponse();
-
-        await db.SaveChangesAsync();
-        await tx.CommitAsync();
-
-        return Ok(new { message = "Коррекция проведена", zipId = zip.Id, count = stock.Value });
-    }
-
-    /// <summary>Изменение цены продажи с записью в историю переоценки.</summary>
-    [AdminOnly]
-    [HttpPost("reprice")]
-    public async Task<IActionResult> Reprice(AdminRepriceRequest request)
-    {
-        var userId = CurrentUserId;
-        if (userId is null) return Unauthorized(new { message = "Не удалось определить пользователя" });
-
-        var zip = await db.Zips.FindAsync(request.ZipId);
-        if (zip == null) return NotFound(new { message = "Запчасть не найдена" });
-
-        var oldCost = zip.SellCost ?? 0m;
-        if (oldCost == request.NewCost)
-            return BadRequest(new { message = "Новая цена совпадает с текущей" });
-
-        zip.SellCost = request.NewCost;
-
-        db.PriceHistories.Add(new PriceHistory
-        {
-            ZipId = zip.Id,
-            OldCost = oldCost,
-            NewCost = request.NewCost,
-            OperationId = (short)(request.NewCost > oldCost ? OperationEnum.Markup : OperationEnum.Markdown),
-            UserId = userId.Value,
-            CreatedAt = DateTimeOffset.UtcNow,
-            Comment = request.Comment
-        });
-
-        await db.SaveChangesAsync();
-        return Ok(new { message = "Цена обновлена", oldCost, newCost = request.NewCost });
-    }
-
-    // Отчёты вынесены в ReportsController — Sender-у нужен доступ к ним,
-    // но не ко всему остальному AdminController.
+    // Коррекция остатка и переоценка вынесены в WarehouseCorrectionsController —
+    // Sender-у нужен доступ к ним (наравне с Admin), но не ко всему остальному складу.
+    // Отчёты по той же причине вынесены в ReportsController.
 
     /// <summary>
     /// Ставит одну цену продажи всем запчастям указанного парт-номера.
