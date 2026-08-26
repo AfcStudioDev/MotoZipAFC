@@ -5,7 +5,7 @@ import { AuthService } from './core/auth.service';
 import { CartService } from './core/cart.service';
 
 /** Счётчик подключён тегом в index.html — там же и его id. */
-const YANDEX_METRIKA_ID = 111892258;
+const YANDEX_METRIKA_ID = 111928533;
 declare const ym: ((...args: unknown[]) => void) | undefined;
 
 @Component({
