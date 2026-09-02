@@ -219,7 +219,29 @@ public class AdminDeleteController(AppDbContext db, WarehouseService warehouse) 
                 await db.Logs.Where(l => l.OrderId == orderGuid)
                     .ExecuteUpdateAsync(s => s.SetProperty(l => l.OrderId, (Guid?)null));
 
+                var purchaseId = order.PurchaseId;
                 db.Orders.Remove(order);
+
+                // Purchase хранит адрес/оплату/доставку отдельно от своих позиций (Order) — удаление
+                // последней позиции покупки раньше оставляло пустую Purchase висеть в базе: в
+                // «Заказах» она уже не видна ни одной строкой, но всё ещё ссылается на адрес и
+                // блокирует его удаление ("На этот адрес оформлены заказы: N"), хотя админ этого
+                // заказа уже не видит нигде.
+                var remainingOrders = await db.Orders.CountAsync(o => o.PurchaseId == purchaseId && o.Id != orderGuid);
+                if (remainingOrders == 0)
+                {
+                    var purchase = await db.Purchases.FindAsync(purchaseId);
+                    if (purchase != null)
+                    {
+                        if (!string.IsNullOrEmpty(purchase.ReceiptFileName))
+                        {
+                            var receiptPath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "Receipts", purchase.ReceiptFileName);
+                            if (System.IO.File.Exists(receiptPath)) System.IO.File.Delete(receiptPath);
+                        }
+                        db.Purchases.Remove(purchase);
+                    }
+                }
+
                 break;
             }
 
