@@ -1,6 +1,7 @@
-import { Component, OnInit, inject, signal, computed, ChangeDetectionStrategy } from '@angular/core';
+import { Component, OnInit, OnDestroy, ViewChild, inject, signal, computed, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule, DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { NgxScannerQrcodeComponent, LOAD_WASM, ScannerQRCodeConfig, ScannerQRCodeResult } from 'ngx-scanner-qrcode';
 import { AdminService } from '../core/admin.service'; // или ваш сервис
 import { AuthService } from '../core/auth.service';
 import { environment } from '../../environments/environment';
@@ -8,7 +9,7 @@ import { environment } from '../../environments/environment';
 @Component({
     selector: 'app-sender-panel',
     standalone: true,
-    imports: [CommonModule, DatePipe, FormsModule],
+    imports: [CommonModule, DatePipe, FormsModule, NgxScannerQrcodeComponent],
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `
     <div class="sender-panel">
@@ -41,6 +42,20 @@ import { environment } from '../../environments/environment';
                         autocomplete="off"
                     >
                     <button class="btn-act btn-primary" [disabled]="checkBusy()" (click)="checkZip()">Проверить</button>
+                    <button class="btn-act btn-scan" type="button" (click)="toggleScanner()">
+                        {{ scannerOpen() ? 'Остановить камеру' : '📷 Сканировать QR' }}
+                    </button>
+                </div>
+
+                <div class="scanner-box" [hidden]="!scannerOpen()">
+                    <ngx-scanner-qrcode
+                        #scanAction="scanner"
+                        [config]="scannerConfig"
+                        (event)="onScan($event)"
+                    ></ngx-scanner-qrcode>
+                    @if (scanAction.isLoading) {
+                        <p class="text-muted">Запуск камеры...</p>
+                    }
                 </div>
 
                 @if (checkError()) {
@@ -152,6 +167,20 @@ import { environment } from '../../environments/environment';
       border: 1px solid var(--border, #ccc);
       border-radius: 4px;
       font-size: 14px;
+    }
+
+    .btn-scan { background: #6f42c1; }
+
+    .scanner-box {
+      max-width: 480px;
+      margin-bottom: 16px;
+      border: 1px solid var(--border, #eee);
+      border-radius: 6px;
+      overflow: hidden;
+    }
+    .scanner-box ngx-scanner-qrcode {
+      display: block;
+      width: 100%;
     }
 
     .check-error {
@@ -280,7 +309,7 @@ import { environment } from '../../environments/environment';
     }
   `]
 })
-export class SenderPanelComponent implements OnInit {
+export class SenderPanelComponent implements OnInit, OnDestroy {
     private adminService = inject(AdminService);
     private authService = inject(AuthService);
     isAdmin = this.authService.isAdmin;
@@ -296,6 +325,13 @@ export class SenderPanelComponent implements OnInit {
     checkResult = signal<any | null>(null);
     checkError = signal('');
     checkBusy = signal(false);
+
+    // Сканер QR-кода для поля проверки товара
+    @ViewChild('scanAction') scanAction?: NgxScannerQrcodeComponent;
+    scannerOpen = signal(false);
+    scannerConfig: ScannerQRCodeConfig = {
+        constraints: { video: { facingMode: 'environment' } }
+    };
 
     // Вычисляемые сигналы для фильтрации по вкладкам
     createdOrders = computed(() => this.orders().filter(o => o.deliveryStatus === 'created'));
@@ -314,6 +350,36 @@ export class SenderPanelComponent implements OnInit {
     switchTab(tab: 'created' | 'sent' | 'completed' | 'check') {
         this.activeTab.set(tab);
         this.selectedOrderId.set(null);
+        if (tab !== 'check') {
+            this.stopScanner();
+        }
+    }
+
+    toggleScanner() {
+        if (this.scannerOpen()) {
+            this.stopScanner();
+        } else {
+            this.scannerOpen.set(true);
+            this.scanAction?.start();
+        }
+    }
+
+    private stopScanner() {
+        if (this.scannerOpen()) {
+            this.scanAction?.stop();
+            this.scannerOpen.set(false);
+        }
+    }
+
+    // Срабатывает при распознавании QR-кода камерой: подставляет значение
+    // в поле GUID и сразу запускает проверку, без ручного нажатия кнопки.
+    onScan(results: ScannerQRCodeResult[]) {
+        const value = results?.[0]?.value?.trim();
+        if (!value) return;
+
+        this.stopScanner();
+        this.checkGuid = value;
+        this.checkZip();
     }
 
     checkZip() {
@@ -341,6 +407,11 @@ export class SenderPanelComponent implements OnInit {
 
     ngOnInit() {
         this.loadOrders();
+        LOAD_WASM('assets/wasm/ngx-scanner-qrcode.wasm').subscribe();
+    }
+
+    ngOnDestroy() {
+        this.scanAction?.stop();
     }
 
     loadOrders() {
