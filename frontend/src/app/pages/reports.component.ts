@@ -1,20 +1,22 @@
 import { Component, inject, signal, computed, ChangeDetectionStrategy } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { CommonModule, CurrencyPipe, DatePipe } from '@angular/common';
-import { AdminService } from '../core/admin.service';
+import { AdminService, ZipLookupItem } from '../core/admin.service';
+import { AutocompleteInputComponent, AutocompleteOption } from '../shared/autocomplete-input.component';
 import {
   IncomeReportRow,
   PriceHistoryRow,
   SalesReportRow,
+  StockReportRow,
   ZipHistoryRow,
 } from '../core/models';
 
-type ReportKind = 'sales' | 'income' | 'price-history' | 'zip-history';
+type ReportKind = 'stock' | 'sales' | 'income' | 'price-history' | 'zip-history';
 
 @Component({
   selector: 'app-reports',
   standalone: true,
-  imports: [FormsModule, CommonModule, CurrencyPipe, DatePipe],
+  imports: [FormsModule, CommonModule, CurrencyPipe, DatePipe, AutocompleteInputComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="reports-container">
@@ -29,6 +31,7 @@ type ReportKind = 'sales' | 'income' | 'price-history' | 'zip-history';
 
       <!-- Выбор отчёта -->
       <div class="report-tabs">
+        <button [class.active]="kind() === 'stock'" (click)="select('stock')">Остатки</button>
         <button [class.active]="kind() === 'sales'" (click)="select('sales')">Проданные детали</button>
         <button [class.active]="kind() === 'income'" (click)="select('income')">Поступления</button>
         <button [class.active]="kind() === 'price-history'" (click)="select('price-history')">Наценка / уценка</button>
@@ -46,22 +49,51 @@ type ReportKind = 'sales' | 'income' | 'price-history' | 'zip-history';
             <label>по</label>
             <input type="date" [(ngModel)]="to" class="form-control">
           </div>
+          <div class="filter-field grow">
+            <label>Парт-номер</label>
+            <app-autocomplete-input
+              [(value)]="partNumFilter"
+              [options]="partNumOptions()"
+              placeholder="часть парт-номера" />
+          </div>
+          <div class="filter-field grow">
+            <label>Наименование</label>
+            <app-autocomplete-input
+              [(value)]="nameFilter"
+              [options]="nameOptions()"
+              placeholder="часть наименования" />
+          </div>
+        }
+
+        <!-- Донор есть и у среза остатков: он привязан к детали, а не к периоду. -->
+        @if (kind() === 'stock' || kind() === 'sales' || kind() === 'income') {
+          <div class="filter-field grow">
+            <label>Донор</label>
+            <app-autocomplete-input
+              [(value)]="donorFilter"
+              [options]="donorOptions()"
+              placeholder="часть названия донора" />
+          </div>
         }
 
         @if (kind() === 'price-history' || kind() === 'zip-history') {
-          <div class="filter-field grow">
+          <div class="filter-field grow zip-picker">
             <label>
               Запчасть
               @if (kind() === 'zip-history') { <span class="req">*</span> }
             </label>
-            <select [(ngModel)]="zipId" class="form-control">
-              <option [ngValue]="''">
-                {{ kind() === 'price-history' ? '— все детали —' : '— выберите деталь —' }}
-              </option>
-              @for (z of zips(); track z.id) {
-                <option [ngValue]="z.id">{{ z.name }} ({{ z.partNum }})</option>
-              }
-            </select>
+            <app-autocomplete-input
+              [value]="zipQuery()"
+              (valueChange)="onZipQuery($event)"
+              [options]="zipOptions()"
+              (picked)="onZipPicked($event)"
+              [placeholder]="kind() === 'price-history'
+                ? 'все детали — или введите наименование либо парт-номер'
+                : 'наименование или парт-номер'" />
+
+            @if (zipQuery() && !zipId()) {
+              <small class="hint">Выберите деталь из подсказок.</small>
+            }
           </div>
         }
 
@@ -77,6 +109,43 @@ type ReportKind = 'sales' | 'income' | 'price-history' | 'zip-history';
         } @else if (!loaded()) {
           <p class="muted">Выберите параметры и нажмите «Сформировать».</p>
         } @else {
+
+          <!-- Остатки -->
+          @if (kind() === 'stock') {
+            <div class="summary">
+              <span>Позиций: <b>{{ stock().length }}</b></span>
+              <span>Всего: <b>{{ totalStockCount() }}</b> шт.</span>
+              <span>На сумму: <b>{{ totalStockCost() | currency:'RUB':'symbol-narrow':'1.0-2' }}</b></span>
+            </div>
+            <div class="table-container">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Наименование</th>
+                    <th>Парт-номер</th>
+                    <th class="num">Количество на складе</th>
+                    <th class="num">Стоимость</th>
+                    <th>Донор</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (r of stock(); track r.zipId) {
+                    <tr>
+                      <td data-label="Наименование">{{ r.name }}</td>
+                      <td data-label="Парт-номер" class="muted">{{ r.partNum }}</td>
+                      <td data-label="Количество на складе" class="num">{{ r.count }}</td>
+                      <td data-label="Стоимость" class="num">
+                        {{ r.sellCost != null ? (r.sellCost | currency:'RUB':'symbol-narrow':'1.0-2') : '—' }}
+                      </td>
+                      <td data-label="Донор" class="muted">{{ r.incomeMoto }}</td>
+                    </tr>
+                  } @empty {
+                    <tr><td colspan="5" class="empty">На складе нет деталей с остатком больше нуля</td></tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          }
 
           <!-- Продажи -->
           @if (kind() === 'sales') {
@@ -95,6 +164,7 @@ type ReportKind = 'sales' | 'income' | 'price-history' | 'zip-history';
                     <th class="num">Выручка</th>
                     <th class="num">Себестоимость</th>
                     <th class="num">Маржа</th>
+                    <th>Донор</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -108,9 +178,10 @@ type ReportKind = 'sales' | 'income' | 'price-history' | 'zip-history';
                       <td data-label="Маржа" class="num" [class.negative]="r.margin < 0">
                         {{ r.margin | currency:'RUB':'symbol-narrow':'1.0-2' }}
                       </td>
+                      <td data-label="Донор" class="muted">{{ r.incomeMoto }}</td>
                     </tr>
                   } @empty {
-                    <tr><td colspan="6" class="empty">За выбранный период продаж не было</td></tr>
+                    <tr><td colspan="7" class="empty">За выбранный период продаж не было</td></tr>
                   }
                 </tbody>
               </table>
@@ -288,6 +359,8 @@ type ReportKind = 'sales' | 'income' | 'price-history' | 'zip-history';
     }
     .btn:disabled { opacity: 0.6; cursor: default; }
 
+    .hint { display: block; margin-top: 4px; color: #777; font-size: 12px; }
+
     .summary {
       display: flex;
       flex-wrap: wrap;
@@ -389,11 +462,50 @@ export class ReportsComponent {
 
   from = '';
   to = '';
-  zipId = '';
 
-  /** Список деталей для выпадающих списков в отчётах по конкретной запчасти. */
-  zips = signal<{ id: string; name: string; partNum?: string }[]>([]);
+  /**
+   * Фильтры отчётов — сигналы, потому что связаны с полем подсказок через model():
+   * двустороннее связывание сигнальной модели с обычным полем компонента невозможно.
+   */
+  partNumFilter = signal('');
+  nameFilter = signal('');
+  donorFilter = signal('');
 
+  /** Список деталей — общий источник подсказок для всех трёх полей на странице. */
+  zips = signal<ZipLookupItem[]>([]);
+
+  /**
+   * Выбранная деталь и текст в поле — раздельно: отчёт строится по id, а в поле лежит
+   * произвольный ввод. Как только текст правят, id сбрасывается — иначе отчёт молча
+   * строился бы по прежней детали, не совпадающей с тем, что видно в поле.
+   */
+  zipId = signal('');
+  zipQuery = signal('');
+
+  zipOptions = computed<AutocompleteOption[]>(() =>
+    this.zips().map(z => ({ value: this.zipLabel(z), label: z.name, hint: z.partNum })));
+
+  /**
+   * Подсказки для фильтров берём из того же справочника деталей, но без дублей:
+   * один парт-номер и одно наименование встречаются у многих Zip (деталь с разных доноров),
+   * и в списке они иначе повторялись бы десятками одинаковых строк.
+   */
+  partNumOptions = computed<AutocompleteOption[]>(() =>
+    [...new Set(this.zips().map(z => z.partNum).filter((p): p is string => !!p))]
+      .sort((a, b) => a.localeCompare(b))
+      .map(p => ({ value: p, label: p })));
+
+  nameOptions = computed<AutocompleteOption[]>(() =>
+    [...new Set(this.zips().map(z => z.name).filter(n => !!n))]
+      .sort((a, b) => a.localeCompare(b))
+      .map(n => ({ value: n, label: n })));
+
+  donorOptions = computed<AutocompleteOption[]>(() =>
+    [...new Set(this.zips().map(z => z.incomeMoto).filter((d): d is string => !!d))]
+      .sort((a, b) => a.localeCompare(b))
+      .map(d => ({ value: d, label: d })));
+
+  stock = signal<StockReportRow[]>([]);
   sales = signal<SalesReportRow[]>([]);
   income = signal<IncomeReportRow[]>([]);
   priceHistory = signal<PriceHistoryRow[]>([]);
@@ -404,6 +516,8 @@ export class ReportsComponent {
   totalMargin = computed(() => this.sales().reduce((s, r) => s + r.margin, 0));
   totalQty = computed(() => this.income().reduce((s, r) => s + r.qty, 0));
   totalIncome = computed(() => this.income().reduce((s, r) => s + r.total, 0));
+  totalStockCount = computed(() => this.stock().reduce((s, r) => s + r.count, 0));
+  totalStockCost = computed(() => this.stock().reduce((s, r) => s + r.total, 0));
 
   constructor() {
     this.admin.zipLookup().subscribe({
@@ -418,19 +532,47 @@ export class ReportsComponent {
     this.error.set('');
   }
 
+  // ---------- Выбор детали ----------
+
+  onZipQuery(value: string) {
+    this.zipQuery.set(value);
+    this.zipId.set('');
+  }
+
+  /** Подпись в поле проставляет само поле подсказок — здесь запоминаем только id детали. */
+  onZipPicked(option: AutocompleteOption) {
+    this.zipId.set(this.zips().find(z => this.zipLabel(z) === option.value)?.id ?? '');
+  }
+
+  private zipLabel(z: ZipLookupItem): string {
+    return z.partNum ? `${z.name} (${z.partNum})` : z.name;
+  }
+
   run() {
     this.error.set('');
 
-    if (this.kind() === 'zip-history' && !this.zipId) {
+    if (this.kind() === 'zip-history' && !this.zipId()) {
       this.error.set('Выберите запчасть — этот отчёт строится по конкретной детали.');
+      return;
+    }
+
+    // Набранный, но не выбранный текст — не фильтр: отчёт строится по id детали.
+    // Пустое поле в «Наценке / уценке» законно и означает «по всем деталям».
+    if (this.kind() === 'price-history' && this.zipQuery().trim() && !this.zipId()) {
+      this.error.set('Выберите деталь из подсказок или очистите поле, чтобы получить историю по всем деталям.');
       return;
     }
 
     this.busy.set(true);
 
     // Даты уходят как есть: включение последнего дня в период делает бэкенд.
-    const to = this.to || undefined;
-    const from = this.from || undefined;
+    const filters = {
+      from: this.from || undefined,
+      to: this.to || undefined,
+      partNum: this.partNumFilter() || undefined,
+      name: this.nameFilter() || undefined,
+      donor: this.donorFilter() || undefined,
+    };
 
     const done = () => { this.busy.set(false); this.loaded.set(true); };
     const fail = (err: any) => {
@@ -439,23 +581,28 @@ export class ReportsComponent {
     };
 
     switch (this.kind()) {
+      case 'stock':
+        this.admin.stockReport(filters.donor).subscribe({
+          next: r => { this.stock.set(r); done(); }, error: fail
+        });
+        break;
       case 'sales':
-        this.admin.salesReport(from, to).subscribe({
+        this.admin.salesReport(filters).subscribe({
           next: r => { this.sales.set(r); done(); }, error: fail
         });
         break;
       case 'income':
-        this.admin.incomeReport(from, to).subscribe({
+        this.admin.incomeReport(filters).subscribe({
           next: r => { this.income.set(r); done(); }, error: fail
         });
         break;
       case 'price-history':
-        this.admin.priceHistoryReport(this.zipId || undefined).subscribe({
+        this.admin.priceHistoryReport(this.zipId() || undefined).subscribe({
           next: r => { this.priceHistory.set(r); done(); }, error: fail
         });
         break;
       case 'zip-history':
-        this.admin.zipHistory(this.zipId).subscribe({
+        this.admin.zipHistory(this.zipId()).subscribe({
           next: r => { this.zipHistory.set(r); done(); }, error: fail
         });
         break;

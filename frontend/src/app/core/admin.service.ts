@@ -2,7 +2,24 @@ import { Injectable, inject } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import { environment } from '../../environments/environment';
-import { IncomeReportRow, PriceHistoryRow, SalesReportRow, ZipHistoryRow } from './models';
+import { IncomeReportRow, PriceHistoryRow, SalesReportRow, StockReportRow, ZipHistoryRow } from './models';
+
+/** Параметры отчётов: период и/или отбор по детали. Все поля необязательные. */
+export interface ReportFilters {
+  from?: string;
+  to?: string;
+  partNum?: string;
+  name?: string;
+  donor?: string;
+}
+
+/** Строка справочника деталей: источник подсказок во всех фильтрах страницы отчётов. */
+export interface ZipLookupItem {
+  id: string;
+  name: string;
+  partNum?: string;
+  incomeMoto?: string;
+}
 
 /**
  * Универсальный сервис админ-панели: у каждой таблицы есть
@@ -122,16 +139,21 @@ export class AdminService {
    * Не list('zip') — тот эндпоинт закрыт для Sender и несёт лишние для этой формы данные
    * (цены, остатки, фото).
    */
-  zipLookup(): Observable<{ id: string; name: string; partNum?: string }[]> {
-    return this.http.get<{ id: string; name: string; partNum?: string }[]>(`${this.api}/reports/zip-lookup`);
+  zipLookup(): Observable<ZipLookupItem[]> {
+    return this.http.get<ZipLookupItem[]>(`${this.api}/reports/zip-lookup`);
   }
 
-  salesReport(from?: string, to?: string): Observable<SalesReportRow[]> {
-    return this.http.get<SalesReportRow[]>(`${this.api}/reports/sales`, { params: this.period(from, to) });
+  /** Остатки склада на сейчас — всё, чего больше нуля. Периода у среза нет, только донор. */
+  stockReport(donor?: string): Observable<StockReportRow[]> {
+    return this.http.get<StockReportRow[]>(`${this.api}/reports/stock`, { params: this.reportParams({ donor }) });
   }
 
-  incomeReport(from?: string, to?: string): Observable<IncomeReportRow[]> {
-    return this.http.get<IncomeReportRow[]>(`${this.api}/reports/income`, { params: this.period(from, to) });
+  salesReport(filters: ReportFilters = {}): Observable<SalesReportRow[]> {
+    return this.http.get<SalesReportRow[]>(`${this.api}/reports/sales`, { params: this.reportParams(filters) });
+  }
+
+  incomeReport(filters: ReportFilters = {}): Observable<IncomeReportRow[]> {
+    return this.http.get<IncomeReportRow[]>(`${this.api}/reports/income`, { params: this.reportParams(filters) });
   }
 
   priceHistoryReport(zipId?: string): Observable<PriceHistoryRow[]> {
@@ -144,11 +166,18 @@ export class AdminService {
     return this.http.get<ZipHistoryRow[]>(`${this.api}/reports/zip-history/${zipId}`);
   }
 
-  /** Даты в формате YYYY-MM-DD. Обе границы включительно — доводит их бэкенд. */
-  private period(from?: string, to?: string): HttpParams {
+  /**
+   * Даты в формате YYYY-MM-DD, обе границы включительно — доводит их бэкенд.
+   * Пустые поля не отправляем вовсе: пустая строка на бэкенде отсеялась бы как
+   * IsNullOrWhiteSpace, но зря висела бы в URL.
+   */
+  private reportParams(f: ReportFilters): HttpParams {
     let params = new HttpParams();
-    if (from) params = params.set('from', from);
-    if (to) params = params.set('to', to);
+    if (f.from) params = params.set('from', f.from);
+    if (f.to) params = params.set('to', f.to);
+    if (f.partNum?.trim()) params = params.set('partNum', f.partNum.trim());
+    if (f.name?.trim()) params = params.set('name', f.name.trim());
+    if (f.donor?.trim()) params = params.set('donor', f.donor.trim());
     return params;
   }
 

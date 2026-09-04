@@ -87,10 +87,21 @@ export interface AddressDto {
 
 // ---------- Отчёты ----------
 
+export interface StockReportRow {
+  zipId: string;
+  name: string;
+  partNum?: string;
+  count: number;
+  sellCost?: number;
+  total: number;
+  incomeMoto?: string;
+}
+
 export interface SalesReportRow {
   zipId: string;
   name: string;
   partNum?: string;
+  incomeMoto?: string;
   sold: number;
   revenue: number;
   cost: number;

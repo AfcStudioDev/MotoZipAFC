@@ -41,34 +41,104 @@ public class ReportsController(AppDbContext db) : ControllerBase
     }
 
     /// <summary>
+    /// Фильтр по детали, общий для отчётов, которые строятся по журналу движений.
+    /// ILike, а не ToLower().Contains(): наименования русские, и регистронезависимость
+    /// в Postgres даёт именно он (так же сделан поиск в каталоге).
+    /// </summary>
+    private static IQueryable<Log> FilterByZip(IQueryable<Log> query, string? partNum, string? name, string? donor)
+    {
+        if (!string.IsNullOrWhiteSpace(partNum))
+            query = query.Where(l => EF.Functions.ILike(l.Zip!.PartNumber.PartNum, $"%{partNum.Trim()}%"));
+
+        if (!string.IsNullOrWhiteSpace(name))
+            query = query.Where(l => EF.Functions.ILike(l.Zip!.PartNumber.Name, $"%{name.Trim()}%"));
+
+        if (!string.IsNullOrWhiteSpace(donor))
+            query = query.Where(l => EF.Functions.ILike(l.Zip!.IncomeMoto.Description, $"%{donor.Trim()}%"));
+
+        return query;
+    }
+
+    /// <summary>
     /// Минимальный список деталей для выпадающих списков на странице отчётов.
     /// Отдельно от GET /admin/zip: тот эндпоинт остаётся закрыт для Sender (несёт закупочные
     /// цены и остатки), а здесь — только то, что нужно для выбора детали в фильтре отчёта.
+    /// Донор идёт тем же списком: он нужен для подсказок в фильтрах, и отдельный запрос
+    /// ради одного поля страница делать не должна.
     /// </summary>
     [HttpGet("zip-lookup")]
     public async Task<IActionResult> ZipLookup() =>
         Ok(await db.Zips
             .OrderBy(z => z.PartNumber.Name)
-            .Select(z => new { z.Id, Name = z.PartNumber.Name, PartNum = z.PartNumber.PartNum })
+            .Select(z => new
+            {
+                z.Id,
+                Name = z.PartNumber.Name,
+                PartNum = z.PartNumber.PartNum,
+                IncomeMoto = z.IncomeMoto.Description
+            })
             .ToListAsync());
+
+    /// <summary>
+    /// Остатки склада: всё, чего физически больше нуля. Без периода — это срез на сейчас.
+    /// «Стоимость» здесь — цена продажи, а не закупочная: отчёт открыт и для Sender,
+    /// которому закупочные цены не показываем (по той же причине, что и в zip-lookup).
+    /// </summary>
+    [HttpGet("stock")]
+    public async Task<IActionResult> StockReport([FromQuery] string? donor)
+    {
+        var query = db.Stored.Where(s => s.Count > 0);
+
+        if (!string.IsNullOrWhiteSpace(donor))
+            query = query.Where(s => EF.Functions.ILike(s.Zip.IncomeMoto.Description, $"%{donor.Trim()}%"));
+
+        return Ok(await query
+            .OrderBy(s => s.Zip.PartNumber.Name)
+            .Select(s => new
+            {
+                s.ZipId,
+                Name = s.Zip.PartNumber.Name,
+                PartNum = s.Zip.PartNumber.PartNum,
+                s.Count,
+                SellCost = s.Zip.SellCost,
+                Total = (s.Zip.SellCost ?? 0m) * s.Count,
+                IncomeMoto = s.Zip.IncomeMoto.Description
+            })
+            .ToListAsync());
+    }
 
     /// <summary>Отчёт по проданным деталям за период. Границы включают обе указанные даты.</summary>
     [HttpGet("sales")]
-    public async Task<IActionResult> SalesReport([FromQuery] DateOnly? from, [FromQuery] DateOnly? to)
+    public async Task<IActionResult> SalesReport(
+        [FromQuery] DateOnly? from,
+        [FromQuery] DateOnly? to,
+        [FromQuery] string? partNum,
+        [FromQuery] string? name,
+        [FromQuery] string? donor)
     {
         var (fromUtc, toUtc) = PeriodToUtc(from, to);
 
         var query = db.Logs.Where(l => l.OperationId == (short)OperationEnum.Sale && l.ZipId != null);
         if (fromUtc.HasValue) query = query.Where(l => l.CreatedAt >= fromUtc.Value);
         if (toUtc.HasValue) query = query.Where(l => l.CreatedAt < toUtc.Value);
+        query = FilterByZip(query, partNum, name, donor);
 
         var rows = await query
-            .GroupBy(l => new { l.ZipId, Name = l.Zip!.PartNumber.Name, PartNum = l.Zip!.PartNumber.PartNum })
+            // Донор входит в ключ группировки, а не берётся отдельно: у Zip он один,
+            // так что строк это не дробит, но позволяет вывести его в колонке.
+            .GroupBy(l => new
+            {
+                l.ZipId,
+                Name = l.Zip!.PartNumber.Name,
+                PartNum = l.Zip!.PartNumber.PartNum,
+                IncomeMoto = l.Zip!.IncomeMoto.Description
+            })
             .Select(g => new
             {
                 ZipId = g.Key.ZipId,
                 g.Key.Name,
                 g.Key.PartNum,
+                g.Key.IncomeMoto,
                 // Qty у продажи отрицательный, поэтому меняем знак.
                 Sold = -g.Sum(l => l.Qty ?? 0),
                 Revenue = g.Sum(l => -(l.Qty ?? 0) * (l.SellCost ?? 0m)),
@@ -77,18 +147,24 @@ public class ReportsController(AppDbContext db) : ControllerBase
             .OrderByDescending(r => r.Revenue)
             .ToListAsync();
 
-        return Ok(rows.Select(r => new { r.ZipId, r.Name, r.PartNum, r.Sold, r.Revenue, r.Cost, Margin = r.Revenue - r.Cost }));
+        return Ok(rows.Select(r => new { r.ZipId, r.Name, r.PartNum, r.IncomeMoto, r.Sold, r.Revenue, r.Cost, Margin = r.Revenue - r.Cost }));
     }
 
     /// <summary>Отчёт по поступившим деталям за период. Границы включают обе указанные даты.</summary>
     [HttpGet("income")]
-    public async Task<IActionResult> IncomeReport([FromQuery] DateOnly? from, [FromQuery] DateOnly? to)
+    public async Task<IActionResult> IncomeReport(
+        [FromQuery] DateOnly? from,
+        [FromQuery] DateOnly? to,
+        [FromQuery] string? partNum,
+        [FromQuery] string? name,
+        [FromQuery] string? donor)
     {
         var (fromUtc, toUtc) = PeriodToUtc(from, to);
 
         var query = db.Logs.Where(l => l.OperationId == (short)OperationEnum.Income && l.ZipId != null);
         if (fromUtc.HasValue) query = query.Where(l => l.CreatedAt >= fromUtc.Value);
         if (toUtc.HasValue) query = query.Where(l => l.CreatedAt < toUtc.Value);
+        query = FilterByZip(query, partNum, name, donor);
 
         return Ok(await query
             .OrderByDescending(l => l.CreatedAt)
