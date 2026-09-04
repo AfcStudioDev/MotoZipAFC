@@ -71,7 +71,7 @@ namespace PdfGeneration.Services
                             column.Item()
                                   .PaddingTop(-35)
                                   .Text(partName)
-                                  .FontSize(40)
+                                  .FontSize(35)
                                   .AlignCenter();
                         }
 
@@ -80,7 +80,7 @@ namespace PdfGeneration.Services
                             column.Item()
                                   .PaddingTop(0)
                                   .Text(donorInfo)
-                                  .FontSize(40)
+                                  .FontSize(35)
                                   .AlignCenter();
                         }
                     });
